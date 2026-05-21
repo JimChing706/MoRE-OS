@@ -1,0 +1,10 @@
+{
+  "name": "minesweeper_game",
+  "version": "0.1.0",
+  "description": "扫雷游戏核心引擎与Web界面 - 支持AI自动游玩",
+  "author": "QNMing",
+  "entry_point": "main",
+  "capabilities": ["game_engine", "web_gui", "ai_autoplay", "metrics_collection"],
+  "dependencies": [],
+  "min_core_version": "0.3.0"
+}

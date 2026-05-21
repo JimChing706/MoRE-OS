@@ -1,0 +1,13 @@
+{
+  "name": "mahjong-industry-pack",
+  "version": "0.5.0",
+  "description": "QNMing MoRE OS Industry Pack — 广东麻将 AI（行业插件最小化实例）",
+  "author": "QNMing MoRE Team",
+  "license": "Apache-2.0",
+  "entry_point": "main",
+  "capabilities": ["mahjong_strategy", "game_ai", "multiplayer"],
+  "dependencies": [],
+  "more_os_version": ">=0.5.0",
+  "category": "gaming",
+  "tags": ["mahjong", "game-ai", "strategy", "industry-pack"]
+}

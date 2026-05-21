@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qnming-more-os"
+dynamic = ["version"]
+description = "QNMing MoRE OS — Neuro-Symbolic Metacognitive Self-Evolving Agent OS Kernel (L0–L5)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "QNMing MoRE Team" }]
+keywords = ["agent", "llm", "platform", "neuro-symbolic", "metacognition", "self-improving"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+dependencies = [
+    "pydantic>=2.6,<3.0",
+    "httpx>=0.27,<1.0",
+    "anyio>=4.3,<5.0",
+    "typing-extensions>=4.10",
+]
+
+[project.optional-dependencies]
+api = ["fastapi>=0.110,<1.0", "uvicorn[standard]>=0.27,<1.0"]
+redis = ["redis>=5.0,<6.0"]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+    "mypy>=1.9",
+]
+all = ["qnming-more-os[api,redis,dev]"]
+
+[project.scripts]
+more-os = "more_core.cli:main"
+more-core = "more_core.cli:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "more_core.version.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["more_core*"]
+exclude = ["tests*", "examples*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
