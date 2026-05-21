@@ -39,7 +39,7 @@ interface TaskState {
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8001'
 
-export const useTaskStore = create<TaskState>((set, get) => ({
+export const useTaskStore = create<TaskState>((set, _get) => ({
   tasks: [],
   activeTask: null,
   isLoading: false,

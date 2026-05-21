@@ -39,7 +39,7 @@ interface DashboardState {
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8001'
 
-export const useDashboardStore = create<DashboardState>((set, get) => ({
+export const useDashboardStore = create<DashboardState>((set, _get) => ({
   systemStatus: null,
   isLoading: false,
   lastUpdated: null,
