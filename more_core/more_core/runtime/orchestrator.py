@@ -47,8 +47,7 @@ from ..ontology.engine import OntologyEngine
 from ..plugins.manager import PluginManager
 from ..evolution.benchmark import BenchmarkRunner, SimpleBenchmark
 from ..router.layer_router import LayerRouter, RoutingDecision
-from ..sandbox.linux_sandbox import create_sandbox
-from ..sandbox.secure_sandbox import SecureSandbox, SandboxConfig, SecurityLevel
+from ..sandbox.secure_sandbox import create_secure_sandbox, SandboxConfig, SecurityLevel
 from ..tools.builtins import register_builtins
 from ..tools.registry import ToolRegistry
 from ..optimization import RequestCache, CacheConfig, RateLimiter, CircuitBreaker
@@ -99,11 +98,7 @@ class MoRECore:
         # Capabilities
         self.llm = LLMManager(settings.providers, settings.fallback_chain)
         self.task_model_router = DynamicModelRouter(self.llm)
-        _base_sandbox = create_sandbox(
-            timeout_s=settings.sandbox_timeout_s, memory_mb=settings.sandbox_memory_mb
-        )
-        self.sandbox = SecureSandbox(
-            _base_sandbox,
+        self.sandbox = create_secure_sandbox(
             SandboxConfig(
                 timeout_s=settings.sandbox_timeout_s,
                 memory_mb=settings.sandbox_memory_mb,

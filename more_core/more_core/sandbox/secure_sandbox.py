@@ -195,12 +195,23 @@ class SecureSandbox:
 
 
 def create_secure_sandbox(
+    config: SandboxConfig | None = None,
+    *,
     inner: SubprocessSandbox | None = None,
     security_level: str = "basic",
     **kwargs: Any,
 ) -> SecureSandbox:
-    """Factory: wraps *inner* (or a default SubprocessSandbox) with SecureSandbox."""
+    """Unified factory: creates the full sandbox stack.
+
+    If *config* is given it is used directly; otherwise one is built from
+    *security_level* + *kwargs*.  If *inner* is not supplied, the best
+    platform sandbox is auto-created via :func:`create_sandbox`.
+
+    This is the **primary public API** for sandbox creation.
+    """
+    if config is None:
+        config = SandboxConfig(security_level=SecurityLevel(security_level), **kwargs)
     if inner is None:
-        inner = SubprocessSandbox(timeout_s=kwargs.get("timeout_s", 30), memory_mb=kwargs.get("memory_mb", 256))
-    config = SandboxConfig(security_level=SecurityLevel(security_level), **kwargs)
+        from .linux_sandbox import create_sandbox
+        inner = create_sandbox(timeout_s=config.timeout_s, memory_mb=config.memory_mb)
     return SecureSandbox(inner, config)
