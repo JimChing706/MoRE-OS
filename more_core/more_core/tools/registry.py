@@ -78,7 +78,8 @@ class ToolRegistry:
             for t in self._tools.values()
         ]
 
-    async def invoke(self, name: str, params: dict[str, Any]) -> ToolResult:
+    async def invoke(self, name: str, params: dict[str, Any], user_id: str = "anonymous") -> ToolResult:
+        params["_user_id"] = user_id  # inject for RBAC decorator
         tool = self._tools.get(name)
         if tool is None:
             return ToolResult(tool=name, success=False, error=f"unknown tool: {name}")

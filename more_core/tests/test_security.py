@@ -1,6 +1,9 @@
 """Tests for the security module (RBAC, taint tracking, output filter)."""
 
-from more_core.security.rbac import RBACManager, Permission, Role, ROLE_ADMIN, ROLE_VIEWER
+from more_core.security.rbac import (
+    RBACManager, UnifiedRBAC, Permission, Role, ROLE_ADMIN, ROLE_VIEWER,
+    require_permission, requires_permission, get_rbac, set_rbac_instance,
+)
 from more_core.security.taint import TaintTracker, TaintLabel, TaintedValue
 from more_core.security.output_filter import OutputFilter, FilterRule
 
@@ -61,6 +64,117 @@ def test_rbac_get_user_permissions():
     perms = mgr.get_user_permissions("u")
     assert Permission.TASK_VIEW in perms
     assert Permission.TOOL_PYTHON in perms
+
+
+# -- UnifiedRBAC (new API) ------------------------------------------------
+
+def test_unified_rbac_dev_mode_allows_all():
+    """Without admin users configured, check() always returns True."""
+    rbac = UnifiedRBAC()
+    assert rbac.check("anyone", Permission.SYS_ADMIN)
+    assert rbac.check("anyone", Permission.TOOL_SHELL)
+    assert rbac.check("anyone", Permission.MEMORY_DELETE)
+
+
+def test_unified_rbac_with_admin_users_blocks_unknown():
+    """With admin users set, unknown users are blocked."""
+    rbac = UnifiedRBAC(admin_users=["alice"])
+    assert not rbac.check("bob", Permission.TASK_EXECUTE)
+    assert rbac.check("alice", Permission.TASK_EXECUTE)
+
+
+def test_unified_rbac_role_assignment():
+    rbac = UnifiedRBAC(admin_users=["alice"])
+    rbac.assign_role("bob", "viewer")
+    assert rbac.check("bob", Permission.TASK_VIEW)
+    assert not rbac.check("bob", Permission.TASK_EXECUTE)
+
+
+def test_unified_rbac_check_raise():
+    rbac = UnifiedRBAC(admin_users=["alice"])
+    rbac.check_raise("alice", Permission.SYS_ADMIN)  # no error
+    import pytest as _pytest
+    with _pytest.raises(PermissionError, match="bob lacks permission"):
+        rbac.check_raise("bob", Permission.TOOL_SHELL)
+
+
+def test_unified_rbac_register_plugin_permission():
+    rbac = UnifiedRBAC()
+    perm = rbac.register_permission("game:play")
+    assert perm.value == "game:play"
+    assert "game:play" in rbac._extra_permissions
+
+
+def test_unified_rbac_stats():
+    rbac = UnifiedRBAC(admin_users=["alice"])
+    rbac.assign_role("bob", "viewer")
+    stats = rbac.stats()
+    assert stats["admin_users"] == 1
+    assert stats["total_roles"] >= 5  # built-in roles
+    assert stats["total_users"] == 1
+
+
+def test_unified_rbac_list_roles():
+    rbac = UnifiedRBAC()
+    roles = rbac.list_roles()
+    names = [r["name"] for r in roles]
+    assert "admin" in names
+    assert "viewer" in names
+    assert "operator" in names
+
+
+# -- require_permission / requires_permission helpers ----------------------
+
+async def test_require_permission_dependency_allows_when_no_rbac():
+    """When no global RBAC is set, the dependency is a no-op."""
+    set_rbac_instance(None)
+    dep = require_permission(Permission.SYS_ADMIN)
+    await dep("someone")  # should not raise
+
+
+async def test_require_permission_dependency_blocks_unauthorized():
+    rbac = UnifiedRBAC(admin_users=["alice"])
+    set_rbac_instance(rbac)
+    dep = require_permission(Permission.TOOL_SHELL)
+    import pytest as _pytest
+    with _pytest.raises(PermissionError):
+        await dep("bob")
+    set_rbac_instance(None)  # cleanup
+
+
+async def test_requires_permission_decorator_pops_user_id():
+    rbac = UnifiedRBAC(admin_users=["alice"])
+    set_rbac_instance(rbac)
+
+    @requires_permission(Permission.TOOL_FILE_READ)
+    async def fake_handler(params):
+        return params  # return remaining params after _user_id pop
+
+    # alice has admin → all permissions
+    result = await fake_handler({"_user_id": "alice", "path": "/tmp"})
+    assert "_user_id" not in result
+    assert result["path"] == "/tmp"
+
+    import pytest as _pytest
+    with _pytest.raises(PermissionError):
+        await fake_handler({"_user_id": "bob", "path": "/tmp"})
+
+    set_rbac_instance(None)  # cleanup
+
+
+# -- Backward compat -------------------------------------------------------
+
+def test_legacy_rbac_manager_still_works():
+    """Deprecated RBACManager should preserve its original behavior."""
+    mgr = RBACManager()
+    # Legacy mode without enable(): allow all (disabled)
+    assert mgr.check_permission("anyone", Permission.TOOL_SHELL)
+    # Enable legacy mode: blocks unauthorized
+    mgr.enable()
+    assert not mgr.check_permission("unknown", Permission.TOOL_SHELL)
+    # Assign a role to a user
+    mgr.assign_role("bob", "operator")
+    assert mgr.check_permission("bob", Permission.TASK_EXECUTE)
 
 
 # -- Taint Tracking --------------------------------------------------------

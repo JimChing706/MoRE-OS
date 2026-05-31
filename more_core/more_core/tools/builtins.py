@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .registry import ToolDefinition, ToolRegistry, ToolResult
+from ..security.rbac import Permission
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..runtime.orchestrator import MoRECore
@@ -518,6 +519,7 @@ def register_builtins(registry: "ToolRegistry", core: "MoRECore") -> None:
         handler=lambda params: _read_file(params, core=core),
         requires_sandbox=False,
         tags=("file", "workspace"),
+        required_permission=Permission.TOOL_FILE_READ,
     ))
 
     registry.register(ToolDefinition(
@@ -534,6 +536,7 @@ def register_builtins(registry: "ToolRegistry", core: "MoRECore") -> None:
         handler=lambda params: _write_file(params, core=core),
         requires_sandbox=False,
         tags=("file", "workspace"),
+        required_permission=Permission.TOOL_FILE_WRITE,
     ))
 
     registry.register(ToolDefinition(
@@ -549,6 +552,7 @@ def register_builtins(registry: "ToolRegistry", core: "MoRECore") -> None:
         handler=lambda params: _list_directory(params, core=core),
         requires_sandbox=False,
         tags=("file", "workspace"),
+        required_permission=Permission.TOOL_FILE_READ,
     ))
 
     registry.register(ToolDefinition(
@@ -566,6 +570,7 @@ def register_builtins(registry: "ToolRegistry", core: "MoRECore") -> None:
         handler=lambda params: _search_code(params, core=core),
         requires_sandbox=False,
         tags=("file", "search"),
+        required_permission=Permission.TOOL_FILE_READ,
     ))
 
     registry.register(ToolDefinition(
@@ -582,6 +587,7 @@ def register_builtins(registry: "ToolRegistry", core: "MoRECore") -> None:
         handler=lambda params: _run_tests(params, core=core),
         requires_sandbox=True,
         tags=("test", "python"),
+        required_permission=Permission.TOOL_SHELL,
     ))
 
     registry.register(ToolDefinition(
@@ -597,6 +603,7 @@ def register_builtins(registry: "ToolRegistry", core: "MoRECore") -> None:
         handler=lambda params: _lint_file(params, core=core),
         requires_sandbox=True,
         tags=("quality", "lint"),
+        required_permission=Permission.TOOL_SHELL,
     ))
 
     registry.register(ToolDefinition(
@@ -613,6 +620,7 @@ def register_builtins(registry: "ToolRegistry", core: "MoRECore") -> None:
         handler=lambda params: _format_code(params, core=core),
         requires_sandbox=True,
         tags=("quality", "format"),
+        required_permission=Permission.TOOL_FILE_WRITE,
     ))
 
     registry.register(ToolDefinition(
@@ -628,6 +636,7 @@ def register_builtins(registry: "ToolRegistry", core: "MoRECore") -> None:
         handler=lambda params: _python_exec(params, core=core),
         requires_sandbox=True,
         tags=("code", "execution"),
+        required_permission=Permission.TOOL_PYTHON,
     ))
 
     registry.register(ToolDefinition(
@@ -643,6 +652,7 @@ def register_builtins(registry: "ToolRegistry", core: "MoRECore") -> None:
         handler=lambda params: _shell_exec(params, core=core),
         requires_sandbox=True,
         tags=("shell", "execution"),
+        required_permission=Permission.TOOL_SHELL,
     ))
 
     registry.register(ToolDefinition(
@@ -659,6 +669,7 @@ def register_builtins(registry: "ToolRegistry", core: "MoRECore") -> None:
         },
         handler=lambda params: _memory_search(params, core=core),
         tags=("memory",),
+        required_permission=Permission.MEMORY_READ,
     ))
 
     registry.register(ToolDefinition(
@@ -675,6 +686,7 @@ def register_builtins(registry: "ToolRegistry", core: "MoRECore") -> None:
         },
         handler=lambda params: _memory_store(params, core=core),
         tags=("memory",),
+        required_permission=Permission.MEMORY_WRITE,
     ))
 
     registry.register(ToolDefinition(
@@ -693,6 +705,7 @@ def register_builtins(registry: "ToolRegistry", core: "MoRECore") -> None:
         handler=lambda params: _grep_files(params, core=core),
         requires_sandbox=False,
         tags=("search", "file"),
+        required_permission=Permission.TOOL_FILE_READ,
     ))
 
     registry.register(ToolDefinition(
@@ -708,6 +721,7 @@ def register_builtins(registry: "ToolRegistry", core: "MoRECore") -> None:
         handler=lambda params: _file_info(params, core=core),
         requires_sandbox=False,
         tags=("file", "metadata"),
+        required_permission=Permission.TOOL_FILE_READ,
     ))
 
     registry.register(ToolDefinition(
@@ -723,6 +737,7 @@ def register_builtins(registry: "ToolRegistry", core: "MoRECore") -> None:
         handler=lambda params: _create_directory(params, core=core),
         requires_sandbox=False,
         tags=("file", "directory"),
+        required_permission=Permission.TOOL_FILE_WRITE,
     ))
 
     registry.register(ToolDefinition(
@@ -739,4 +754,5 @@ def register_builtins(registry: "ToolRegistry", core: "MoRECore") -> None:
         handler=lambda params: _delete_file(params, core=core),
         requires_sandbox=False,
         tags=("file", "delete"),
+        required_permission=Permission.TOOL_FILE_WRITE,
     ))

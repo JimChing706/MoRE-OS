@@ -47,6 +47,15 @@ class Permission(str, Enum):
     Plugins can call ``UnifiedRBAC.register_permission()`` to add new ones.
     """
 
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            obj = str.__new__(cls, value)
+            obj._name_ = value
+            obj._value_ = value
+            return obj
+        return None
+
     # -- task domain --
     TASK_EXECUTE = "task:execute"
     TASK_VIEW = "task:view"
@@ -236,9 +245,11 @@ class UnifiedRBAC:
         return False
 
     def check(self, user_id: str, permission: Permission) -> bool:
-        if self._admin_users:
-            if user_id in self._admin_users or self._is_admin(user_id):
-                return True
+        # If no admin users are configured, allow everyone (dev mode)
+        if not self._admin_users:
+            return True
+        if user_id in self._admin_users or self._is_admin(user_id):
+            return True
         for rn in self._user_roles.get(user_id, []):
             role = self._roles.get(rn)
             if role and permission in role.permissions:
@@ -361,5 +372,12 @@ class RBACManager(UnifiedRBAC):  # type: ignore[misc]
 
     def check_permission(self, user_id: str, permission: Permission) -> bool:
         if not self._legacy_enabled and not self._admin_users:
-            return True
+            return True  # legacy disabled — allow all
+        if self._legacy_enabled and not self._admin_users:
+            # Legacy enabled without admin users: role-based only
+            for rn in self._user_roles.get(user_id, []):
+                role = self._roles.get(rn)
+                if role and permission in role.permissions:
+                    return True
+            return False
         return self.check(user_id, permission)

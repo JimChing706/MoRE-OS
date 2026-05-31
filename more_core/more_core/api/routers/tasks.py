@@ -9,6 +9,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field as _Field
 
+from ...security.rbac import Permission, require_permission
 from ...core.types import TaskRequest, TaskType
 from ...runtime.orchestrator import MoRECore
 
@@ -76,7 +77,7 @@ async def _execute_task_background(task_id: str, task_info: dict, core: MoRECore
 def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["Tasks"])
 
-    @router.post("/tasks/execute", dependencies=[Depends(require_api_key)])
+    @router.post("/tasks/execute", dependencies=[Depends(require_api_key), Depends(require_permission(Permission.TASK_EXECUTE))])
     async def execute(payload: ExecuteTaskPayload) -> dict[str, Any]:
         from ...core.types import LayerId
         target = LayerId(payload.target_layer) if payload.target_layer else None
@@ -123,7 +124,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
             "completed_at": task.get("completed_at"),
         }
 
-    @router.post("/tasks/{task_id}/execute", dependencies=[Depends(require_api_key)])
+    @router.post("/tasks/{task_id}/execute", dependencies=[Depends(require_api_key), Depends(require_permission(Permission.TASK_EXECUTE))])
     async def execute_task(task_id: str) -> dict[str, Any]:
         if task_id not in _task_store:
             return {"status": "not_found", "error": "Task not found"}
@@ -151,7 +152,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
             ]
         }
 
-    @router.post("/tasks/stream", dependencies=[Depends(require_api_key)])
+    @router.post("/tasks/stream", dependencies=[Depends(require_api_key), Depends(require_permission(Permission.TASK_EXECUTE))])
     async def stream_execute(payload: ExecuteTaskPayload):
         """Stream task execution as Server-Sent Events (SSE)."""
         from fastapi.responses import StreamingResponse

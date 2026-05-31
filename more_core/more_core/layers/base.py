@@ -19,6 +19,7 @@ class LayerContext:
 
     core: "MoRECore"
     request: TaskRequest
+    user_id: str = "anonymous"
     accumulated_steps: list[ReasoningStep] = field(default_factory=list)
     scratch: dict[str, Any] = field(default_factory=dict)
     step_counter: int = 0

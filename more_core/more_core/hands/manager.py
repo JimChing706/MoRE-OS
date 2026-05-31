@@ -7,6 +7,7 @@ from typing import Any, TYPE_CHECKING
 
 from .base import Hand, HandResult, HandStatus
 from .registry import HandRegistry
+from ..security.rbac import Permission, get_rbac
 
 if TYPE_CHECKING:
     from ..cron.scheduler import CronScheduler
@@ -46,6 +47,10 @@ class HandManager:
         if hand_cls is None:
             raise KeyError(f"Unknown Hand: {hand_id}")
 
+        rbac = get_rbac()
+        if rbac is not None:
+            rbac.check_raise(config.get("_user_id", "anonymous") if config else "anonymous", Permission.HAND_ACTIVATE)
+
         hand = hand_cls(config)
         await hand.activate()
         self._active[hand_id] = hand
@@ -67,6 +72,11 @@ class HandManager:
     async def deactivate(self, hand_id: str) -> None:
         """Deactivate a running Hand."""
         hand = self._active.pop(hand_id, None)
+
+        rbac = get_rbac()
+        if rbac is not None:
+            rbac.check_raise("anonymous", Permission.HAND_DEACTIVATE)
+
         if hand is None:
             return
         # Remove cron job
@@ -86,6 +96,11 @@ class HandManager:
 
     async def run_once(self, hand_id: str, context: dict[str, Any] | None = None) -> HandResult:
         """Manually trigger one execution cycle."""
+
+        rbac = get_rbac()
+        if rbac is not None:
+            rbac.check_raise(context.get("_user_id", "anonymous") if context else "anonymous", Permission.HAND_RUN)
+
         hand = self._active.get(hand_id)
         if hand is None:
             return HandResult(hand_id=hand_id, success=False, error="Hand not active")

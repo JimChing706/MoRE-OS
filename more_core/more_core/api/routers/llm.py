@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from ...security.rbac import Permission, require_permission
 from ...runtime.orchestrator import MoRECore
 
 
@@ -45,7 +46,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
             }
         return result
 
-    @router.post("/llm/state/update", dependencies=[Depends(require_api_key)])
+    @router.post("/llm/state/update", dependencies=[Depends(require_api_key), Depends(require_permission(Permission.LLM_UPDATE))])
     async def llm_update_state(params: dict[str, Any]) -> dict[str, Any]:
         from ...llm.state_manager import get_llm_state_manager
         mgr = get_llm_state_manager()
@@ -88,7 +89,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         new_state = mgr.update_state(**updates)
         return {"success": True, "updated": updates, "current_state": new_state.__dict__}
 
-    @router.post("/llm/state/reset", dependencies=[Depends(require_api_key)])
+    @router.post("/llm/state/reset", dependencies=[Depends(require_api_key), Depends(require_permission(Permission.LLM_UPDATE))])
     async def llm_reset_state() -> dict[str, Any]:
         from ...llm.state_manager import get_llm_state_manager
         mgr = get_llm_state_manager()

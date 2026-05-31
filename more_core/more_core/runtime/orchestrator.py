@@ -326,7 +326,8 @@ class MoRECore:
             taint.track("query", request.query, TaintLabel.USER_INPUT, "api")
 
             decision = self.router.route(request)
-            ctx = LayerContext(core=self, request=request)
+            actor = request.context.get("actor", "anonymous")
+            ctx = LayerContext(core=self, request=request, user_id=actor)
             await self.event_bus.publish(
                 "task.started",
                 data={"id": request.id, "type": request.type.value, "pipeline": [layer.value for layer in decision.pipeline]},
@@ -479,7 +480,8 @@ class MoRECore:
             taint.track("query", request.query, TaintLabel.USER_INPUT, "api")
 
             decision = self.router.route(request)
-            ctx = LayerContext(core=self, request=request)
+            actor_s = request.context.get("actor", "anonymous")
+            ctx = LayerContext(core=self, request=request, user_id=actor_s)
 
             # Emit pipeline info
             yield f"data: {json.dumps({'event': 'pipeline', 'layers': [lid.value for lid in decision.pipeline], 'task_id': request.id})}\n\n"

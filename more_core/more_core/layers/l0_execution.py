@@ -174,7 +174,7 @@ class ExecutionLayer(Layer):
                     tool_outputs.append(f"[tool error] invalid JSON: {raw[:120]}")
                     continue
                 name = payload.pop("tool", payload.pop("name", ""))
-                result = await ctx.core.tools.invoke(name, payload)
+                result = await ctx.core.tools.invoke(name, payload, user_id=ctx.user_id)
                 tool_outputs.append(
                     f"[{name}] success={result.success} output={result.output}"
                     + (f" error={result.error}" if result.error else "")
@@ -209,7 +209,7 @@ class ExecutionLayer(Layer):
                 l3_layer = ctx.core.get_layer(LayerId.L3)
                 inference = l3_layer.rule_engine.run(code_facts) if hasattr(l3_layer, "rule_engine") else None
                 if inference is None or not inference.violations:
-                    sbx_result = await ctx.core.tools.invoke("python_exec", {"code": code})
+                    sbx_result = await ctx.core.tools.invoke("python_exec", {"code": code}, user_id=ctx.user_id)
                     ctx.scratch["sandbox_result"] = sbx_result
                 else:
                     ctx.scratch["code_blocked"] = inference.violations
@@ -223,7 +223,7 @@ class ExecutionLayer(Layer):
                 l3_layer = ctx.core.get_layer(LayerId.L3)
                 inference = l3_layer.rule_engine.run(code_facts) if hasattr(l3_layer, "rule_engine") else None
                 if inference is None or not inference.violations:
-                    sbx_result = await ctx.core.tools.invoke("python_exec", {"code": test_code})
+                    sbx_result = await ctx.core.tools.invoke("python_exec", {"code": test_code}, user_id=ctx.user_id)
                     ctx.scratch["test_result"] = sbx_result
                     # Append test execution result to output
                     if sbx_result.success:
