@@ -143,3 +143,112 @@ def test_lru_evicts_oldest() -> None:
     assert len(cache) == 256  # _CACHE_MAX
     assert "k0" not in cache
     assert "k259" in cache
+
+
+# ---------------------------------------------------------------------------
+# Dynamic Model Routing tests
+# ---------------------------------------------------------------------------
+
+from more_core.core.types import TaskType
+from more_core.llm.dynamic_router import DynamicModelRouter
+
+
+class _FakeLLMManagerForRouting:
+    """Minimal LLMManager stub for DynamicModelRouter tests."""
+    def __init__(self, providers=None):
+        self._providers = dict(providers or {})
+
+    def list_providers(self):
+        return list(self._providers)
+
+    async def health(self):
+        return {name: True for name in self._providers}
+
+
+def test_dynamic_router_resolves_alias():
+    mgr = _FakeLLMManagerForRouting()
+    router = DynamicModelRouter(mgr)
+    alias = router.resolve_alias("free-coder")
+    assert alias is not None
+    assert alias.provider == "openrouter"
+    assert "qwen" in alias.model.lower()
+
+
+def test_dynamic_router_get_binding_default():
+    mgr = _FakeLLMManagerForRouting()
+    router = DynamicModelRouter(mgr)
+    binding = router.get_binding(TaskType.CODE_GENERATION)
+    assert binding.provider == "ollama"
+    assert binding.model == "qwen2.5:7b"
+
+
+def test_dynamic_router_select_provider():
+    mgr = _FakeLLMManagerForRouting({"ollama": True})
+    router = DynamicModelRouter(mgr)
+    provider = router.select_provider(TaskType.NLP_TASK)
+    assert provider == "ollama"
+
+
+def test_dynamic_router_select_provider_unavailable():
+    mgr = _FakeLLMManagerForRouting({"other": True})
+    router = DynamicModelRouter(mgr)
+    provider = router.select_provider(TaskType.NLP_TASK)
+    assert provider is None
+
+
+def test_dynamic_router_select_model():
+    mgr = _FakeLLMManagerForRouting()
+    router = DynamicModelRouter(mgr)
+    model = router.select_model(TaskType.NLP_TASK)
+    assert model == "qwen2.5:7b"
+
+
+def test_dynamic_router_update_task_binding():
+    mgr = _FakeLLMManagerForRouting()
+    router = DynamicModelRouter(mgr)
+    router.update_task_binding(TaskType.NLP_TASK, "custom", "custom-model")
+    binding = router.get_binding(TaskType.NLP_TASK)
+    assert binding.provider == "custom"
+    assert binding.model == "custom-model"
+
+
+def test_dynamic_router_fallback_chain():
+    mgr = _FakeLLMManagerForRouting({"ollama": True, "lmstudio": True})
+    router = DynamicModelRouter(mgr)
+    chain = router.get_fallback_chain(TaskType.NLP_TASK)
+    assert len(chain) >= 1
+    providers = [p.provider for p in chain]
+    assert "ollama" in providers
+
+
+def test_dynamic_router_custom_fallback_chain():
+    mgr = _FakeLLMManagerForRouting()
+    router = DynamicModelRouter(mgr)
+    from more_core.llm.manager import ProviderModelPair
+    binding = ProviderModelPair(provider="alpha", model="alpha-model")
+    router.set_custom_fallback_chain("test_chain", [binding])
+    router.set_binding(TaskType.CODE_GENERATION, binding)
+    router._determine_chain_key = lambda tt: "test_chain"
+    chain = router.get_fallback_chain(TaskType.CODE_GENERATION)
+    assert chain[0].provider == "alpha"
+
+
+def test_dynamic_router_remove_custom_chain():
+    mgr = _FakeLLMManagerForRouting()
+    router = DynamicModelRouter(mgr)
+    router.set_custom_fallback_chain("temp", [])
+    assert "temp" in router._custom_fallback_chains
+    router.remove_custom_fallback_chain("temp")
+    assert "temp" not in router._custom_fallback_chains
+
+
+def test_dynamic_router_get_routing_config():
+    mgr = _FakeLLMManagerForRouting({"ollama": True})
+    router = DynamicModelRouter(mgr)
+    config = router.get_routing_config()
+    assert "bindings" in config
+    assert "fallback_chains" in config
+    assert "aliases" in config
+    assert "reasoning" in config
+    assert "providers" in config
+    assert "ollama" in config["providers"]

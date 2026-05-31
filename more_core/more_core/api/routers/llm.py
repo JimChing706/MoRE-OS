@@ -152,4 +152,49 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
             "model": result.model, "description": result.description, "free": result.free,
         }
 
+    # -- Dynamic Model Routing ----------------------------------------------
+
+    @router.get("/llm/routing")
+    async def routing_config() -> dict[str, Any]:
+        """Full routing configuration: bindings, chains, aliases, reasoning stats."""
+        return core.task_model_router.get_routing_config()
+
+    @router.post("/llm/routing", dependencies=[Depends(require_api_key), Depends(require_permission(Permission.LLM_UPDATE))])
+    async def routing_update(payload: dict[str, Any]) -> dict[str, Any]:
+        """Update a task-type binding or fallback chain.
+
+        Body format:
+          {"task_type": "code_generation", "provider": "ollama", "model": "qwen2.5:7b"}
+          or
+          {"chain": "custom_chain", "pairs": [{"provider":"x","model":"y"}]}
+        """
+        task_type_str = payload.get("task_type")
+        chain_name = payload.get("chain")
+        if task_type_str:
+            from ...core.types import TaskType
+            try:
+                tt = TaskType(task_type_str)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Unknown task type: {task_type_str}")
+            provider = payload.get("provider", "")
+            model = payload.get("model", "")
+            if not provider or not model:
+                raise HTTPException(status_code=422, detail="provider and model required")
+            core.task_model_router.update_task_binding(tt, provider, model)
+            return {"success": True, "task_type": task_type_str, "provider": provider, "model": model}
+        elif chain_name:
+            pairs = payload.get("pairs", [])
+            if not isinstance(pairs, list) or not pairs:
+                raise HTTPException(status_code=422, detail="pairs list required")
+            core.task_model_router.update_fallback_chain(chain_name, pairs)
+            return {"success": True, "chain": chain_name, "pairs": pairs}
+        else:
+            raise HTTPException(status_code=422, detail="task_type or chain required")
+
+    @router.delete("/llm/routing/chain/{name}", dependencies=[Depends(require_api_key), Depends(require_permission(Permission.LLM_UPDATE))])
+    async def routing_delete_chain(name: str) -> dict[str, Any]:
+        """Remove a custom fallback chain."""
+        core.task_model_router.remove_custom_fallback_chain(name)
+        return {"success": True, "removed": name}
+
     return router

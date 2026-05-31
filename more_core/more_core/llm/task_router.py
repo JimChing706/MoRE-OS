@@ -35,10 +35,6 @@ FALLBACK_CHAINS: dict[str, list[ModelBinding]] = {
         ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL),
         ModelBinding(provider="lmstudio", model=DEFAULT_LM_MODEL),
     ],
-    "lmstudio_reasoning": [
-        ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL),
-        ModelBinding(provider="lmstudio", model=DEFAULT_LM_MODEL),
-    ],
     "ollama_fallback": [
         ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL),
     ],
@@ -87,14 +83,11 @@ class TaskModelRouter:
         return chain
 
     def _determine_chain_key(self, task_type: TaskType) -> str:
-        """Determine which fallback chain to use based on task type."""
-        if task_type in (
-            TaskType.MATH_REASONING,
-            TaskType.ARCHITECTURE_DESIGN,
-            TaskType.SELF_IMPROVEMENT,
-            TaskType.CROSS_DOMAIN_TRANSFER,
-        ):
-            return "lmstudio_reasoning"
+        """Determine which fallback chain to use based on task type.
+
+        All task types currently use the primary chain; custom chains
+        can be registered via :meth:`DynamicModelRouter.set_custom_fallback_chain`.
+        """
         return "lmstudio_primary"
 
     def record_failure(self, model: str) -> None:
