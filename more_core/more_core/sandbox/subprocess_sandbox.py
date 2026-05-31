@@ -1,17 +1,15 @@
 """Subprocess-based sandbox.
 
 Production deployments should wrap this with Docker + gVisor or WASM.
-This baseline enforces timeout, stdin/stdout capture, and optional
-resource limits on POSIX via ``resource``.  It is *not* a security
-boundary against adversarial code on its own, but provides the
-isolation hook point called by L0 tools.
+This baseline enforces timeout, stdin/stdout capture.
+It is *not* a security boundary against adversarial code on its own, but
+provides the isolation hook point called by L0 tools.
 """
 
 from __future__ import annotations
 
 import asyncio
 import os
-import resource as _resource  # type: ignore[import-not-found]
 import shlex
 import sys
 import tempfile
@@ -28,16 +26,6 @@ class SandboxResult:
     exit_code: int
     duration_ms: float
     timed_out: bool = False
-
-
-def _posix_limits(mem_mb: int) -> None:  # pragma: no cover (os-specific)
-    if sys.platform == "win32":
-        return
-    bytes_ = mem_mb * 1024 * 1024
-    try:
-        _resource.setrlimit(_resource.RLIMIT_AS, (bytes_, bytes_))
-    except (ValueError, OSError):
-        pass
 
 
 class SubprocessSandbox:

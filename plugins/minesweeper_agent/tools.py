@@ -56,7 +56,7 @@ async def auto_play_full_tool_impl(params: dict[str, Any]) -> ToolResult:
     use_ai = params.get("use_ai", True)
 
     try:
-        from plugins.minesweeper_game.state_manager import session_manager, create_game
+        from more_core_plugins.minesweeper_game.state_manager import session_manager, create_game
 
         # Create game session
         game_id = await session_manager.create_session(difficulty)

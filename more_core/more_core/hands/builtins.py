@@ -7,7 +7,8 @@ adapted to the six-layer architecture.
 
 from __future__ import annotations
 
-from typing import Any
+import asyncio
+from typing import Any, Callable
 
 from .base import Hand, HandManifest, HandResult
 from .registry import HandRegistry
@@ -162,3 +163,52 @@ def register_builtin_hands(registry: HandRegistry) -> None:
     for hand_cls in (ResearcherHand, CoderHand, DigestHand, MonitorHand):
         instance = hand_cls()
         registry.register(hand_cls, instance.manifest)
+
+
+def register_hand_function(
+    registry: HandRegistry,
+    hand_id: str,
+    name: str,
+    category: str,
+    schedule: str,
+    fn: Callable[..., Any],
+    *,
+    description: str = "",
+    tools: list[str] | None = None,
+    skills: list[str] | None = None,
+) -> None:
+    """Register a function-based Hand from a plain callable.
+
+    Convenience wrapper that creates a simple Hand subclass from a
+    function and registers it.  The function may be sync or async.
+    """
+
+    class _FunctionHand(Hand):
+        @property
+        def manifest(self) -> HandManifest:
+            return HandManifest(
+                id=hand_id,
+                name=name,
+                description=description or f"Function-based Hand: {name}",
+                category=category,
+                tools=tools or [],
+                schedule=schedule,
+                skills=skills or [],
+            )
+
+        async def execute(self, context: dict[str, Any]) -> HandResult:
+            try:
+                result = fn(context)
+                if asyncio.iscoroutine(result):
+                    result = await result
+                return HandResult(
+                    hand_id=hand_id,
+                    success=result.get("success", True) if isinstance(result, dict) else True,
+                    output=result,
+                    metrics=result if isinstance(result, dict) else {},
+                )
+            except Exception as exc:
+                return HandResult(hand_id=hand_id, success=False, error=str(exc))
+
+    instance = _FunctionHand()
+    registry.register(_FunctionHand, instance.manifest)

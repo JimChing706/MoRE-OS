@@ -37,7 +37,7 @@ interface TaskState {
   executeTask: (query: string, type?: string) => Promise<void>
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8001'
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8010'
 
 export const useTaskStore = create<TaskState>((set, _get) => ({
   tasks: [],
@@ -60,7 +60,7 @@ export const useTaskStore = create<TaskState>((set, _get) => ({
   executeTask: async (query: string, type = 'nlp_task') => {
     set({ isLoading: true, error: null })
     try {
-      const response = await fetch(`${API_BASE}/api/tasks/execute`, {
+      const response = await fetch(`${API_BASE}/api/v1/tasks/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type, query }),

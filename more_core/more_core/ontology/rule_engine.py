@@ -182,6 +182,67 @@ def _act_flag_dangerous(facts: list[Fact], ctx: dict[str, Any]) -> list[RuleActi
     ]
 
 
+# ---- code-review specific rules ----------------------------------------
+
+_REVIEW_DIMENSIONS = [
+    "security", "performance", "maintainability", "correctness",
+    "style", "architecture", "testability", "documentation",
+]
+
+
+def _cond_code_review_task(facts: list[Fact]) -> bool:
+    for f in facts:
+        if f.kind == "request" and f.data.get("type") == "code_review":
+            return True
+    return False
+
+
+def _act_code_review_annotate(facts: list[Fact], ctx: dict[str, Any]) -> list[RuleAction]:
+    return [
+        RuleAction(type="annotate", payload={
+            "review_dimensions": _REVIEW_DIMENSIONS,
+            "review_required": True,
+            "structured_output": True,
+            "checklist": [
+                {"dim": "security", "items": ["SQL注入检测", "XSS漏洞", "硬编码密钥", "权限校验"]},
+                {"dim": "performance", "items": ["循环复杂度", "内存分配", "I/O阻塞", "缓存策略"]},
+                {"dim": "maintainability", "items": ["函数长度", "模块耦合度", "命名规范", "注释覆盖"]},
+            ],
+        }),
+    ]
+
+
+# ---- architecture-design specific rules ---------------------------------
+
+_ARCHITECTURE_CHECKLIST = [
+    {"dim": "scalability", "items": ["水平扩展能力", "无状态设计", "数据分片策略"]},
+    {"dim": "resilience", "items": ["容错机制", "熔断降级", "重试策略", "超时控制"]},
+    {"dim": "observability", "items": ["日志规范", "指标采集", "链路追踪", "告警规则"]},
+    {"dim": "security_boundary", "items": ["信任边界", "最小权限", "网络隔离", "密钥管理"]},
+]
+
+
+def _cond_architecture_design_task(facts: list[Fact]) -> bool:
+    for f in facts:
+        if f.kind == "request" and f.data.get("type") == "architecture_design":
+            return True
+    return False
+
+
+def _act_architecture_design_annotate(facts: list[Fact], ctx: dict[str, Any]) -> list[RuleAction]:
+    return [
+        RuleAction(type="annotate", payload={
+            "architecture_checklist": _ARCHITECTURE_CHECKLIST,
+            "design_required": True,
+            "structured_output": True,
+            "artifacts_expected": [
+                "系统架构图(文字描述)", "服务拆分方案", "API网关设计",
+                "数据流图", "部署拓扑", "容错策略",
+            ],
+        }),
+    ]
+
+
 def default_governance_rules() -> list[Rule]:
     """Return the built-in governance rule set."""
     return [
@@ -205,5 +266,19 @@ def default_governance_rules() -> list[Rule]:
             actions=[_act_flag_dangerous],
             priority=RulePriority.HIGH,
             description="Flag dangerous code patterns",
+        ),
+        Rule(
+            name="code_review_dimensions",
+            conditions=[_cond_code_review_task],
+            actions=[_act_code_review_annotate],
+            priority=RulePriority.NORMAL,
+            description="Generate code review dimensions and checklist",
+        ),
+        Rule(
+            name="architecture_design_checklist",
+            conditions=[_cond_architecture_design_task],
+            actions=[_act_architecture_design_annotate],
+            priority=RulePriority.NORMAL,
+            description="Generate architecture design checklist and expected artifacts",
         ),
     ]

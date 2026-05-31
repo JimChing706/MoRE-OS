@@ -73,6 +73,7 @@ class TaskResponse(BaseModel):
 TASK_TYPE_LABELS = {
     "code_generation": "代码生成",
     "code_debugging": "代码调试",
+    "code_testing": "代码测试",
     "math_reasoning": "数学推理",
     "data_analysis": "数据分析",
     "nlp_task": "NLP任务",
@@ -395,8 +396,8 @@ async def _require_bff_api_key(
 # ---------------------------------------------------------------------------
 
 WRITE_PATHS = {
-    "/api/tasks/execute", "/api/tasks/execute/stream",
-    "/api/redis/clear",
+    "/api/v1/tasks/execute", "/api/v1/tasks/execute/stream",
+    "/api/v1/redis/clear",
 }
 
 async def _extract_user_from_token(authorization: str | None) -> str:
@@ -474,7 +475,7 @@ app.add_middleware(RBACMiddleware)
 # Endpoints
 # ---------------------------------------------------------------------------
 
-@app.get("/api/health")
+@app.get("/api/v1/health")
 async def health_check():
     return {
         "status": "healthy",
@@ -486,7 +487,7 @@ async def health_check():
     }
 
 
-@app.post("/api/tasks/execute", dependencies=[Depends(_require_bff_api_key)])
+@app.post("/api/v1/tasks/execute", dependencies=[Depends(_require_bff_api_key)])
 async def execute_task(request: TaskRequest):
     result = await execute_task_real(request)
 
@@ -496,14 +497,14 @@ async def execute_task(request: TaskRequest):
 
     await save_task_to_redis(result)
     
-    # 自动将成功任务转换为产出物
-    if result.get("status") in ("success", "completed") or result.get("status") == "partial":
+    # 自动将任务结果转换为产出物（success/partial 状态）
+    if result.get("status") in ("success", "partial"):
         await _auto_create_output(result)
     
     return result
 
 
-@app.post("/api/tasks/execute/stream", dependencies=[Depends(_require_bff_api_key)])
+@app.post("/api/v1/tasks/execute/stream", dependencies=[Depends(_require_bff_api_key)])
 async def execute_task_stream(request: TaskRequest):
     async def generate():
         yield f"data: {json.dumps({'type': 'START', 'task_id': 'pending'})}\n\n"
@@ -519,6 +520,10 @@ async def execute_task_stream(request: TaskRequest):
 
             task_history.insert(0, result)
             await save_task_to_redis(result)
+
+            # 自动将流式任务结果转换为产出物
+            if result.get("status") in ("success", "partial"):
+                await _auto_create_output(result)
         except Exception as e:
             yield f"data: {json.dumps({'type': 'ERROR', 'message': str(e)})}\n\n"
 
@@ -529,12 +534,12 @@ async def execute_task_stream(request: TaskRequest):
     )
 
 
-@app.get("/api/tasks/history")
+@app.get("/api/v1/tasks/history")
 async def get_task_history(limit: int = 20):
     return {"tasks": task_history[:limit], "total": len(task_history)}
 
 
-@app.get("/api/tasks/types")
+@app.get("/api/v1/tasks/types")
 async def get_task_types():
     if core:
         # Use real router to determine layers for each type
@@ -596,7 +601,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
         manager.disconnect(client_id)
 
 
-@app.get("/api/config/providers")
+@app.get("/api/v1/config/providers")
 async def get_configured_providers():
     if not core:
         return {"providers": {}}
@@ -611,7 +616,7 @@ async def get_configured_providers():
     return {"providers": providers_info}
 
 
-@app.get("/api/llm/status")
+@app.get("/api/v1/llm/status")
 async def get_llm_status():
     llm_health = {}
     if core:
@@ -630,7 +635,7 @@ async def get_llm_status():
     }
 
 
-@app.get("/api/system/state")
+@app.get("/api/v1/system/state")
 async def get_system_state():
     if not core:
         return {"status": "starting"}
@@ -655,7 +660,7 @@ async def get_system_state():
     }
 
 
-@app.post("/api/redis/clear", dependencies=[Depends(_require_bff_api_key)])
+@app.post("/api/v1/redis/clear", dependencies=[Depends(_require_bff_api_key)])
 async def clear_redis_history():
     try:
         keys = await redis_state_manager.keys(f"{TASK_HISTORY_KEY}:*")
@@ -674,7 +679,7 @@ PROJECT_OUTPUTS_KEY = "more:v3:project_outputs"
 
 
 async def _auto_create_output(task_result: dict) -> None:
-    """将成功的任务自动转换为产出物"""
+    """将成功的任务自动转换为产出物并持久化到文件系统"""
     try:
         task_id = task_result.get("task_id", "")
         metadata = task_result.get("metadata", {})
@@ -725,10 +730,60 @@ async def _auto_create_output(task_result: dict) -> None:
         # 存储到Redis
         output_key = f"{PROJECT_OUTPUTS_KEY}:{output['id']}"
         await redis_state_manager.set(output_key, output, expire=REDIS_TASK_EXPIRE)
+        
+        # 持久化到文件系统
+        _persist_output_to_disk(output, output_text)
+        
         print(f"[Outputs] Created output: {output['id']}")
         
     except Exception as e:
         print(f"[Outputs] Auto-create failed: {e}")
+
+
+def _persist_output_to_disk(output: dict, output_text: str) -> None:
+    """将产出物写入本地文件系统 (outputs/ 目录)。"""
+    import os as _os
+    task_type = output.get("type", "unknown")
+    output_id = output.get("id", "unknown")
+    output_dir = f"outputs/{task_type}/{output_id}"
+    _os.makedirs(output_dir, exist_ok=True)
+    
+    # 写入完整输出
+    full_path = f"{output_dir}/output.md"
+    with open(full_path, "w", encoding="utf-8") as f:
+        f.write(f"# {output.get('name', 'Untitled')}\n\n")
+        f.write(f"**Type**: {task_type}\n")
+        f.write(f"**Created**: {output.get('created_at', '')}\n")
+        f.write(f"**Status**: {output.get('status', '')}\n\n")
+        f.write("---\n\n")
+        f.write(output_text)
+        f.write("\n\n---\n")
+        f.write(f"\n*MoRE OS Auto-generated Output — {output_id}*")
+    
+    # 写入元数据
+    import json
+    meta_path = f"{output_dir}/metadata.json"
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump({
+            "id": output["id"],
+            "name": output["name"],
+            "type": task_type,
+            "files": output.get("files", []),
+            "docs": output.get("docs", []),
+            "metadata": output.get("metadata", {}),
+        }, f, ensure_ascii=False, indent=2, default=str)
+    
+    # 提取代码文件到独立文件
+    for file_info in output.get("files", []):
+        if "```" in output_text:
+            import re
+            code_blocks = re.findall(r'```(?:\w+)?\n(.*?)```', output_text, re.DOTALL)
+            for idx, code in enumerate(code_blocks):
+                file_path = f"{output_dir}/file_{idx + 1}.py"
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(code.strip())
+    
+    print(f"[Outputs] Persisted to disk: {output_dir}")
 
 class ProjectOutput(BaseModel):
     id: str
@@ -881,4 +936,4 @@ async def submit_output_review(output_id: str, review: dict):
 
 
 if __name__ == "__main__":
-    uvicorn.run("src.main:app", host="0.0.0.0", port=8001, reload=True)
+    uvicorn.run("src.main:app", host="0.0.0.0", port=8010, reload=True)

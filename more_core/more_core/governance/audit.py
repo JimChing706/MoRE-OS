@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import threading
@@ -59,3 +60,55 @@ class AuditLogger:
         record = AuditRecord(actor=actor, action=action, entity=entity, payload=payload)
         self.write(record)
         return record
+
+    def read_recent(self, limit: int = 50) -> list[dict]:
+        """Read the most recent audit records from the JSONL file.
+
+        Uses reverse-chunked reading to avoid loading the entire file
+        into memory — safe for multi-GB audit logs.
+        """
+        records: list[dict] = []
+        try:
+            if not self._path.exists():
+                return records
+            with self._lock, self._path.open("rb") as fh:
+                # Read the last ~8KB per expected record (generous for JSONL)
+                chunk_size = max(8192, limit * 256)
+                fh.seek(0, io.SEEK_END)
+                file_size = fh.tell()
+                if file_size == 0:
+                    return records
+
+                buf = bytearray()
+                remaining = file_size
+                while remaining > 0 and len(records) < limit:
+                    read_size = min(chunk_size, remaining)
+                    remaining -= read_size
+                    fh.seek(remaining)
+                    chunk = fh.read(read_size)
+                    buf = bytearray(chunk) + buf
+                    # Split on newlines, keep the last (incomplete) line in buf
+                    raw = buf.decode("utf-8", errors="replace")
+                    lines = raw.split(os.linesep)
+                    # First line might be partial — prepend it to next chunk
+                    buf = bytearray(lines[0].encode("utf-8", errors="replace"))
+                    for line in reversed(lines[1:]):
+                        line = line.strip()
+                        if line:
+                            try:
+                                records.append(json.loads(line))
+                            except json.JSONDecodeError:
+                                continue
+                            if len(records) >= limit:
+                                break
+                # Process the final leftover line
+                leftover = buf.decode("utf-8", errors="replace").strip()
+                if leftover and len(records) < limit:
+                    try:
+                        records.append(json.loads(leftover))
+                    except json.JSONDecodeError:
+                        pass
+        except Exception:
+            pass
+        # Records are already in reverse-chronological order
+        return records[:limit]

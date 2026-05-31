@@ -166,7 +166,7 @@ def test_tool_registration(more_core_with_tools):
     from more_core.tools.registry import ToolRegistry
     registry = ToolRegistry()
     register_builtins(registry, more_core_with_tools)
-    tool_names = [t.name for t in registry.list()]
+    tool_names = [t.name for t in registry.list_tools()]
     assert "read_file" in tool_names
     assert "write_file" in tool_names
     assert "list_directory" in tool_names

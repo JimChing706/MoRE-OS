@@ -241,6 +241,8 @@ function determineRoutingLayers(request: TaskRequest): LayerId[] {
     return layers.reverse();
   }
 
+  // Pipelines aligned with backend layer_router.py DEFAULT_PIPELINES,
+  // respecting current gate settings (symbolic=on, evolution=off, metacognition=off).
   switch (request.type) {
     case 'self_improvement':
       return ['L5', 'L2', 'L1', 'L0'];
@@ -248,12 +250,17 @@ function determineRoutingLayers(request: TaskRequest): LayerId[] {
       return ['L5', 'L4', 'L1', 'L0'];
     case 'math_reasoning':
       return ['L4', 'L3', 'L1', 'L0'];
+    case 'code_generation':
+    case 'code_debugging':
     case 'code_review':
-      return ['L3', 'L4', 'L2', 'L0'];
+    case 'code_testing':
+    case 'data_analysis':
+    case 'nlp_task':
+      return ['L4', 'L3', 'L1', 'L0'];
     case 'architecture_design':
-      return ['L5', 'L4', 'L3', 'L1'];
+      return ['L5', 'L4', 'L3', 'L1', 'L0'];
     case 'multi_agent_orchestration':
-      return ['L1', 'L0'];
+      return ['L4', 'L1', 'L0'];
     default:
       return ['L4', 'L3', 'L1', 'L0'];
   }
@@ -264,6 +271,7 @@ function generateOutput(type: TaskType): string {
     code_generation: '生成经过优化的代码实现，通过符号验证和元认知校准确保质量。',
     code_debugging: '定位到3个关键bug，通过进化搜索找到最优修复方案。',
     code_review: '多维度代码审查完成，发现2个安全隐患、3处性能瓶颈、5项架构改进建议。',
+    code_testing: '测试套件生成完成，覆盖单元测试和集成测试，测试通过率95%。',
     architecture_design: '微服务架构设计完成，包含服务拆分、容错策略、API网关设计。',
     math_reasoning: '符号推理引擎验证每一步推导，最终得到精确解。',
     data_analysis: '多维度分析完成，发现4个关键模式，置信度92%。',
@@ -477,8 +485,8 @@ export class MoreV3Engine {
   private state: SystemState;
   private listeners: Set<(data: DashboardData) => void> = new Set();
   private intervalId: ReturnType<typeof setInterval> | null = null;
-  private useRealAPI: boolean = false;
-  private apiBaseUrl: string = import.meta.env.VITE_API_BASE || 'http://localhost:8001';
+  private useRealAPI: boolean = true;
+  private apiBaseUrl: string = import.meta.env.VITE_API_BASE || 'http://localhost:8010';
 
   constructor() {
     this.state = getSystemState();
@@ -497,7 +505,7 @@ export class MoreV3Engine {
     }
 
     try {
-      const response = await fetch(`${this.apiBaseUrl}/api/tasks/execute`, {
+      const response = await fetch(`${this.apiBaseUrl}/api/v1/tasks/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -515,36 +523,32 @@ export class MoreV3Engine {
 
       const result = await response.json();
 
+      // Map backend Pydantic field names (duration_ms, input_tokens) to frontend camelCase
       return {
         taskId: result.task_id,
-        layer: result.layer,
-        status: result.status,
-        output: result.output,
-        reasoningChain: result.reasoning_chain.map((step: any) => ({
+        layer: result.layer as LayerId,
+        status: result.status as 'success' | 'partial' | 'failed',
+        output: result.output || '',
+        reasoningChain: (result.reasoning_chain || []).map((step: any) => ({
           id: step.id,
           layer: step.layer as LayerId,
-          description: step.description,
-          duration: step.duration,
-          inputTokens: step.input_tokens,
-          outputTokens: step.output_tokens,
-          confidence: step.confidence,
-          timestamp: step.timestamp,
+          description: step.description || '',
+          duration: step.duration_ms ?? step.duration ?? 0,
+          inputTokens: step.input_tokens ?? 0,
+          outputTokens: step.output_tokens ?? 0,
+          confidence: step.confidence ?? 0,
+          timestamp: step.timestamp ?? Date.now(),
         })),
         performance: {
-          totalDuration: result.performance.total_duration,
-          tokensUsed: result.performance.tokens_used,
-          layerTransitions: result.performance.layer_transitions,
+          totalDuration: result.performance?.total_duration_ms ?? 0,
+          tokensUsed: result.performance?.tokens_used ?? 0,
+          layerTransitions: result.performance?.layer_transitions ?? 0,
         },
-        calibration: result.calibration ? {
-          confidence: result.calibration.confidence,
-          accuracy: result.calibration.accuracy,
-          alignment: result.calibration.alignment,
-          history: result.calibration.history || [],
-        } : undefined,
+        calibration: result.calibration || undefined,
       };
     } catch (error) {
-      console.warn('Real API execution failed, falling back to simulation:', error);
-      return simulateTaskExecution(request);
+      console.error('Real API execution failed', error);
+      throw error;
     }
   }
 
@@ -554,26 +558,69 @@ export class MoreV3Engine {
 
       if (this.useRealAPI) {
         try {
-          const response = await fetch(`${this.apiBaseUrl}/api/tasks/history?limit=10`);
-          if (response.ok) {
-            const historyResult = await response.json();
-            const systemResponse = await fetch(`${this.apiBaseUrl}/api/system/state`);
-            if (systemResponse.ok) {
-              const systemState = await systemResponse.json();
-              data = getDashboardData();
-              data.recentTasks = historyResult.tasks || [];
-              data.systemState = {
-                ...data.systemState,
-                throughput: systemState.throughput || data.systemState.throughput,
-                avgLatency: systemState.avg_latency || data.systemState.avgLatency,
-                activeTasks: systemState.active_tasks || data.systemState.activeTasks,
-                queuedTasks: systemState.queued_tasks || data.systemState.queuedTasks,
+          // Fetch core state + evolution + security + memory in parallel
+          const [systemRes, evolutionRes, incidentsRes, auditRes] = await Promise.all([
+            fetch(`${this.apiBaseUrl}/api/v1/system/state`),
+            fetch(`${this.apiBaseUrl}/api/v1/evolution/archive`),
+            fetch(`${this.apiBaseUrl}/api/v1/incidents`),
+            fetch(`${this.apiBaseUrl}/api/v1/security/audit?limit=20`),
+          ]);
+
+          data = getDashboardData();
+
+          if (systemRes.ok) {
+            const sys = await systemRes.json();
+            data.systemState.throughput = sys.throughput || data.systemState.throughput;
+            data.systemState.avgLatency = sys.avg_latency || data.systemState.avgLatency;
+            data.systemState.activeTasks = sys.active_tasks || data.systemState.activeTasks;
+            data.systemState.queuedTasks = sys.queued_tasks || data.systemState.queuedTasks;
+
+            // Memory entries from system state
+            if (sys.memory?.entries) {
+              const entries = sys.memory.entries;
+              data.memorySystem = {
+                episodic: entries.filter((e: any) => e.type === 'episodic').map((e: any) => ({
+                  id: e.id, type: 'episodic' as const, content: e.content,
+                  embedding: [], timestamp: e.timestamp, accessCount: e.access_count || 0,
+                  relevance: e.score || 0.5,
+                })),
+                semantic: entries.filter((e: any) => e.type === 'semantic').map((e: any) => ({
+                  id: e.id, type: 'semantic' as const, content: e.content,
+                  embedding: [], timestamp: e.timestamp, accessCount: e.access_count || 0,
+                  relevance: e.score || 0.5,
+                })),
+                procedural: entries.filter((e: any) => e.type === 'procedural').map((e: any) => ({
+                  id: e.id, type: 'procedural' as const, content: e.content,
+                  embedding: [], timestamp: e.timestamp, accessCount: e.access_count || 0,
+                  relevance: e.score || 0.5,
+                })),
               };
-            } else {
-              data = getDashboardData();
             }
-          } else {
-            data = getDashboardData();
+          }
+
+          // Evolution archive
+          if (evolutionRes.ok) {
+            const evo = await evolutionRes.json();
+            data.evolutionStats = {
+              ...data.evolutionStats,
+              totalAgents: evo.total_agents || data.evolutionStats.totalAgents,
+              totalBranches: evo.total_branches || data.evolutionStats.totalBranches,
+              currentBestScore: evo.best_score || data.evolutionStats.currentBestScore,
+              activeMutations: evo.active_mutations || data.evolutionStats.activeMutations,
+            };
+          }
+
+          // Safety incidents
+          if (incidentsRes.ok) {
+            const inc = await incidentsRes.json();
+            if (inc.incidents?.length) {
+              data.safetyEvents = inc.incidents.map((i: any) => ({
+                id: i.id, severity: i.severity, type: i.type,
+                description: i.description, layer: i.layer || 'L0',
+                timestamp: i.timestamp ? new Date(i.timestamp).getTime() : Date.now(),
+                resolved: i.resolved,
+              }));
+            }
           }
         } catch {
           data = getDashboardData();
@@ -620,7 +667,7 @@ export class MoreV3Engine {
     }
 
     try {
-      const response = await fetch(`${this.apiBaseUrl}/api/health`);
+      const response = await fetch(`${this.apiBaseUrl}/api/v1/health`);
       if (response.ok) {
         return response.json();
       }

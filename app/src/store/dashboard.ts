@@ -37,7 +37,7 @@ interface DashboardState {
   refresh: () => Promise<void>
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8001'
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8015'
 
 export const useDashboardStore = create<DashboardState>((set, _get) => ({
   systemStatus: null,
@@ -62,8 +62,8 @@ export const useDashboardStore = create<DashboardState>((set, _get) => ({
     set({ isLoading: true })
     try {
       const [systemRes, tasksRes] = await Promise.all([
-        fetch(`${API_BASE}/api/system/state`),
-        fetch(`${API_BASE}/api/tasks/history?limit=10`),
+        fetch(`${API_BASE}/api/v1/system/state`),
+        fetch(`${API_BASE}/api/v1/tasks/history?limit=10`),
       ])
 
       if (systemRes.ok) {

@@ -12,6 +12,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Awaitable
 
+from ..security.rbac import Permission, requires_permission
+
 
 @dataclass(slots=True, frozen=True)
 class ToolDefinition:
@@ -21,6 +23,7 @@ class ToolDefinition:
     handler: Callable[..., Awaitable["ToolResult"]]
     requires_sandbox: bool = False
     tags: tuple[str, ...] = ()
+    required_permission: Permission | None = None
 
 
 @dataclass(slots=True)
@@ -39,6 +42,17 @@ class ToolRegistry:
         self._tools: dict[str, ToolDefinition] = {}
 
     def register(self, tool: ToolDefinition) -> None:
+        if tool.required_permission is not None:
+            wrapped = requires_permission(tool.required_permission)(tool.handler)
+            tool = ToolDefinition(
+                name=tool.name,
+                description=tool.description,
+                parameters_schema=tool.parameters_schema,
+                handler=wrapped,
+                requires_sandbox=tool.requires_sandbox,
+                tags=tool.tags,
+                required_permission=tool.required_permission,
+            )
         self._tools[tool.name] = tool
 
     def unregister(self, name: str) -> None:
@@ -47,7 +61,7 @@ class ToolRegistry:
     def get(self, name: str) -> ToolDefinition | None:
         return self._tools.get(name)
 
-    def list(self) -> list[ToolDefinition]:
+    def list_tools(self) -> list[ToolDefinition]:
         return list(self._tools.values())
 
     def list_schemas(self) -> list[dict[str, Any]]:

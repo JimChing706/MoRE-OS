@@ -19,6 +19,7 @@ _DIFFICULTY_BASE: dict[TaskType, int] = {
     TaskType.CODE_GENERATION: 5,
     TaskType.CODE_DEBUGGING: 6,
     TaskType.CODE_REVIEW: 5,
+    TaskType.CODE_TESTING: 6,
     TaskType.MATH_REASONING: 7,
     TaskType.DATA_ANALYSIS: 5,
     TaskType.MULTI_AGENT_ORCHESTRATION: 6,
@@ -104,6 +105,11 @@ class CognitionLayer(Layer):
 
             resp = await ctx.core.llm.generate(llm_req)
             subtasks = self._parse_subtasks(resp.content)
+
+            # Sanitize LLM-generated subtasks before storing in scratch
+            # This prevents L4→L0 injection chains
+            if subtasks and hasattr(ctx.core, 'output_filter'):
+                subtasks = [ctx.core.output_filter.filter(st) for st in subtasks]
 
             if subtasks and len(subtasks) > 1:
                 adjusted_difficulty = min(10, base_difficulty + len(subtasks) // 2)

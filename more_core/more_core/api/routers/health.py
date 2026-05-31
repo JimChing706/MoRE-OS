@@ -4,15 +4,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from ...runtime.orchestrator import MoRECore
 
 
-def create_router(core: MoRECore) -> APIRouter:
+def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["Health & System"])
 
-    @router.get("/health")
+    deps = [Depends(require_api_key)] if require_api_key else []
+
+    @router.get("/health", dependencies=deps)
     async def health() -> dict[str, Any]:
         return {
             "status": "healthy",
@@ -25,7 +27,7 @@ def create_router(core: MoRECore) -> APIRouter:
             "llm_providers": core.llm.list_providers(),
         }
 
-    @router.get("/system/state")
+    @router.get("/system/state", dependencies=deps)
     async def system_state() -> dict[str, Any]:
         metrics_snap = core._metrics.snapshot()
         total = metrics_snap.total_requests
@@ -40,7 +42,15 @@ def create_router(core: MoRECore) -> APIRouter:
             "queued_tasks": 0,
             "registry": core.registry.stats(),
             "evolution": core.evolution_archive.stats(),
-            "memory": core.memory.stats(),
+            "memory": {
+                "stats": core.memory.stats(),
+                "entries": [
+                    {"id": e.id, "type": e.kind.value, "content": e.content,
+                     "tags": e.tags, "score": e.score, "timestamp": e.created_at,
+                     "access_count": e.access_count}
+                    for e in core.memory.list()
+                ],
+            },
             "active_plugins": [md.name for md in core.plugins.active()],
         }
 

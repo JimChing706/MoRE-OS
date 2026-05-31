@@ -43,7 +43,7 @@ class MetacognitionService:
         else:
             accuracy = 0.5  # neutral prior — no external signal available
         self.calibrator.observe(confidence=avg_conf, accuracy=accuracy)
-        return self.calibrator.report()
+        return self.calibrator.snapshot()
 
     async def maybe_self_modify(
         self, ctx: "LayerContext", calibration: dict[str, object]

@@ -166,7 +166,7 @@ async def auto_play_tool_impl(params: dict[str, Any]) -> ToolResult:
             ai_view = state.get("ai_view", {})
 
             if use_ai:
-                from plugins.minesweeper_agent.agent import MinesweeperAgent
+                from more_core_plugins.minesweeper_agent.agent import MinesweeperAgent
                 agent = MinesweeperAgent(use_llm=False)
                 decision = agent.decide(ai_view)
                 x, y, action = decision["x"], decision["y"], decision["action"]

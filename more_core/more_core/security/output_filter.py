@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 from dataclasses import dataclass
 from typing import Any
 
@@ -96,7 +97,8 @@ class OutputFilter:
 
     def __init__(self, rules: list[FilterRule] | None = None) -> None:
         self._rules = rules if rules is not None else list(_DEFAULT_RULES)
-        self._stats = {"total_filtered": 0, "by_rule": {}}
+        self._stats: dict[str, Any] = {"total_filtered": 0, "by_rule": {}}
+        self._stats_lock = threading.Lock()
 
     def add_rule(self, rule: FilterRule) -> None:
         self._rules.append(rule)
@@ -113,10 +115,11 @@ class OutputFilter:
             new_result = rule.pattern.sub(rule.replacement, result)
             if new_result != result:
                 count = len(rule.pattern.findall(result))
-                self._stats["total_filtered"] += count
-                self._stats["by_rule"][rule.name] = (
-                    self._stats["by_rule"].get(rule.name, 0) + count
-                )
+                with self._stats_lock:
+                    self._stats["total_filtered"] += count
+                    self._stats["by_rule"][rule.name] = (
+                        self._stats["by_rule"].get(rule.name, 0) + count
+                    )
                 result = new_result
         return result
 

@@ -3,86 +3,44 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ..core.types import TaskType
+from .manager import ProviderModelPair as ModelBinding
 
 if TYPE_CHECKING:
     from ..llm.manager import LLMManager
 
-
-@dataclass
-class ModelBinding:
-    """A model binding: provider + model name."""
-
-    provider: str
-    model: str
-
+DEFAULT_LM_MODEL = "qwen3.6-35b-a3b-claude-4.6-opus-reasoning-distilled"
+DEFAULT_OLLAMA_MODEL = "qwen2.5:7b"
 
 TASK_MODEL_MAP: dict[TaskType, ModelBinding] = {
-    TaskType.CODE_GENERATION: ModelBinding(
-        provider="lmstudio",
-        model="gemma-4-coder",
-    ),
-    TaskType.CODE_DEBUGGING: ModelBinding(
-        provider="lmstudio",
-        model="gemma-4-coder",
-    ),
-    TaskType.CODE_REVIEW: ModelBinding(
-        provider="lmstudio",
-        model="gemma-4-coder",
-    ),
-    TaskType.MATH_REASONING: ModelBinding(
-        provider="lmstudio",
-        model="ruvltra-claude-code",
-    ),
-    TaskType.DATA_ANALYSIS: ModelBinding(
-        provider="lmstudio",
-        model="gemma-4-coder",
-    ),
-    TaskType.NLP_TASK: ModelBinding(
-        provider="lmstudio",
-        model="gemma-4-coder",
-    ),
-    TaskType.ARCHITECTURE_DESIGN: ModelBinding(
-        provider="lmstudio",
-        model="gemma-4-coder",
-    ),
-    TaskType.MULTI_AGENT_ORCHESTRATION: ModelBinding(
-        provider="lmstudio",
-        model="gemma-4-coder",
-    ),
-    TaskType.SELF_IMPROVEMENT: ModelBinding(
-        provider="lmstudio",
-        model="gemma-4-coder",
-    ),
-    TaskType.CROSS_DOMAIN_TRANSFER: ModelBinding(
-        provider="lmstudio",
-        model="gemma-4-coder",
-    ),
+    TaskType.CODE_GENERATION: ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL),
+    TaskType.CODE_DEBUGGING: ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL),
+    TaskType.CODE_REVIEW: ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL),
+    TaskType.MATH_REASONING: ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL),
+    TaskType.DATA_ANALYSIS: ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL),
+    TaskType.NLP_TASK: ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL),
+    TaskType.ARCHITECTURE_DESIGN: ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL),
+    TaskType.MULTI_AGENT_ORCHESTRATION: ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL),
+    TaskType.SELF_IMPROVEMENT: ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL),
+    TaskType.CROSS_DOMAIN_TRANSFER: ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL),
+    TaskType.PLUGIN_DEFINED: ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL),
 }
 
-
-FALLBACK_BINDING = ModelBinding(
-    provider="lmstudio",
-    model="gemma-4-coder",
-)
-
+FALLBACK_BINDING = ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL)
 
 FALLBACK_CHAINS: dict[str, list[ModelBinding]] = {
     "lmstudio_primary": [
-        ModelBinding(provider="lmstudio", model="gemma-4-coder"),
-        ModelBinding(provider="lmstudio", model="ruvltra-claude-code"),
-        ModelBinding(provider="lmstudio", model="bonsai-8b"),
+        ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL),
+        ModelBinding(provider="lmstudio", model=DEFAULT_LM_MODEL),
     ],
     "lmstudio_reasoning": [
-        ModelBinding(provider="lmstudio", model="gemma-4-coder"),
-        ModelBinding(provider="lmstudio", model="ruvltra-claude-code"),
-        ModelBinding(provider="lmstudio", model="bonsai-8b"),
+        ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL),
+        ModelBinding(provider="lmstudio", model=DEFAULT_LM_MODEL),
     ],
     "ollama_fallback": [
-        ModelBinding(provider="ollama", model="qwen2.5:7b"),
+        ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL),
     ],
 }
 

@@ -1,7 +1,7 @@
-# QNMing MoRE OS v0.5.0 — 用户手册
+# QNMing MoRE OS v0.5.1 — 用户手册
 
 > **QNMing MoRE OS** 是一个领域无关的神经-符号元认知自进化 Agent 操作系统内核。
-> 本手册基于实际代码（2026-05-02 审计后版本）编写，覆盖安装、配置、核心概念、
+> 本手册基于实际代码（2026-05-23 审计后版本）编写，覆盖安装、配置、核心概念、
 > API 参考、插件开发、运维与故障排查。
 
 ---
@@ -266,7 +266,15 @@ more-os serve [--host HOST] [--port PORT]
 
 使用 Uvicorn 运行 FastAPI 应用，自动完成 `core.start()` / `core.stop()` 生命周期。
 
-### 4.2 `more-os run` — 执行单次任务
+### 4.2 `more-os mcp-serve` — MCP stdio 服务 (v0.5.1)
+
+```bash
+more-os mcp-serve
+```
+
+启动 MCP Server 在 stdio 模式，供 Codex CLI / Claude Code 通过 MCP 协议调用 MoRE OS 工具。
+
+### 4.3 `more-os run` — 执行单次任务
 
 ```bash
 more-os run --type TASK_TYPE --query "你的问题"
@@ -503,6 +511,93 @@ export MORE_CORS_ORIGINS="https://app.example.com,https://admin.example.com"
 ```
 
 允许的 HTTP 方法：`GET`, `POST`。允许的请求头：`Authorization`, `Content-Type`。
+
+---
+
+## 6.5 流式任务执行 (SSE) — v0.5.1 新增
+
+`POST /api/v1/tasks/stream` 通过 Server-Sent Events 实时推送 token：
+
+```bash
+curl -N -X POST http://localhost:8001/api/v1/tasks/stream \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Count from 1 to 5"}'
+```
+
+SSE 事件格式：
+```
+data: {"event":"pipeline","layers":["L4","L3","L1","L0"],"task_id":"task_xxx"}
+data: {"event":"layer_done","layer":"L4",...}
+data: {"token":"1"}
+data: {"token":"\n"}
+data: {"token":"2"}
+...
+data: {"event":"done","tokens":15,"duration_ms":8234.5}
+```
+
+客户端示例 (Python httpx)：
+```python
+import httpx, json
+
+async with httpx.AsyncClient(timeout=30) as cli:
+    async with cli.stream("POST", "http://localhost:8001/api/v1/tasks/stream",
+                           json={"query": "Hello"}) as resp:
+        async for line in resp.aiter_lines():
+            if line.startswith("data:"):
+                event = json.loads(line[6:])
+                if "token" in event:
+                    print(event["token"], end="", flush=True)
+```
+
+## 6.6 MCP Server & Client — v0.5.1 新增
+
+### MCP Server (stdio mode)
+
+暴露 MoRE OS 全部 29 个工具给 Codex CLI / Claude Code：
+
+```bash
+# 启动 MCP stdio server
+.venv/bin/python3 -m more_core.cli mcp-serve
+```
+
+Codex CLI 集成配置 (`.codex.json`)：
+```json
+{
+  "mcpServers": {
+    "more-os": {
+      "command": ".venv/bin/python3",
+      "args": ["-m", "more_core.cli", "mcp-serve"]
+    }
+  }
+}
+```
+
+### MCP REST API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/api/v1/mcp/servers` | 已连接的 MCP Server 列表 |
+| `POST` | `/api/v1/mcp/connect/filesystem?path=/` | 连接 npx MCP filesystem |
+| `POST` | `/api/v1/mcp/tools/{server}/{tool}` | 调用远程工具 |
+| `POST` | `/api/v1/mcp/disconnect/{server}` | 断开连接 |
+
+## 6.7 A2A Agent-to-Agent — v0.5.1 新增
+
+MoRE OS 支持 Google A2A 协议，可接收来自其他 Agent 的任务委托：
+
+| 端点 | 说明 |
+|------|------|
+| `POST /a2a` | JSON-RPC 端点 (tasks/send, tasks/get, agent/card) |
+| `GET /a2a/agent-card` | Agent 能力卡片 |
+| `GET /a2a/tasks` | 活跃任务列表 |
+
+```bash
+# 发送任务
+curl -X POST http://localhost:8001/a2a \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tasks/send","params":{"task":{"messages":[{"role":"user","parts":[{"text":"Say hi"}]}]}}}'
+# → {"result":{"taskId":"...","status":{"state":"completed"}}}
+```
 
 ---
 
@@ -1520,4 +1615,30 @@ truncate_display("你好世界测试", max_width=8)  # "你好世…"
 
 ---
 
-> **版本**：QNMing MoRE OS v0.5.0 · **许可**：Apache-2.0 · **更新**：2026-05-16
+### 25.2 LLM Provider 环境变量
+
+| 变量 | Provider | 默认值 | 说明 |
+|------|----------|--------|------|
+| `MORE_OLLAMA_ENDPOINT` | ollama | `http://localhost:11434` | Ollama API 端点 |
+| `MORE_OLLAMA_MODEL` | ollama | `qwen2.5:7b` | 模型名 |
+| `MORE_LMSTUDIO_ENDPOINT` | lmstudio | `http://localhost:1234/v1` | LM Studio 端点 |
+| `MORE_LMSTUDIO_MODEL` | lmstudio | `gemma-4-coder` | 模型名 |
+| `MORE_LLM_FALLBACK_CHAIN` | 全局 | (注册顺序) | fallback 优先级 (逗号分隔) |
+| `MORE_OPENAI_API_KEY` | openai | — | OpenAI API Key |
+
+### 25.3 dotenv 配置 (v0.5.1)
+
+MoRE OS 自动加载 `more_core/.env` 文件：
+
+```bash
+# more_core/.env
+MORE_OLLAMA_ENDPOINT=http://localhost:11434
+MORE_OLLAMA_MODEL=qwen2.5:7b
+MORE_LMSTUDIO_ENDPOINT=http://localhost:1234/v1
+MORE_LMSTUDIO_MODEL=qwen3.6-35b-a3b-claude-4.6-opus-reasoning-distilled
+MORE_LLM_FALLBACK_CHAIN=ollama,lmstudio
+```
+
+---
+
+> **版本**：QNMing MoRE OS v0.5.1 · **许可**：Apache-2.0 · **更新**：2026-05-23

@@ -7,9 +7,22 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field as _Field
 
 from ...core.types import TaskRequest, TaskType
 from ...runtime.orchestrator import MoRECore
+
+
+class ExecuteTaskPayload(BaseModel):
+    """Request body for POST /tasks/execute."""
+    type: TaskType = TaskType.NLP_TASK
+    plugin_type: str | None = None
+    query: str = _Field(max_length=16384)
+    context: dict[str, Any] = _Field(default_factory=dict)
+    require_metacognitive_monitoring: bool = False
+    allow_self_improvement: bool = False
+    target_layer: str | None = None
+    timeout_s: float = 60.0
 
 # ---------------------------------------------------------------------------
 # Shared task store (module-level so other routers can import it)
@@ -32,6 +45,20 @@ async def _execute_task_background(task_id: str, task_info: dict, core: MoRECore
         )
         result = await core.execute(req)
 
+        # Auto-create output from successful task result
+        from .outputs import _auto_create_output
+        _auto_create_output({
+            "task_id": task_id,
+            "output": result.output,
+            "type": req.type.value,
+            "metadata": {
+                "task_type": req.type.value,
+                "task_label": req.type.value,
+            },
+            "reasoning_chain": [],
+            "performance": {},
+        })
+
         _task_store[task_id].update({
             "status": "completed",
             "completed_at": datetime.now(timezone.utc).isoformat(),
@@ -49,24 +76,8 @@ async def _execute_task_background(task_id: str, task_info: dict, core: MoRECore
 def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["Tasks"])
 
-    class TaskRequestPayload:
-        """Inline model to avoid circular imports."""
-        pass
-
-    from pydantic import BaseModel, Field as _Field
-
-    class Payload(BaseModel):
-        type: TaskType = TaskType.NLP_TASK
-        plugin_type: str | None = None
-        query: str
-        context: dict[str, Any] = _Field(default_factory=dict)
-        require_metacognitive_monitoring: bool = False
-        allow_self_improvement: bool = False
-        target_layer: str | None = None
-        timeout_s: float = 60.0
-
     @router.post("/tasks/execute", dependencies=[Depends(require_api_key)])
-    async def execute(payload: Payload) -> dict[str, Any]:
+    async def execute(payload: ExecuteTaskPayload) -> dict[str, Any]:
         from ...core.types import LayerId
         target = LayerId(payload.target_layer) if payload.target_layer else None
         req = TaskRequest(
@@ -80,6 +91,21 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
             timeout_s=payload.timeout_s,
         )
         result = await core.execute(req)
+        
+        # Auto-create output from successful task result
+        from .outputs import _auto_create_output
+        _auto_create_output({
+            "task_id": result.task_id if hasattr(result, "task_id") else "task_auto",
+            "output": result.output,
+            "type": payload.type.value,
+            "metadata": {
+                "task_type": payload.type.value,
+                "task_label": payload.query[:50],
+            },
+            "reasoning_chain": result.reasoning_chain if hasattr(result, "reasoning_chain") else [],
+            "performance": result.performance if hasattr(result, "performance") else {},
+        })
+        
         return result.model_dump()
 
     @router.get("/tasks/{task_id}/status")
@@ -124,6 +150,29 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                 for t in tasks
             ]
         }
+
+    @router.post("/tasks/stream", dependencies=[Depends(require_api_key)])
+    async def stream_execute(payload: ExecuteTaskPayload):
+        """Stream task execution as Server-Sent Events (SSE)."""
+        from fastapi.responses import StreamingResponse
+        from ...core.types import TaskRequest as TR
+
+        req = TR(
+            type=payload.type,
+            plugin_type=payload.plugin_type,
+            query=payload.query,
+            context=payload.context,
+            timeout_s=payload.timeout_s,
+        )
+        return StreamingResponse(
+            core.stream_execute(req),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     return router
 

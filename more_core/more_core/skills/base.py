@@ -12,6 +12,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Awaitable
 
+# Type alias for hook handlers — must be awaitable since execute() awaits them.
+HookHandler = Callable[..., Awaitable[Any]]
+
 
 class SkillCategory(Enum):
     """技能分类."""
@@ -111,7 +114,7 @@ class SkillManager:
     def __init__(self):
         self._skills: dict[str, Skill] = {}
         self._categories: dict[SkillCategory, list[str]] = {c: [] for c in SkillCategory}
-        self._hooks: dict[str, list[Callable]] = {
+        self._hooks: dict[str, list[HookHandler]] = {
             "before_execute": [],
             "after_execute": [],
             "on_error": [],
@@ -162,8 +165,8 @@ class SkillManager:
         
         return result
     
-    def add_hook(self, event: str, handler: Callable) -> None:
-        """添加钩子."""
+    def add_hook(self, event: str, handler: HookHandler) -> None:
+        """添加钩子（必须是 async callable）."""
         if event in self._hooks:
             self._hooks[event].append(handler)
     

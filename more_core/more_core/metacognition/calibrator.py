@@ -28,6 +28,24 @@ class Calibrator:
         self._last_alignment = alignment
         return alignment
 
+    def snapshot(self) -> dict[str, object]:
+        """Return calibration stats for the current request only.
+
+        Isolated from the global window — each task gets its own
+        calibration snapshot so cross-task data doesn't contaminate
+        individual confidence assessments.
+        """
+        if not self._history:
+            return {"confidence": 0.0, "accuracy": 0.0, "alignment": 1.0, "n": 0}
+        # Use only the most recent observation point for per-task isolation
+        latest = self._history[-1]
+        return {
+            "confidence": latest.confidence,
+            "accuracy": latest.accuracy,
+            "alignment": 1 - abs(latest.confidence - latest.accuracy),
+            "n": 1,
+        }
+
     def report(self) -> dict[str, object]:
         if not self._history:
             return {"confidence": 0.0, "accuracy": 0.0, "alignment": 1.0, "n": 0}

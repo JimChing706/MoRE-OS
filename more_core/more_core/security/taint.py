@@ -8,12 +8,51 @@ from reaching sensitive operations without sanitization.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from enum import Flag, auto
 from typing import Any
 
 _log = logging.getLogger(__name__)
+
+
+class TaintContext:
+    """Per-request taint scope — isolates concurrent request tracking.
+
+    A lightweight proxy returned by :meth:`TaintTracker.scope`.  All
+    keys are automatically prefixed with *scope_id* so concurrent
+    requests never collide.  Call :meth:`cleanup` after the request
+    to free the scope in O(1).
+
+    This is NOT a context manager by design — orchestrators should use
+    ``try: / finally: taint.cleanup()`` for explicit lifecycle control.
+    """
+
+    __slots__ = ("_tracker", "_scope")
+
+    def __init__(self, tracker: TaintTracker, scope_id: str) -> None:
+        self._tracker = tracker
+        self._scope = scope_id
+
+    @property
+    def scope_id(self) -> str:
+        return self._scope
+
+    def track(
+        self, key: str, value: Any, labels: TaintLabel, source: str = "",
+    ) -> TaintedValue:
+        return self._tracker._track_scoped(self._scope, key, value, labels, source)
+
+    def sanitize(self, key: str, sanitizer: str) -> bool:
+        return self._tracker._sanitize_scoped(self._scope, key, sanitizer)
+
+    def check(self, key: str, required_trust: bool = True) -> bool:
+        return self._tracker._check_scoped(self._scope, key, required_trust)
+
+    def cleanup(self) -> None:
+        """Remove all taint entries for this scope.  Idempotent."""
+        self._tracker._cleanup_scope(self._scope)
 
 
 class TaintLabel(Flag):
@@ -67,11 +106,93 @@ class TaintTracker:
     - File path construction
     - SQL queries
     - Template rendering
+
+    For concurrent request handling, use :meth:`scope` to create a
+    per-request :class:`TaintContext` that isolates taint tracking
+    and provides O(1) cleanup.
     """
 
     def __init__(self) -> None:
+        self._lock = threading.Lock()
         self._tracked: dict[str, TaintedValue] = {}
+        self._scopes: dict[str, dict[str, TaintedValue]] = {}
         self._violations: list[dict[str, Any]] = []
+
+    # -- scoped API (recommended for concurrent requests) ------------------
+
+    def scope(self, scope_id: str) -> "TaintContext":
+        """Create a request-scoped taint context.
+
+        Returns a lightweight proxy that prefixes all keys with *scope_id*,
+        isolating concurrent requests from each other.  Call
+        :meth:`TaintContext.cleanup` when the request completes to free
+        memory in O(1).
+
+        Usage::
+
+            taint = tracker.scope(request.id)
+            try:
+                taint.track("query", ...)
+                taint.sanitize("query", "output_filter")
+                taint.check("query")
+            finally:
+                taint.cleanup()
+        """
+        return TaintContext(self, scope_id)
+
+    def _track_scoped(
+        self, scope_id: str, key: str, value: Any,
+        labels: TaintLabel, source: str = "",
+    ) -> TaintedValue:
+        with self._lock:
+            scope = self._scopes.setdefault(scope_id, {})
+            tv = TaintedValue(value=value, labels=labels, source=source)
+            scope[key] = tv
+            return tv
+
+    def _sanitize_scoped(
+        self, scope_id: str, key: str, sanitizer: str,
+    ) -> bool:
+        with self._lock:
+            scope = self._scopes.get(scope_id)
+            if scope is None:
+                return False
+            tv = scope.get(key)
+            if tv is None:
+                return False
+            scope[key] = tv.sanitize(sanitizer)
+            return True
+
+    def _check_scoped(
+        self, scope_id: str, key: str, required_trust: bool = True,
+    ) -> bool:
+        scope = self._scopes.get(scope_id)
+        if scope is None:
+            return True
+        tv = scope.get(key)
+        if tv is None:
+            return True
+        if required_trust and not tv.is_trusted:
+            violation = {
+                "scope": scope_id,
+                "key": key,
+                "labels": str(tv.labels),
+                "source": tv.source,
+                "timestamp": time.time(),
+            }
+            self._violations.append(violation)
+            _log.warning(
+                "Taint violation [%s]: untrusted data '%s' from '%s'",
+                scope_id, key, tv.source,
+            )
+            return False
+        return True
+
+    def _cleanup_scope(self, scope_id: str) -> None:
+        with self._lock:
+            self._scopes.pop(scope_id, None)
+
+    # -- flat API (backward compatible, legacy / single-request use) -------
 
     def track(self, key: str, value: Any, labels: TaintLabel, source: str = "") -> TaintedValue:
         """Track a new tainted value."""
@@ -104,12 +225,13 @@ class TaintTracker:
         return True
 
     def sanitize(self, key: str, sanitizer: str) -> bool:
-        """Mark a tracked value as sanitized."""
-        tv = self._tracked.get(key)
-        if tv is None:
-            return False
-        self._tracked[key] = tv.sanitize(sanitizer)
-        return True
+        """Mark a tracked value as sanitized (thread-safe)."""
+        with self._lock:
+            tv = self._tracked.get(key)
+            if tv is None:
+                return False
+            self._tracked[key] = tv.sanitize(sanitizer)
+            return True
 
     def clear(self, key: str) -> None:
         self._tracked.pop(key, None)

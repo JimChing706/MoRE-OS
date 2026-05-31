@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,10 +21,11 @@ import {
 } from 'lucide-react';
 
 const TASK_PRESETS: { type: TaskType; label: string; icon: React.ReactNode; query: string; description: string; category: string; layers: LayerId[]; features: string[] }[] = [
-  { type: 'code_generation', label: '代码生成', icon: <Code className="w-4 h-4" />, query: 'Generate a Python function to optimize supply chain logistics with dynamic programming', description: '符号推理 + 代码生成', category: '开发', layers: ['L3', 'L4', 'L0'], features: ['本体约束检查', '符号推理验证', '代码生成'] },
-  { type: 'code_debugging', label: '代码调试', icon: <Bug className="w-4 h-4" />, query: 'Debug the memory leak in the async worker pool with detailed root cause analysis', description: 'DGM进化搜索修复方案', category: '开发', layers: ['L2', 'L4', 'L0'], features: ['进化搜索', '根因分析', '修复验证'] },
-  { type: 'code_review', label: '代码审查', icon: <GitPullRequest className="w-4 h-4" />, query: 'Review this code for security vulnerabilities, performance issues, and architectural improvements', description: '代码质量多维度分析', category: '开发', layers: ['L3', 'L4', 'L2', 'L0'], features: ['安全扫描', '性能分析', '架构建议'] },
-  { type: 'architecture_design', label: '架构设计', icon: <Layers className="w-4 h-4" />, query: 'Design a scalable microservices architecture for an e-commerce platform with service mesh', description: '系统架构智能规划', category: '开发', layers: ['L5', 'L4', 'L3', 'L1'], features: ['需求分析', '服务拆分', '容错设计'] },
+  { type: 'code_generation', label: '代码生成', icon: <Code className="w-4 h-4" />, query: 'Generate a Python function to optimize supply chain logistics with dynamic programming', description: '认知→符号→编排→执行', category: '开发', layers: ['L4', 'L3', 'L1', 'L0'], features: ['语义解析', '符号推理', '编排调度', '代码执行'] },
+  { type: 'code_debugging', label: '代码调试', icon: <Bug className="w-4 h-4" />, query: 'Debug the memory leak in the async worker pool with detailed root cause analysis', description: '认知→符号→编排→执行', category: '开发', layers: ['L4', 'L3', 'L1', 'L0'], features: ['根因分析', '符号验证', '编排定位', '修复执行'] },
+  { type: 'code_review', label: '代码审查', icon: <GitPullRequest className="w-4 h-4" />, query: 'Review this code for security vulnerabilities, performance issues, and architectural improvements', description: '认知→符号→编排→执行', category: '开发', layers: ['L4', 'L3', 'L1', 'L0'], features: ['语义理解', '安全扫描', '协作审查', '改进输出'] },
+  { type: 'code_testing', label: '代码测试', icon: <CheckCircle2 className="w-4 h-4" />, query: 'Generate and run unit tests for the given Python module with coverage analysis', description: '认知→符号→编排→执行', category: '开发', layers: ['L4', 'L3', 'L1', 'L0'], features: ['测试生成', '符号验证', '沙箱执行', '覆盖率报告'] },
+  { type: 'architecture_design', label: '架构设计', icon: <Layers className="w-4 h-4" />, query: 'Design a scalable microservices architecture for an e-commerce platform with service mesh', description: '元认知→认知→符号→编排→执行', category: '开发', layers: ['L5', 'L4', 'L3', 'L1', 'L0'], features: ['需求分析', '元认知校准', '约束验证', '服务拆分', '架构输出'] },
   { type: 'math_reasoning', label: '数学推理', icon: <Calculator className="w-4 h-4" />, query: 'Prove that every prime > 3 is of form 6k±1 with formal verification', description: 'NSPA-AI符号推理验证', category: '推理', layers: ['L4', 'L3', 'L0'], features: ['形式化证明', '约束验证', '推理链'] },
   { type: 'data_analysis', label: '数据分析', icon: <BarChart3 className="w-4 h-4" />, query: 'Analyze customer churn patterns in the Q1 dataset with predictive modeling', description: '多Agent协作分析', category: '推理', layers: ['L1', 'L4', 'L0'], features: ['数据聚合', '模式识别', '预测建模'] },
   { type: 'nlp_task', label: 'NLP任务', icon: <MessageSquare className="w-4 h-4" />, query: 'Extract named entities and relations from legal documents with context awareness', description: '神经符号融合', category: '推理', layers: ['L4', 'L3', 'L0'], features: ['实体识别', '关系抽取', '上下文融合'] },
@@ -90,11 +91,35 @@ const cardsViewConfig = {
 export function TaskPanel() {
   const [results, setResults] = useState<TaskResult[]>([]);
   const [executing, setExecuting] = useState<string | null>(null);
+  const [execError, setExecError] = useState<string | null>(null);
   const [selectedResult, setSelectedResult] = useState<TaskResult | null>(null);
   const [viewMode, setViewMode] = useState<'cards' | 'chain'>('chain');
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
+  const [apiConnected, setApiConnected] = useState<boolean | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const categories = [...new Set(TASK_PRESETS.map(p => p.category))];
+
+  // Check API connection status on mount
+  useEffect(() => {
+    let cancelled = false;
+    async function check() {
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_BASE || 'http://localhost:8010'}/api/v1/health`);
+        if (!cancelled) {
+          setApiConnected(res.ok);
+          setApiError(res.ok ? null : `HTTP ${res.status}`);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setApiConnected(false);
+          setApiError(e instanceof Error ? e.message : 'Connection failed');
+        }
+      }
+    }
+    check();
+    return () => { cancelled = true; };
+  }, []);
 
   const toggleStep = (stepId: number) => {
     setExpandedSteps(prev => {
@@ -111,6 +136,7 @@ export function TaskPanel() {
   const executeTask = async (preset: typeof TASK_PRESETS[0]) => {
     const taskId = `task_${Date.now()}`;
     setExecuting(taskId);
+    setExecError(null);
 
     const request: TaskRequest = {
       id: taskId,
@@ -119,12 +145,19 @@ export function TaskPanel() {
       requireMetacognitiveMonitoring: preset.type === 'self_improvement' || preset.type === 'cross_domain_transfer',
     };
 
-    await new Promise(r => setTimeout(r, 800 + Math.random() * 1200));
-    const result = await moreEngine.executeTask(request);
+    try {
+      await new Promise(r => setTimeout(r, 300 + Math.random() * 500));
+      const result = await moreEngine.executeTask(request);
 
-    setResults(prev => [result, ...prev].slice(0, 20));
-    setSelectedResult(result);
-    setExecuting(null);
+      setResults(prev => [result, ...prev].slice(0, 20));
+      setSelectedResult(result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setExecError(msg);
+      console.error('Task execution failed:', err);
+    } finally {
+      setExecuting(null);
+    }
   };
 
   const stats = useMemo(() => {
@@ -150,6 +183,21 @@ export function TaskPanel() {
             <Terminal className="w-5 h-5 text-orange-600" />
             任务执行面板
           </h3>
+          <div className="flex items-center gap-2">
+            {apiConnected === null ? (
+              <Badge variant="outline" className="text-xs bg-gray-100 text-gray-500 gap-1">
+                <div className="w-2 h-2 rounded-full bg-gray-400 animate-pulse" /> 检测中
+              </Badge>
+            ) : apiConnected ? (
+              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 gap-1">
+                <div className="w-2 h-2 rounded-full bg-green-500" /> API 已连接
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200 gap-1">
+                <div className="w-2 h-2 rounded-full bg-red-500" /> API 离线
+              </Badge>
+            )}
+          </div>
         </div>
 
         {/* 视图模式对比选择器 - 强化视觉对比 */}
@@ -291,6 +339,29 @@ export function TaskPanel() {
         </div>
 
         <Separator />
+
+        {/* API offline warning */}
+        {apiConnected === false && (
+          <div className="p-3 rounded-lg border-2 border-red-200 bg-red-50 text-sm text-red-700">
+            <div className="flex items-center gap-2 mb-1">
+              <AlertCircle className="w-4 h-4" />
+              <span className="font-bold">API 服务不可达</span>
+            </div>
+            <p className="text-xs text-red-600">{apiError || '请确认 API 服务已启动 (http://localhost:8015)'}</p>
+          </div>
+        )}
+
+        {/* Execution error */}
+        {execError && (
+          <div className="p-3 rounded-lg border-2 border-yellow-200 bg-yellow-50 text-sm text-yellow-800">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4" />
+              <span className="font-bold">执行失败</span>
+              <Button variant="ghost" size="sm" className="text-xs h-6" onClick={() => setExecError(null)}>关闭</Button>
+            </div>
+            <p className="text-xs text-yellow-700 mt-1 font-mono">{execError}</p>
+          </div>
+        )}
 
         <Tabs defaultValue={categories[0]} className="w-full">
           <TabsList className="w-full flex flex-wrap h-auto gap-1">

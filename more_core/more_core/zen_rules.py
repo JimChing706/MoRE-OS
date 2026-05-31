@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 import threading
 from dataclasses import dataclass
@@ -56,6 +57,75 @@ class ViolationRecord:
     resolution: str = ""
 
 
+# -- ZEN Rule Implementation Functions ----------------------------------------
+
+# Patterns for detecting dangerous content in LLM output
+_DANGEROUS_IMPORT_RE = re.compile(
+    r"\b(import\s+(os|subprocess|shutil|socket|ctypes|sys)|"
+    r"from\s+(os|subprocess|shutil)\s+import|"
+    r"__import__\s*\()",
+)
+_DANGEROUS_SHELL_RE = re.compile(
+    r"\b(os\.system|subprocess\.(call|run|Popen)|exec\s*\(|eval\s*\()",
+)
+_DANGEROUS_FILE_RE = re.compile(
+    r"\b(os\.(remove|unlink|rmdir|chmod|chown)|shutil\.(rmtree|move))\b",
+)
+_FORBIDDEN_OPS = {"rm", "rm -rf", "format", "mkfs", "dd if=", "> /dev/sda"}
+
+
+def _check_zero_trust(context: dict[str, Any]) -> bool:
+    """ZEN-01: 零信任原则 — verify actor is authenticated."""
+    actor = context.get("actor", "anonymous")
+    if actor == "anonymous" or actor == "":
+        return False
+    return True
+
+
+def _check_least_privilege(context: dict[str, Any]) -> bool:
+    """ZEN-02: 最小权限 — check operation doesn't exceed declared scope."""
+    operation = context.get("operation", "")
+    required_permissions = context.get("required_permissions", [])
+    granted_permissions = context.get("granted_permissions", [])
+
+    # If no permissions model is active, allow (permissive default)
+    if not granted_permissions:
+        return True
+
+    for perm in required_permissions:
+        if perm not in granted_permissions:
+            return False
+    return True
+
+
+def _check_llm_output(context: dict[str, Any]) -> bool:
+    """ZEN-17: LLM输出安全 — detect dangerous code in LLM output."""
+    output = context.get("output", "")
+    if not output:
+        return True
+
+    if _DANGEROUS_IMPORT_RE.search(output):
+        return False
+    if _DANGEROUS_SHELL_RE.search(output):
+        return False
+    if _DANGEROUS_FILE_RE.search(output):
+        return False
+    return True
+
+
+def _check_absolute_prohibition(context: dict[str, Any]) -> bool:
+    """ZEN-19: 绝对禁止 — reject explicitly forbidden operations."""
+    operation = context.get("operation", "")
+    command = context.get("command", "")
+    query = context.get("query", "")
+
+    check_text = f"{operation} {command} {query}".lower()
+    for forbidden in _FORBIDDEN_OPS:
+        if forbidden in check_text:
+            return False
+    return True
+
+
 class ZENRulesEnforcer:
     """ZEN规则执行器"""
     
@@ -88,11 +158,11 @@ class ZENRulesEnforcer:
     def _register_default_rules(self):
         """注册默认规则"""
         default_rules = [
-            # 安全规则
+            # 安全规则 (ZEN-01, ZEN-02 have active check_fn)
             ZENRule("ZEN-01", "零信任原则", RuleCategory.SAFETY, RuleSeverity.P1_CRITICAL,
-                   "永不信任,始终验证"),
+                   "永不信任,始终验证", check_fn=_check_zero_trust),
             ZENRule("ZEN-02", "最小权限", RuleCategory.SAFETY, RuleSeverity.P1_CRITICAL,
-                   "权限如指尖沙"),
+                   "权限如指尖沙", check_fn=_check_least_privilege),
             ZENRule("ZEN-03", "纵深防御", RuleCategory.SAFETY, RuleSeverity.P1_CRITICAL,
                    "防御如洋葱"),
             
@@ -118,17 +188,17 @@ class ZENRulesEnforcer:
             ZENRule("ZEN-12", "异常追溯", RuleCategory.TRACEABLE, RuleSeverity.P2_MAJOR,
                    "异常如痕"),
             
-            # LLM特定规则
+            # LLM特定规则 (ZEN-17 has active check_fn)
             ZENRule("ZEN-16", "LLM调用", RuleCategory.LLM_SPECIFIC, RuleSeverity.P2_MAJOR,
                    "LLM如剑"),
             ZENRule("ZEN-17", "LLM输出", RuleCategory.LLM_SPECIFIC, RuleSeverity.P1_CRITICAL,
-                   "输出如镜"),
+                   "输出如镜", check_fn=_check_llm_output),
             ZENRule("ZEN-18", "成本控制", RuleCategory.LLM_SPECIFIC, RuleSeverity.P2_MAJOR,
                    "成本如尺"),
             
-            # 禁止规则
+            # 禁止规则 (ZEN-19 has active check_fn)
             ZENRule("ZEN-19", "绝对禁止", RuleCategory.PROHIBITION, RuleSeverity.P0_FATAL,
-                   "禁如红线"),
+                   "禁如红线", check_fn=_check_absolute_prohibition),
         ]
         
         for rule in default_rules:

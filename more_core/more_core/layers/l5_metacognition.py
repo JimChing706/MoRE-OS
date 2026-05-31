@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 
+from ..core.errors import MoREError
 from ..core.types import LayerId
 from ..incident_response import get_incident_manager
 from ..planning.coordinator import PlanStatus
@@ -69,6 +70,12 @@ class MetacognitionLayer(Layer):
         description = f"calibration aligned={alignment:.2f}"
         if plan_health:
             description += f", plan_health={plan_health.get('status', 'unknown')}"
+            # ABORT must interrupt the running pipeline, not just set plan status.
+            if plan_health.get("modifications", {}).get("aborted"):
+                raise MoREError(
+                    f"Plan aborted by L5 metacognition monitor: "
+                    f"{plan_health.get('status', 'unknown')}"
+                )
 
         return LayerResult(
             layer=self.layer_id,

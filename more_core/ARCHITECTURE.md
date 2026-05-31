@@ -65,6 +65,10 @@
 | **部署管理** | `deploy.manager` | `DeploymentManager` | 部署类型管理 |
 | **会话管理** | `runtime.sessions` | `SessionManager` | 用户会话管理 |
 | **请求缓存** | `optimization` | `RequestCache`, `RateLimiter`, `CircuitBreaker` | 请求缓存 + 限流 + 熔断 |
+| **流式输出** | `runtime.orchestrator.stream_execute` | SSE generator | token 级实时流式推送 |
+| **MCP Server** | `mcp.server` | `MCPServer`, `MCPRequestHandler` | 暴露 29 个工具给外部 Agent (Codex/Claude) |
+| **MCP Client** | `mcp.client` / `mcp.transport` | `MCPClient`, `ProcessTransport` | 连接外部 MCP Server (filesystem 等) |
+| **A2A 协议** | `a2a.client` | `A2AServer`, `A2AClient` | Agent-to-Agent 任务委托 (Google A2A) |
 
 ## 3. 扩展点（对外稳定 API）
 
@@ -81,6 +85,9 @@
 - `more_core.zen_rules` — 扩展 ZEN 规则
 - `more_core.security.rbac` — 扩展 RBAC 角色权限
 - `more_core.llm.state_manager` — LLM 状态监控扩展
+- `more_core.mcp.server.MCPServer` — 注册 MCP 工具/资源，暴露给外部 Agent
+- `more_core.mcp.client.MCPClient` — 连接外部 MCP Server
+- `more_core.a2a.client.A2AServer` — 接收 A2A 任务委托
 
 ## 4. 已验证的业务流程
 
@@ -104,9 +111,49 @@ TaskRequest → PolicyEnforcer.check() → LayerRouter.route()
 
 ### 4.3 Hands 系统
 
-已注册 5 个内置 Hands：`researcher`(6:00AM)、`coder`、`digest`(8:00AM)、`monitor`(*/5min)、`browser`。
+已注册 6 个内置 Hands：`researcher`(6:00AM)、`coder`、`digest`(8:00AM)、`monitor`(*/5min)、`browser`、`mahjong`(plugin)。
 
-### 4.4 安全层
+### 4.4 流式输出 (SSE)
+
+```
+POST /api/v1/tasks/stream  →  SSE Stream
+  → event: pipeline (L4→L3→L1→L0)
+  → event: layer_done (L4/L3/L1)
+  → data: {"token": "..."}  (L0 token stream)
+  → event: done
+```
+
+### 4.5 MCP 双向协议
+
+**Server 模式** — MoRE OS 作为 MCP Server，暴露 29 个工具：
+
+```bash
+# CLI 入口
+.venv/bin/python3 -m more_core.cli mcp-serve
+
+# Codex 集成 (.codex.json)
+{"mcpServers": {"more-os": {"command": ".venv/bin/python3", "args": ["-m", "more_core.cli", "mcp-serve"]}}}
+```
+
+**Client 模式** — MoRE OS 连接外部 MCP Server：
+
+```
+GET  /api/v1/mcp/servers     # 列出已连接
+POST /api/v1/mcp/connect/filesystem  # 连接 npx MCP filesystem server
+POST /api/v1/mcp/tools/{s}/{t}       # 调用工具
+```
+
+### 4.6 A2A Agent-to-Agent
+
+```
+POST /a2a  (JSON-RPC)
+  → agent/card    — 获取 Agent 能力卡片
+  → tasks/send    — 发送任务
+  → tasks/get     — 查询任务状态
+  → tasks/cancel  — 取消任务
+```
+
+### 4.7 安全层
 
 16 层安全防护已激活：API Auth / RBAC / Input Validation / Path Traversal / Command Injection / Sandbox / Rate Limiting / Circuit Breaker / Secret Redaction / Audit / Policy / ZEN Rules / Incident Response / Taint Tracking / Request Signing / Output Filtering。
 

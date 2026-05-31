@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,9 +16,10 @@ import {
   ListChecks, Code, Bug, Calculator, MessageSquare,
   Lightbulb, Sparkles, Settings,
   File, FileCode, Image, BookOpen,
-  Cpu, RefreshCw, Play, Trash2
+  Cpu, RefreshCw, Play, Trash2, Radio
 } from 'lucide-react';
-import type { TaskType } from '@/types/morev3';
+import type { TaskType, TaskRequest, TaskResult, ReasoningStep, PerformanceMetrics } from '@/types/morev3';
+import { moreEngine } from '@/core/moreEngine';
 
 interface DocumentInput {
   id: string;
@@ -38,6 +39,10 @@ interface CustomTask {
   status: 'draft' | 'queued' | 'running' | 'completed' | 'failed';
   result?: string;
   progress?: number;
+  taskResult?: TaskResult;
+  error?: string;
+  reasoningChain?: ReasoningStep[];
+  performance?: PerformanceMetrics;
 }
 
 interface LLMConfig {
@@ -92,6 +97,7 @@ export function RequirementsImporter() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showLLMConfig, setShowLLMConfig] = useState(false);
+  const [apiConnected, setApiConnected] = useState<boolean | null>(null);
   const [llmConfig, setLlmConfig] = useState<LLMConfig>({
     provider: 'ollama',
     model: 'qwen2.5:7b',
@@ -104,6 +110,22 @@ export function RequirementsImporter() {
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Check API connectivity on mount
+  useEffect(() => {
+    let cancelled = false;
+    async function check() {
+      try {
+        const baseUrl = import.meta.env.VITE_API_BASE || 'http://localhost:8010';
+        const res = await fetch(`${baseUrl}/api/v1/health`);
+        if (!cancelled) setApiConnected(res.ok);
+      } catch {
+        if (!cancelled) setApiConnected(false);
+      }
+    }
+    check();
+    return () => { cancelled = true; };
+  }, []);
 
   const resetForm = () => {
     setTaskInput('');
@@ -162,64 +184,102 @@ export function RequirementsImporter() {
 
     const sources = documents.length > 0 ? [...documents] : undefined;
     const query = taskInput.trim() || '基于上传文档处理';
+    const taskId = `task_${Date.now()}`;
     
     const newTask: CustomTask = {
-      id: `task_${Date.now()}`,
+      id: taskId,
       type: task.type,
       query,
       sources,
-      status: 'queued',
+      status: 'running',
     };
 
     setCustomTasks(prev => [newTask, ...prev]);
-    
-    setTimeout(() => {
-      setCustomTasks(prev => prev.map(t => 
-        t.id === newTask.id ? { ...t, status: 'running', progress: 0 } : t
-      ));
-    }, 500);
 
-    let progress = 0;
-    const progressInterval = setInterval(() => {
-      progress += 20;
-      setCustomTasks(prev => prev.map(t => 
-        t.id === newTask.id ? { ...t, progress: Math.min(progress, 90) } : t
-      ));
-    }, 400);
+    // Build a real TaskRequest and call the backend via moreEngine
+    const request: TaskRequest = {
+      id: taskId,
+      type: task.type,
+      query,
+      context: {
+        source: 'requirements_importer',
+        document_count: documents.length,
+        documents: documents.map(d => ({ name: d.name, type: d.type })),
+      },
+      requireMetacognitiveMonitoring: false,
+    };
 
-    setTimeout(() => {
-      clearInterval(progressInterval);
+    try {
+      const result: TaskResult = await moreEngine.executeTask(request);
+
       setCustomTasks(prev => prev.map(t => 
-        t.id === newTask.id ? { 
-          ...t, 
-          status: 'completed',
+        t.id === taskId ? {
+          ...t,
+          status: result.status === 'success' ? 'completed' : (result.status === 'failed' ? 'failed' : 'completed'),
           progress: 100,
-          result: `已处理 ${task.label} 请求: ${query.slice(0, 50)}...`
+          result: result.output,
+          taskResult: result,
+          reasoningChain: result.reasoningChain,
+          performance: result.performance,
         } : t
       ));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setCustomTasks(prev => prev.map(t => 
+        t.id === taskId ? {
+          ...t,
+          status: 'failed',
+          progress: 100,
+          error: msg,
+          result: `API 调用失败: ${msg}`,
+        } : t
+      ));
+    } finally {
       setSubmitting(false);
-    }, 2000 + Math.random() * 1000);
+    }
 
     resetForm();
     setDocuments([]);
   }, [taskInput, documents]);
 
-  const handleBatchTasks = useCallback((requests: string[]) => {
+  const handleBatchTasks = useCallback(async (requests: string[]) => {
+    const now = Date.now();
     const newTasks: CustomTask[] = requests.map((q, i) => ({
-      id: `batch_${Date.now()}_${i}`,
+      id: `batch_${now}_${i}`,
       type: selectedType,
       query: q,
-      status: 'queued' as const,
+      status: 'running' as const,
     }));
     setCustomTasks(prev => [...newTasks, ...prev]);
     
-    newTasks.forEach((task, i) => {
-      setTimeout(() => {
+    // Execute all tasks concurrently via real API
+    await Promise.all(newTasks.map(async (task) => {
+      const request: TaskRequest = {
+        id: task.id,
+        type: task.type,
+        query: task.query,
+        context: { source: 'requirements_importer_batch' },
+        requireMetacognitiveMonitoring: false,
+      };
+      try {
+        const result: TaskResult = await moreEngine.executeTask(request);
         setCustomTasks(prev => prev.map(t => 
-          t.id === task.id ? { ...t, status: 'completed' } : t
+          t.id === task.id ? {
+            ...t,
+            status: result.status === 'success' ? 'completed' : 'failed',
+            result: result.output,
+            taskResult: result,
+            reasoningChain: result.reasoningChain,
+            performance: result.performance,
+          } : t
         ));
-      }, 3000 + i * 500);
-    });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        setCustomTasks(prev => prev.map(t => 
+          t.id === task.id ? { ...t, status: 'failed', error: msg, result: msg } : t
+        ));
+      }
+    }));
   }, [selectedType]);
 
   const getStatusConfig = (status: CustomTask['status']) => {
@@ -263,6 +323,19 @@ export function RequirementsImporter() {
             <div className="flex items-center gap-2">
               <Wand2 className="w-5 h-5 text-orange-500" />
               MoRE 任务输入端口
+              {apiConnected === null ? (
+                <Badge variant="outline" className="text-[10px] bg-gray-100 text-gray-500">
+                  <div className="w-2 h-2 rounded-full bg-gray-400 animate-pulse mr-1" /> 检测中
+                </Badge>
+              ) : apiConnected ? (
+                <Badge variant="outline" className="text-[10px] bg-green-50 text-green-700 border-green-200">
+                  <Radio className="w-3 h-3 mr-1 text-green-500" /> API 已连接
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-[10px] bg-red-50 text-red-700 border-red-200">
+                  <AlertCircle className="w-3 h-3 mr-1 text-red-500" /> API 离线
+                </Badge>
+              )}
             </div>
             <Button variant="ghost" size="sm" onClick={() => setShowLLMConfig(!showLLMConfig)}>
               <Settings className="w-4 h-4" />
@@ -661,7 +734,24 @@ export function RequirementsImporter() {
                                     </div>
                                   )}
                                   {task.result && (
-                                    <p className="text-xs text-gray-500 mt-1 bg-white p-2 rounded">{task.result}</p>
+                                    <p className="text-xs text-gray-500 mt-1 bg-white p-2 rounded max-h-24 overflow-y-auto">{task.result}</p>
+                                  )}
+                                  {task.reasoningChain && task.reasoningChain.length > 0 && (
+                                    <div className="mt-1 flex items-center gap-1 flex-wrap">
+                                      {task.reasoningChain.map((step, i) => (
+                                        <span key={i} className="text-[9px] bg-orange-100 text-orange-700 px-1 rounded font-mono">
+                                          {step.layer}
+                                        </span>
+                                      ))}
+                                      {task.performance && (
+                                        <span className="text-[9px] text-gray-400">
+                                          {task.performance.totalDuration?.toFixed(0)}ms
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                  {task.error && (
+                                    <p className="text-xs text-red-500 mt-1 bg-red-50 p-1 rounded">{task.error}</p>
                                   )}
                                   {task.sources && task.sources.length > 0 && (
                                     <div className="flex items-center gap-1 mt-1">
@@ -679,7 +769,7 @@ export function RequirementsImporter() {
                       <div className="text-center py-12 text-gray-400">
                         <Clock className="w-12 h-12 mx-auto mb-2 opacity-50" />
                         <p className="text-sm">暂无执行历史</p>
-                        <p className="text-xs">提交任务后将自动记录</p>
+                        <p className="text-xs">提交任务后将通过 MoRE OS API 执行并自动记录</p>
                       </div>
                     )}
                   </CardContent>

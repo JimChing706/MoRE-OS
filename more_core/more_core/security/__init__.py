@@ -22,15 +22,27 @@ Security Layers:
 16. Output Filtering (PII/sensitive data)
 """
 
-from .rbac import RBACManager, Role, Permission
-from .taint import TaintTracker, TaintLabel
+from .rbac import (
+    UnifiedRBAC,
+    RBACManager,
+    Role,
+    Permission,
+    require_permission,
+    requires_permission,
+    set_rbac_instance,
+)
+from .taint import TaintTracker, TaintLabel, TaintContext
 from .signing import RequestSigner
 from .output_filter import OutputFilter
 
 __all__ = [
+    "UnifiedRBAC",
     "RBACManager",
     "Role",
     "Permission",
+    "require_permission",
+    "requires_permission",
+    "set_rbac_instance",
     "TaintTracker",
     "TaintLabel",
     "RequestSigner",

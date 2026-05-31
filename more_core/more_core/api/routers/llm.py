@@ -18,13 +18,13 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
 
     @router.get("/llm/state")
     async def llm_state() -> dict[str, Any]:
-        from ..llm.state_manager import get_llm_state_manager
+        from ...llm.state_manager import get_llm_state_manager
         mgr = get_llm_state_manager()
         return mgr.to_dict()
 
     @router.get("/llm/state/current")
     async def llm_current_state() -> dict[str, Any]:
-        from ..llm.state_manager import get_llm_state_manager
+        from ...llm.state_manager import get_llm_state_manager
         mgr = get_llm_state_manager()
         state = mgr.get_state()
         result = {
@@ -47,7 +47,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
 
     @router.post("/llm/state/update", dependencies=[Depends(require_api_key)])
     async def llm_update_state(params: dict[str, Any]) -> dict[str, Any]:
-        from ..llm.state_manager import get_llm_state_manager
+        from ...llm.state_manager import get_llm_state_manager
         mgr = get_llm_state_manager()
         allowed_keys = [
             "provider", "model", "temperature", "max_tokens",
@@ -90,14 +90,14 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
 
     @router.post("/llm/state/reset", dependencies=[Depends(require_api_key)])
     async def llm_reset_state() -> dict[str, Any]:
-        from ..llm.state_manager import get_llm_state_manager
+        from ...llm.state_manager import get_llm_state_manager
         mgr = get_llm_state_manager()
         state = mgr.reset_state()
         return {"success": True, "reset_to": state.__dict__}
 
     @router.get("/llm/usage")
     async def llm_usage() -> dict[str, Any]:
-        from ..llm.state_manager import get_llm_state_manager
+        from ...llm.state_manager import get_llm_state_manager
         mgr = get_llm_state_manager()
         usage = mgr.get_usage()
         return {
@@ -108,13 +108,13 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
 
     @router.get("/llm/providers")
     async def llm_providers() -> dict[str, Any]:
-        from ..llm.state_manager import get_llm_state_manager
+        from ...llm.state_manager import get_llm_state_manager
         mgr = get_llm_state_manager()
         return {"providers": mgr.get_providers_info()}
 
     @router.get("/llm/history")
     async def llm_history(limit: int = 10) -> dict[str, Any]:
-        from ..llm.state_manager import get_llm_state_manager
+        from ...llm.state_manager import get_llm_state_manager
         mgr = get_llm_state_manager()
         return {"history": mgr.get_history(limit)}
 

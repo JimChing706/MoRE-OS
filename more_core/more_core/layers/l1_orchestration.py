@@ -39,9 +39,11 @@ class OrchestrationLayer(Layer):
             "mode": mode,
         }
         ctx.scratch["orchestration_plan"] = plan
-        # Propagate to L0 via context overrides (L0 reads these if present)
-        ctx.request.context.setdefault("temperature", exec_temperature)
-        ctx.request.context.setdefault("max_tokens", exec_max_tokens)
+        # Propagate to L0 via context overrides — direct assignment ensures
+        # L1's difficulty-based tuning is authoritative, not silently overridden
+        # by user-supplied context values.
+        ctx.request.context["temperature"] = exec_temperature
+        ctx.request.context["max_tokens"] = exec_max_tokens
 
         return LayerResult(
             layer=self.layer_id,

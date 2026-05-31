@@ -253,6 +253,103 @@ bus.publish("task:complete", {"task_id": "123"})
 
 ---
 
+## Streaming (SSE)
+
+### POST /api/v1/tasks/stream
+
+```python
+import httpx
+
+async with httpx.AsyncClient(timeout=30) as cli:
+    async with cli.stream("POST", "http://localhost:8001/api/v1/tasks/stream",
+                           json={"query": "Your prompt"}) as resp:
+        async for line in resp.aiter_lines():
+            if line.startswith("data:"):
+                import json
+                event = json.loads(line[6:])
+                if "token" in event:
+                    print(event["token"], end="", flush=True)
+                elif event.get("event") == "done":
+                    print(f"\nCompleted: {event['tokens']} tokens")
+```
+
+SSE Event types:
+- `{"event":"pipeline","layers":[...]}` — 管道信息
+- `{"event":"layer_done","layer":"L4","description":"..."}` — 各层完成
+- `{"token":"..."}` — L0 token 流
+- `{"event":"done","tokens":N,"duration_ms":M}` — 完成
+
+## MCP Server (stdio mode)
+
+```bash
+# Codex CLI 集成 (.codex.json)
+{
+  "mcpServers": {
+    "more-os": {
+      "command": ".venv/bin/python3",
+      "args": ["-m", "more_core.cli", "mcp-serve"]
+    }
+  }
+}
+
+# Claude Code 集成 (.mcp.json)
+{
+  "mcpServers": {
+    "more-os": {
+      "command": ".venv/bin/python3",
+      "args": ["-m", "more_core.cli", "mcp-serve"]
+    }
+  }
+}
+```
+
+### MCP REST API
+
+```python
+# List connected MCP servers
+GET  /api/v1/mcp/servers
+
+# Connect filesystem MCP server
+POST /api/v1/mcp/connect/filesystem?path=/
+
+# Call tool on MCP server
+POST /api/v1/mcp/tools/{server_name}/{tool_name}
+Body: {"arg": "value"}
+
+# List tools from a server
+GET  /api/v1/mcp/tools/{server_name}
+
+# Disconnect
+POST /api/v1/mcp/disconnect/{server_name}
+```
+
+## A2A Protocol
+
+```python
+# Agent Card
+GET /a2a/agent-card
+→ {"name":"QNMing MoRE OS","skills":["nlp","code_gen",...]}
+
+# Send task (JSON-RPC)
+POST /a2a
+Body: {
+  "jsonrpc": "2.0",
+  "method": "tasks/send",
+  "params": {
+    "task": {
+      "messages": [{
+        "role": "user",
+        "parts": [{"type": "text", "text": "Your task"}]
+      }]
+    }
+  }
+}
+→ {"result": {"taskId": "...", "status": {"state": "completed"}}}
+
+# List active tasks
+GET /a2a/tasks
+```
+
 ## Error Handling
 
 ```python

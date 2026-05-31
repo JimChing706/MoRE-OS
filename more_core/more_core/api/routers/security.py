@@ -13,6 +13,11 @@ from ...runtime.orchestrator import MoRECore
 def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     router = APIRouter(prefix="/api/v1")
 
+    @router.get("/security/audit")
+    async def audit_logs(limit: int = 50) -> dict[str, Any]:
+        records = core.audit.read_recent(limit)
+        return {"records": records, "total": len(records)}
+
     @router.get("/security/status")
     async def security_status() -> dict[str, Any]:
         return {

@@ -34,6 +34,7 @@ class TaskType(str, Enum):
     CODE_GENERATION = "code_generation"
     CODE_DEBUGGING = "code_debugging"
     CODE_REVIEW = "code_review"
+    CODE_TESTING = "code_testing"
     MATH_REASONING = "math_reasoning"
     DATA_ANALYSIS = "data_analysis"
     NLP_TASK = "nlp_task"

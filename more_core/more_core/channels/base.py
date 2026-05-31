@@ -169,13 +169,33 @@ class ChannelAdapter(ABC):
 
 
 class ChannelManager:
-    """Manages multiple channel adapters."""
+    """DEPRECATED: use ``channels.manager.ChannelManager`` instead.
+
+    Kept for backward compatibility. Delegates to the canonical
+    implementation in :mod:`channels.manager`.
+    """
 
     def __init__(self):
+        import warnings
+        warnings.warn(
+            "channels.base.ChannelManager is deprecated; "
+            "use channels.manager.ChannelManager",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._adapters: dict[str, ChannelAdapter] = {}
+        self._manager = None  # lazy: delegate to manager.ChannelManager
+
+    def _get_manager(self):
+        if self._manager is None:
+            from .manager import ChannelManager as RealManager
+            self._manager = RealManager()
+        return self._manager
 
     def register(self, adapter: ChannelAdapter) -> None:
-        """Register a channel adapter."""
+        """Register a channel adapter (delegates to manager.ChannelManager)."""
+        mgr = self._get_manager()
+        mgr.register_channel(adapter.platform_name, adapter)
         self._adapters[adapter.platform_name] = adapter
 
     def get(self, platform: str) -> ChannelAdapter | None:

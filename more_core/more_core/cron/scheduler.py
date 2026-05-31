@@ -117,22 +117,32 @@ class CronParser:
     
     @classmethod
     def get_next_run(cls, schedule: str, after: float | None = None) -> float | None:
-        """Calculate next run time after given timestamp."""
+        """Calculate next run time after given timestamp.
+
+        Handles cross-hour, cross-day, and cross-month boundaries by
+        advancing in 1-hour increments up to 31 days (max cron window).
+        """
         if after is None:
             after = datetime.now(timezone.utc).timestamp()
-        
+
         try:
             minutes = cls.parse(schedule)
         except ValueError:
             return None
-        
+
         now = datetime.fromtimestamp(after, timezone.utc)
-        
-        for minute in minutes:
-            next_time = now.replace(minute=minute, second=0, microsecond=0)
-            if next_time.timestamp() > after:
-                return next_time.timestamp()
-        
+
+        # Search forward in 1-hour increments (capped at 31 days)
+        from datetime import timedelta
+        for hour_offset in range(24 * 31):
+            candidate_hour = now.replace(
+                minute=0, second=0, microsecond=0
+            ) + timedelta(hours=hour_offset)
+            for minute in minutes:
+                next_time = candidate_hour.replace(minute=minute)
+                if next_time.timestamp() > after:
+                    return next_time.timestamp()
+
         return None
 
 

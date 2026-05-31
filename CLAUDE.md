@@ -42,3 +42,30 @@ Claude 可能在第 4 步已经坏掉的状态上继续完成第 5、6 步，而
 - 明确暴露冲突，而不是静默混合
 - 纪律永远比框架重要
 - 一个仓库，一个规则文件，没有例外
+
+## 项目上下文 (2026-05-22)
+
+- **版本**: v0.5.1
+- **运行环境**: Python 3.14, `.venv/`, macOS
+- **API 端口**: 8010 (当前活跃)
+- **LLM Provider**: Ollama `qwen2.5:7b` (primary) + LM Studio (fallback)
+- **dotenv**: `more_core/.env` 自动加载
+- **前端**: `app/` React + Vite, 端口 3002/3003
+
+### 已知问题
+- 扫雷 GUI (8080) 端口被系统占用，不影响核心
+- LM Studio 大模型响应慢 (~30s)，生产用 Ollama
+- `minesweeper_game` 依赖 `minesweeper_agent`，关闭顺序需反向依赖解析
+
+### 关键模块
+- `more_core/more_core/runtime/orchestrator.py` — 核心编排器
+- `more_core/more_core/api/routers/` — 18 个路由模块
+- `more_core/more_core/llm/manager.py` — LLM 多 Provider 管理
+- `more_core/more_core/mcp/` — MCP Client + Server
+- `more_core/more_core/a2a/` — A2A 协议
+- `plugins/` — 3 个行业插件 (mahjong, minesweeper_game, minesweeper_agent)
+
+### 验证脚本
+- `comprehensive_test.py` — 综合试运转
+- `status_dashboard.py` — 状态检视窗口
+- `module_audit.py` — 全模块故障排除

@@ -48,7 +48,7 @@ export interface MahjongMessage {
   error?: string;
 }
 
-const WS_BASE = `ws://${import.meta.env.VITE_API_BASE?.replace(/^https?:\/\//, '') || 'localhost:8001'}/ws/mahjong`;
+const WS_BASE = `ws://${import.meta.env.VITE_API_BASE?.replace(/^https?:\/\//, '') || 'localhost:8015'}/ws/mahjong`;
 
 export function useMahjongSocket(playerId: string, playerName: string) {
   const [connected, setConnected] = useState(false);

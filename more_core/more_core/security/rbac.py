@@ -1,8 +1,22 @@
-"""Role-Based Access Control (RBAC) for MoRE OS.
+"""Unified Role-Based Access Control (RBAC) for MoRE OS.
 
-Reference: OpenFang RBAC system.
-Provides fine-grained permission control for API endpoints,
-tools, and Hands activation.
+Merges ``security/rbac.py`` (dot-notation, tool-level) and
+``governance/rbac.py`` (colon-notation, resource-level) into one
+enumeration with a single enforcement API.
+
+Usage::
+
+    # FastAPI endpoint
+    @router.get("/admin", dependencies=[Depends(require_permission(Permission.SYS_ADMIN))])
+
+    # Tool handler
+    @requires_permission(Permission.TOOL_SHELL)
+    async def my_tool(params): ...
+
+    # Programmatic
+    rbac = UnifiedRBAC()
+    rbac.assign_role("alice", "admin")
+    assert rbac.check("alice", Permission.TASK_EXECUTE)
 """
 
 from __future__ import annotations
@@ -14,48 +28,79 @@ from typing import Any
 
 _log = logging.getLogger(__name__)
 
+_rbac_instance: UnifiedRBAC | None = None
 
-class Permission(Enum):
-    """System permissions."""
-    # Task permissions
-    TASK_EXECUTE = "task.execute"
-    TASK_VIEW = "task.view"
-    # Hand permissions
-    HAND_ACTIVATE = "hand.activate"
-    HAND_DEACTIVATE = "hand.deactivate"
-    HAND_RUN = "hand.run"
-    HAND_VIEW = "hand.view"
-    # LLM permissions
-    LLM_UPDATE = "llm.update"
-    LLM_VIEW = "llm.view"
-    # Tool permissions
-    TOOL_SHELL = "tool.shell"
-    TOOL_FILE_WRITE = "tool.file_write"
-    TOOL_FILE_READ = "tool.file_read"
-    TOOL_PYTHON = "tool.python"
-    # Governance
-    GOV_RESOLVE = "gov.resolve"
-    GOV_VIEW = "gov.view"
-    # System
-    SYS_CONFIG = "sys.config"
-    SYS_ADMIN = "sys.admin"
-    # Channel
-    CHANNEL_MANAGE = "channel.manage"
-    CHANNEL_VIEW = "channel.view"
+
+def set_rbac_instance(rbac: UnifiedRBAC | None) -> None:
+    global _rbac_instance
+    _rbac_instance = rbac
+
+
+def get_rbac() -> UnifiedRBAC | None:
+    return _rbac_instance
+
+
+class Permission(str, Enum):
+    """Unified system permissions across all domains.
+
+    Uses colon-separated namespaces for extensibility.
+    Plugins can call ``UnifiedRBAC.register_permission()`` to add new ones.
+    """
+
+    # -- task domain --
+    TASK_EXECUTE = "task:execute"
+    TASK_VIEW = "task:view"
+    TASK_DELETE = "task:delete"
+
+    # -- hand domain --
+    HAND_ACTIVATE = "hand:activate"
+    HAND_DEACTIVATE = "hand:deactivate"
+    HAND_RUN = "hand:run"
+    HAND_VIEW = "hand:view"
+
+    # -- llm domain --
+    LLM_UPDATE = "llm:update"
+    LLM_VIEW = "llm:view"
+    LLM_VIEW_KEYS = "llm:view_keys"
+
+    # -- tool domain --
+    TOOL_SHELL = "tool:shell"
+    TOOL_FILE_WRITE = "tool:file_write"
+    TOOL_FILE_READ = "tool:file_read"
+    TOOL_PYTHON = "tool:python"
+
+    # -- memory domain --
+    MEMORY_READ = "memory:read"
+    MEMORY_WRITE = "memory:write"
+    MEMORY_DELETE = "memory:delete"
+
+    # -- evolution domain --
+    EVOLUTION_READ = "evolution:read"
+    EVOLUTION_WRITE = "evolution:write"
+    EVOLUTION_EXECUTE = "evolution:execute"
+
+    # -- governance domain --
+    GOV_RESOLVE = "gov:resolve"
+    GOV_VIEW = "gov:view"
+
+    # -- system domain --
+    SYS_CONFIG = "sys:config"
+    SYS_ADMIN = "sys:admin"
+    SYS_AUDIT = "sys:audit"
+
+    # -- channel domain --
+    CHANNEL_MANAGE = "channel:manage"
+    CHANNEL_VIEW = "channel:view"
 
 
 @dataclass
 class Role:
-    """A named role with a set of permissions."""
     name: str
     description: str = ""
     permissions: set[Permission] = field(default_factory=set)
 
-    def has_permission(self, perm: Permission) -> bool:
-        return perm in self.permissions
 
-
-# Pre-defined roles
+# ---- built-in roles ----
 ROLE_ADMIN = Role(
     name="admin",
     description="Full system access",
@@ -64,14 +109,17 @@ ROLE_ADMIN = Role(
 
 ROLE_OPERATOR = Role(
     name="operator",
-    description="Operational access (execute tasks, manage hands, view all)",
+    description="Operational access",
     permissions={
-        Permission.TASK_EXECUTE, Permission.TASK_VIEW,
+        Permission.TASK_EXECUTE, Permission.TASK_VIEW, Permission.TASK_DELETE,
         Permission.HAND_ACTIVATE, Permission.HAND_DEACTIVATE,
         Permission.HAND_RUN, Permission.HAND_VIEW,
         Permission.LLM_UPDATE, Permission.LLM_VIEW,
         Permission.TOOL_FILE_READ, Permission.TOOL_PYTHON,
-        Permission.GOV_VIEW, Permission.CHANNEL_VIEW,
+        Permission.MEMORY_READ, Permission.MEMORY_WRITE,
+        Permission.EVOLUTION_READ, Permission.EVOLUTION_WRITE, Permission.EVOLUTION_EXECUTE,
+        Permission.GOV_VIEW,
+        Permission.CHANNEL_VIEW,
     },
 )
 
@@ -81,7 +129,8 @@ ROLE_VIEWER = Role(
     permissions={
         Permission.TASK_VIEW, Permission.HAND_VIEW,
         Permission.LLM_VIEW, Permission.GOV_VIEW,
-        Permission.CHANNEL_VIEW,
+        Permission.CHANNEL_VIEW, Permission.MEMORY_READ,
+        Permission.EVOLUTION_READ,
     },
 )
 
@@ -92,35 +141,69 @@ ROLE_AGENT = Role(
         Permission.TASK_EXECUTE, Permission.TASK_VIEW,
         Permission.HAND_VIEW, Permission.LLM_VIEW,
         Permission.TOOL_FILE_READ, Permission.TOOL_PYTHON,
+        Permission.MEMORY_READ,
     },
 )
 
+ROLE_DEVELOPER = Role(
+    name="developer",
+    description="Development access",
+    permissions={
+        Permission.TASK_EXECUTE, Permission.TASK_VIEW, Permission.TASK_DELETE,
+        Permission.HAND_VIEW, Permission.HAND_ACTIVATE, Permission.HAND_DEACTIVATE,
+        Permission.LLM_UPDATE, Permission.LLM_VIEW, Permission.LLM_VIEW_KEYS,
+        Permission.TOOL_FILE_READ, Permission.TOOL_FILE_WRITE,
+        Permission.TOOL_PYTHON, Permission.TOOL_SHELL,
+        Permission.MEMORY_READ, Permission.MEMORY_WRITE, Permission.MEMORY_DELETE,
+        Permission.EVOLUTION_READ, Permission.EVOLUTION_WRITE, Permission.EVOLUTION_EXECUTE,
+        Permission.GOV_VIEW, Permission.CHANNEL_VIEW,
+    },
+)
 
-class RBACManager:
-    """Manages roles and user-role assignments."""
+_ROLE_DEFAULTS: dict[str, Role] = {
+    "admin": ROLE_ADMIN,
+    "operator": ROLE_OPERATOR,
+    "viewer": ROLE_VIEWER,
+    "agent": ROLE_AGENT,
+    "developer": ROLE_DEVELOPER,
+}
 
-    def __init__(self) -> None:
-        self._roles: dict[str, Role] = {
-            "admin": ROLE_ADMIN,
-            "operator": ROLE_OPERATOR,
-            "viewer": ROLE_VIEWER,
-            "agent": ROLE_AGENT,
-        }
+
+class UnifiedRBAC:
+    """Central RBAC enforcement — single source of truth.
+
+    Design decisions:
+    * No ``enable/disable`` switch — if ``admin_users`` env var is set,
+      only listed users have access; otherwise every user is allowed.
+    * Extensible via ``register_permission()`` (plugin-facing).
+    * ``user_id`` is resolved from the auth token at the FastAPI layer.
+    """
+
+    def __init__(self, admin_users: list[str] | None = None) -> None:
+        self._roles: dict[str, Role] = dict(_ROLE_DEFAULTS)
         self._user_roles: dict[str, list[str]] = {}
-        # Default: no RBAC enforcement (dev mode)
-        self._enabled = False
+        self._admin_users: set[str] = set(admin_users or [])
+        self._extra_permissions: dict[str, Permission] = {}
 
-    @property
-    def enabled(self) -> bool:
-        return self._enabled
+    # -- permission registry (plugin extensibility) -------------------------
 
-    def enable(self) -> None:
-        self._enabled = True
-        _log.info("RBAC enforcement enabled")
+    def register_permission(
+        self, name: str, perm: Permission | None = None
+    ) -> Permission:
+        """Register a dynamic permission for plugins.
 
-    def disable(self) -> None:
-        self._enabled = False
-        _log.info("RBAC enforcement disabled")
+        If ``perm`` is given it is stored under *name*; otherwise a new
+        ``Permission`` member is created on the fly.
+        """
+        if perm is not None:
+            self._extra_permissions[name] = perm
+            return perm
+        # Create an ad-hoc permission (string-based).
+        p = Permission(name)
+        self._extra_permissions[name] = p
+        return p
+
+    # -- role management ----------------------------------------------------
 
     def add_role(self, role: Role) -> None:
         self._roles[role.name] = role
@@ -140,40 +223,143 @@ class RBACManager:
             return True
         return False
 
-    def check_permission(self, user_id: str, permission: Permission) -> bool:
-        """Check if user has a specific permission."""
-        if not self._enabled:
-            return True  # RBAC disabled = allow all
-        roles = self._user_roles.get(user_id, [])
-        for role_name in roles:
-            role = self._roles.get(role_name)
-            if role and role.has_permission(permission):
+    # -- permission checking ------------------------------------------------
+
+    def _is_admin(self, user_id: str) -> bool:
+        if not self._admin_users:
+            return False
+        if user_id in self._admin_users:
+            return True
+        for rn in self._user_roles.get(user_id, []):
+            if rn == "admin":
                 return True
         return False
 
+    def check(self, user_id: str, permission: Permission) -> bool:
+        if self._admin_users:
+            if user_id in self._admin_users or self._is_admin(user_id):
+                return True
+        for rn in self._user_roles.get(user_id, []):
+            role = self._roles.get(rn)
+            if role and permission in role.permissions:
+                return True
+        return False
+
+    def check_raise(self, user_id: str, permission: Permission) -> None:
+        if not self.check(user_id, permission):
+            raise PermissionError(
+                f"user {user_id} lacks permission {permission.value}"
+            )
+
     def get_user_permissions(self, user_id: str) -> set[Permission]:
-        """Get all permissions for a user across all assigned roles."""
-        perms: set[Permission] = set()
-        for role_name in self._user_roles.get(user_id, []):
-            role = self._roles.get(role_name)
+        result: set[Permission] = set()
+        for rn in self._user_roles.get(user_id, []):
+            role = self._roles.get(rn)
             if role:
-                perms |= role.permissions
-        return perms
+                result |= role.permissions
+        return result
+
+    # -- backward compat ----------------------------------------------------
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self._admin_users)
+
+    # -- query --------------------------------------------------------------
 
     def list_roles(self) -> list[dict[str, Any]]:
         return [
-            {
-                "name": r.name,
-                "description": r.description,
-                "permissions": [p.value for p in r.permissions],
-            }
+            {"name": r.name, "description": r.description,
+             "permissions": [p.value for p in r.permissions]}
             for r in self._roles.values()
         ]
 
     def stats(self) -> dict[str, Any]:
         return {
-            "enabled": self._enabled,
+            "admin_users": len(self._admin_users),
             "total_roles": len(self._roles),
             "total_users": len(self._user_roles),
-            "roles": list(self._roles.keys()),
+            "extra_permissions": list(self._extra_permissions.keys()),
         }
+
+
+# ---- FastAPI dependency helper ----
+
+def require_permission(permission: Permission):
+    """Return a FastAPI dependency callable that checks *permission*.
+
+    Usage::
+
+        @router.get("/admin", dependencies=[Depends(require_permission(Permission.SYS_ADMIN))])
+    """
+
+    async def _checker(user_id: str = "anonymous") -> None:
+        rbac = get_rbac()
+        if rbac is None:
+            return
+        rbac.check_raise(user_id, permission)
+
+    return _checker
+
+
+# ---- tool handler decorator ----
+
+def requires_permission(permission: Permission):
+    """Decorator for tool handlers that need RBAC checks.
+
+    Usage::
+
+        @requires_permission(Permission.TOOL_SHELL)
+        async def shell_tool(params: dict) -> ToolResult: ...
+
+    The *user_id* is extracted from ``params.get("_user_id", "anonymous")``
+    so the caller (L0 execution) must inject it before dispatch.
+    """
+
+    def decorator(handler):
+        async def wrapper(params: dict) -> Any:
+            user_id = params.pop("_user_id", "anonymous")
+            rbac = get_rbac()
+            if rbac is not None:
+                rbac.check_raise(user_id, permission)
+            return await handler(params)
+        return wrapper
+    return decorator
+
+
+# ---- backward-compatible aliases (deprecated) ----
+
+from warnings import warn as _warn  # noqa: E402
+
+_RBACManager_deprecated: bool = False
+
+
+class RBACManager(UnifiedRBAC):  # type: ignore[misc]
+    """Deprecated alias for :class:`UnifiedRBAC`.
+
+    Retained for backward compatibility; scheduled for removal in v0.7.0.
+    """
+
+    _legacy_enabled: bool = False
+
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        global _RBACManager_deprecated
+        if not _RBACManager_deprecated:
+            _warn("RBACManager is deprecated; use UnifiedRBAC instead", DeprecationWarning, stacklevel=2)
+            _RBACManager_deprecated = True
+        super().__init__(*args, **kwargs)
+
+    def enable(self) -> None:
+        self._legacy_enabled = True
+
+    def disable(self) -> None:
+        self._legacy_enabled = False
+
+    @property
+    def enabled(self) -> bool:  # type: ignore[override]
+        return self._legacy_enabled or bool(self._admin_users)
+
+    def check_permission(self, user_id: str, permission: Permission) -> bool:
+        if not self._legacy_enabled and not self._admin_users:
+            return True
+        return self.check(user_id, permission)

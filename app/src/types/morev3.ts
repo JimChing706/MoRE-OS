@@ -13,6 +13,7 @@ export type TaskType =
   | 'code_generation' 
   | 'code_debugging' 
   | 'code_review'
+  | 'code_testing'
   | 'architecture_design'
   | 'math_reasoning' 
   | 'data_analysis'

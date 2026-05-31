@@ -6,9 +6,29 @@ Lightweight alternative to pydantic-settings to keep dependencies minimal.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
+
+def _load_dotenv() -> None:
+    """Load .env file from project root if it exists (no-op if dotenv unavailable)."""
+    try:
+        from dotenv import load_dotenv as _ld
+        # Walk upward from more_core/ to find .env
+        candidate = Path(__file__).resolve().parent.parent
+        while candidate != candidate.parent:
+            env_file = candidate / ".env"
+            if env_file.exists():
+                _ld(env_file, override=False)
+                return
+            candidate = candidate.parent
+    except ImportError:
+        pass
+
+
+_load_dotenv()
 
 
 LLMProviderName = Literal[
@@ -16,6 +36,7 @@ LLMProviderName = Literal[
     "deepseek", "azure", "google", "groq", "mistral", "cohere",
     "openrouter", "together", "xai", "sambanova", "fireworks",
     "perplexity", "cerebras", "huggingface", "replicate", "vllm",
+    "mock",
 ]
 
 
@@ -201,6 +222,17 @@ class Settings(BaseModel):
                     endpoint=os.getenv("MORE_VLLM_ENDPOINT", "http://localhost:8000/v1"),
                     model=os.getenv("MORE_VLLM_MODEL", "default"),
                     api_key=os.getenv("MORE_VLLM_API_KEY", "EMPTY"),
+                )
+            )
+
+        # Mock provider — auto-enabled when no real providers are configured (dev mode)
+        if not providers or os.getenv("MORE_USE_MOCK", "0") == "1":
+            providers.append(
+                LLMProviderConfig(
+                    name="mock",
+                    provider="mock",
+                    endpoint="",
+                    model="mock-dev-1.0",
                 )
             )
 

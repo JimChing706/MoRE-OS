@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import time
@@ -15,6 +16,7 @@ from .providers.ollama import OllamaProvider
 from .providers.lmstudio import LMStudioProvider
 from .providers.openai_compat import OpenAICompatProvider
 from .providers.deepseek import DeepSeekProvider
+from .providers.mock import MockProvider
 
 
 _CACHE_MAX = 256
@@ -46,6 +48,8 @@ def _build_provider(cfg: LLMProviderConfig) -> LLMProvider:
             api_key=cfg.api_key or "",
             timeout=cfg.timeout_s,
         )
+    if cfg.provider == "mock":
+        return MockProvider()
     # All other providers use the OpenAI-compatible chat/completions API
     _OPENAI_COMPAT = {
         "openai", "anthropic", "custom", "azure", "google", "groq",
@@ -87,6 +91,7 @@ class LLMManager:
         }
         self._fallback = fallback_chain or list(self._providers)
         self._cache = _LRU()
+        self._cache_lock = asyncio.Lock()
         self._failure_counts: dict[str, int] = {}
 
     def list_providers(self) -> list[str]:
@@ -167,20 +172,23 @@ class LLMManager:
                 continue
 
             key = self._cache_key(request, name, request.model_override)
-            if use_cache and key in self._cache:
-                cached = self._cache[key]
-                return LLMResponse(
-                    content=cached.content, provider=cached.provider, model=cached.model,
-                    prompt_tokens=cached.prompt_tokens, completion_tokens=cached.completion_tokens,
-                    latency_ms=0.0, cached=True,
-                )
+            if use_cache:
+                async with self._cache_lock:
+                    if key in self._cache:
+                        cached = self._cache[key]
+                        return LLMResponse(
+                            content=cached.content, provider=cached.provider, model=cached.model,
+                            prompt_tokens=cached.prompt_tokens, completion_tokens=cached.completion_tokens,
+                            latency_ms=0.0, cached=True,
+                        )
             try:
                 start = time.perf_counter()
                 resp = await self._providers[name].generate(request)
                 resp.latency_ms = (time.perf_counter() - start) * 1000
                 self._record_success(name, request.model_override)
                 if use_cache:
-                    self._cache.put(key, resp)
+                    async with self._cache_lock:
+                        self._cache.put(key, resp)
                 return resp
             except Exception as exc:
                 self._record_failure(name, request.model_override)
@@ -220,13 +228,15 @@ class LLMManager:
             req = self._create_request_with_model(request, pair.model)
             key = self._cache_key(req, pair.provider, pair.model)
 
-            if use_cache and key in self._cache:
-                cached = self._cache[key]
-                return LLMResponse(
-                    content=cached.content, provider=cached.provider, model=cached.model,
-                    prompt_tokens=cached.prompt_tokens, completion_tokens=cached.completion_tokens,
-                    latency_ms=0.0, cached=True,
-                )
+            if use_cache:
+                async with self._cache_lock:
+                    if key in self._cache:
+                        cached = self._cache[key]
+                        return LLMResponse(
+                            content=cached.content, provider=cached.provider, model=cached.model,
+                            prompt_tokens=cached.prompt_tokens, completion_tokens=cached.completion_tokens,
+                            latency_ms=0.0, cached=True,
+                        )
 
             try:
                 start = time.perf_counter()
@@ -234,7 +244,8 @@ class LLMManager:
                 resp.latency_ms = (time.perf_counter() - start) * 1000
                 self._record_success(pair.provider, pair.model)
                 if use_cache:
-                    self._cache.put(key, resp)
+                    async with self._cache_lock:
+                        self._cache.put(key, resp)
                 return resp
             except Exception as exc:
                 self._record_failure(pair.provider, pair.model)
@@ -243,6 +254,28 @@ class LLMManager:
                 continue
 
         raise LLMError(f"all fallback pairs failed: {last_exc}") from last_exc
+
+    async def stream(
+        self,
+        request: LLMRequest,
+        provider: str | None = None,
+        model_override: str | None = None,
+    ):
+        """Stream tokens from the best available provider with fallback."""
+        chain = [provider] if provider else list(self._fallback)
+        for name in chain:
+            if name not in self._providers or self._should_skip(name, model_override):
+                continue
+            try:
+                async for token in self._providers[name].stream(request):
+                    yield token
+                self._record_success(name, model_override)
+                return
+            except Exception as exc:
+                self._record_failure(name, model_override)
+                _logger.warning(f"Stream from {name} failed: {exc}")
+                continue
+        raise LLMError("all providers failed streaming")
 
     async def health(self) -> dict[str, bool]:
         """Check health status of all providers."""

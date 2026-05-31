@@ -43,16 +43,17 @@ class Plugin(PluginBase):
         register_tools(ctx.core.tools)
 
         # 3. Subscribe to game events
-        ctx.event_bus.subscribe("task.started", self._on_task_started)
-        ctx.event_bus.subscribe("task.completed", self._on_task_completed)
+        self._unsub_started = ctx.event_bus.subscribe("task.started", self._on_task_started)
+        self._unsub_completed = ctx.event_bus.subscribe("task.completed", self._on_task_completed)
 
         self.logger.info(f"Minesweeper Agent activated (LLM: {'enabled' if use_llm else 'disabled'})")
 
     async def deactivate(self) -> None:
         """Deactivate plugin"""
-        if self._ctx and self._ctx.event_bus:
-            self._ctx.event_bus.unsubscribe("task.started", self._on_task_started)
-            self._ctx.event_bus.unsubscribe("task.completed", self._on_task_completed)
+        if hasattr(self, '_unsub_started'):
+            self._unsub_started()
+        if hasattr(self, '_unsub_completed'):
+            self._unsub_completed()
 
         self._agent = None
         await super().deactivate()
@@ -66,13 +67,19 @@ class Plugin(PluginBase):
 
     # —— Event Handlers ——
 
-    async def _on_task_started(self, event_data: dict[str, Any]) -> None:
+    async def _on_task_started(self, event) -> None:
         """Task started event - record game start"""
+        event_data = event.data if hasattr(event, 'data') else event
+        if not isinstance(event_data, dict):
+            return
         if event_data.get("source") == "minesweeper":
             self.logger.info(f"Game task started: {event_data.get('task_id')}")
 
-    async def _on_task_completed(self, event_data: dict[str, Any]) -> None:
+    async def _on_task_completed(self, event) -> None:
         """Task completed event - collect metrics"""
+        event_data = event.data if hasattr(event, 'data') else event
+        if not isinstance(event_data, dict):
+            return
         status = event_data.get("status")
         if status in ("won", "lost"):
             # Record to audit log

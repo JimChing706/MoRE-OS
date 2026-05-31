@@ -41,7 +41,7 @@ def _system_section(core: "MoRECore") -> dict[str, Any]:
         "status": "running",
         "uptime_s": time.time() - getattr(core, "_start_time", time.time()),
         "plugins": len(list(core.plugins.active())),
-        "tools": len(core.tools.list()),
+        "tools": len(core.tools.list_tools()),
         "memory_entries": core.memory.stats(),
         "incidents": core._incident_manager.get_incident_stats(),
     }

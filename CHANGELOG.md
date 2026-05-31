@@ -58,6 +58,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Deleted garbage file** — `more_core/new_file.py` removed
 - **101 unused imports** auto-fixed via `ruff check --fix`
 
+## [0.5.1] - 2026-05-22
+
+### Added
+
+- **Real LLM Integration** — Ollama `qwen2.5:7b` + LM Studio `qwen3.6-35b` 激活，dotenv 自动加载
+- **SSE Streaming** — `POST /api/v1/tasks/stream` 流式端点，token 级实时推送
+- **MCP Server** — `more-os mcp-serve` CLI 入口，暴露 29 个工具给 Codex/Claude
+- **MCP Client** — `GET/POST /api/v1/mcp/*` 端点，连接外部 MCP Server
+- **A2A Protocol** — `POST /a2a` JSON-RPC 端点，Agent-to-Agent 任务委托
+- **A2A Agent Card** — `GET /a2a/agent-card`，5 skills 能力卡片
+- **LLM Manager.stream()** — multi-provider async generator with fallback
+- **Comprehensive Test Suite** — 综合试运转 17/17 通过
+
+### Fixed
+
+- **Mock Provider f-string crash** — `_default_response` 字典被误解析 → 字符串拼接
+- **`register_hand_function` 缺失** — builtins.py 新增函数注册器
+- **Minesweeper Event API 不匹配** — `Event` dataclass 调用 `.get()` → `event.data`
+- **Minesweeper `sys.exit(1)` crash** — 端口冲突 try/except 防御
+- **OpenAPI 500 ForwardRef** — 内联 Payload → 模块级 `ExecuteTaskPayload`
+- **LLM Router 相对导入** — `..llm` → `...llm` (7 处)
+- **`ReasoningStep.get()` 错误** — 添加 `isinstance(step, dict)` 类型守卫
+- **Plugin shutdown order** — 反向依赖拓扑排序关闭
+- **Task Router 模型绑定** — 硬编码模型名 → 匹配本地可用模型
+
+### Changed
+
+- Provider 优先级：Ollama 优先，LM Studio fallback
+- Task Router 默认模型切至 `qwen2.5:7b`
+- LM Studio HTTP/2 support via `httpx[http2]`
+
 ## [0.5.0] - 2026-05-21
 
 ### Added

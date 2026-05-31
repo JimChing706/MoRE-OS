@@ -39,6 +39,9 @@ from .routers import (
     create_workflows_router,
     create_deployments_router,
     create_sessions_router,
+    create_outputs_router,
+    create_mcp_router,
+    create_a2a_router,
 )
 
 _log = logging.getLogger(__name__)
@@ -104,7 +107,7 @@ Include `Authorization: Bearer <key>` header for protected endpoints.
     # CORS — restricted to configured origins
     _raw_origins = os.getenv(
         "MORE_CORS_ORIGINS",
-        "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3002,http://127.0.0.1:3002,http://localhost:3003,http://127.0.0.1:3003"
+        "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3002,http://127.0.0.1:3002,http://localhost:3003,http://127.0.0.1:3003,http://localhost:3004,http://127.0.0.1:3004"
     )
     _allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
     app.add_middleware(
@@ -116,21 +119,24 @@ Include `Authorization: Bearer <key>` header for protected endpoints.
     )
 
     # Register modular routers
-    app.include_router(create_health_router(core))
+    app.include_router(create_health_router(core, _require_api_key))
     app.include_router(create_tasks_router(core, _require_api_key))
     app.include_router(create_llm_router(core, _require_api_key))
     app.include_router(create_zen_router(core, _require_api_key))
     app.include_router(create_requirements_router(core, _require_api_key))
     app.include_router(create_hands_router(core, _require_api_key))
-    app.include_router(create_channels_router(core))
+    app.include_router(create_channels_router(core, _require_api_key))
     app.include_router(create_cron_router(core, _require_api_key))
     app.include_router(create_skills_router(core, _require_api_key))
-    app.include_router(create_commands_router(core))
+    app.include_router(create_commands_router(core, _require_api_key))
     app.include_router(create_security_router(core, _require_api_key))
     app.include_router(create_hotreload_router(core, _require_api_key))
-    app.include_router(create_monitor_router(core))
+    app.include_router(create_monitor_router(core, _require_api_key))
     app.include_router(create_workflows_router(core, _require_api_key))
     app.include_router(create_deployments_router(core, _require_api_key))
-    app.include_router(create_sessions_router(core))
+    app.include_router(create_sessions_router(core, _require_api_key))
+    app.include_router(create_outputs_router(core, _require_api_key))
+    app.include_router(create_mcp_router(core, _require_api_key))
+    app.include_router(create_a2a_router(core, _require_api_key))
 
     return app

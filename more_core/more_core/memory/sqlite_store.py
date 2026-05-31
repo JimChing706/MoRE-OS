@@ -46,13 +46,17 @@ class SQLiteMemoryStore(MemoryStore):
 
     def put(self, entry: MemoryEntry) -> None:
         super().put(entry)
+        # Store NFKC-normalised content so LOWER() LIKE matches the
+        # casefolded + NFKC-normalised query in search().
+        import unicodedata
+        normalized = unicodedata.normalize("NFKC", entry.content)
         self._conn.execute(
             "INSERT OR REPLACE INTO memories (id, kind, content, tags, score, created_at, access_count) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 entry.id,
                 entry.kind.value,
-                entry.content,
+                normalized,
                 json.dumps(entry.tags),
                 entry.score,
                 entry.created_at,

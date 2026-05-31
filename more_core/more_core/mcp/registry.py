@@ -173,7 +173,7 @@ class MCPRegistry:
             if importlib.util.find_spec("more_core.tools.registry") is None:
                 raise ImportError("MoRE OS tool registry not found")
 
-            for tool_def in tool_registry.list():
+            for tool_def in tool_registry.list_tools():
                 self.tools.register(
                     name=mcp_name or tool_def.name,
                     description=tool_def.description,

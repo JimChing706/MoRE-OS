@@ -1,39 +1,58 @@
-"""Enhanced Secure Sandbox with WASM-like isolation concepts."""
+"""Secure sandbox wrapper — adds policy checks and audit logging.
+
+Wraps a :class:`SubprocessSandbox` (or :class:`LinuxSandbox`) with:
+
+* Command whitelist / blacklist checks
+* Process count limits
+* Output size limits
+* Security audit trail
+
+Usage::
+
+    inner = SubprocessSandbox(timeout_s=30, memory_mb=256)
+    sandbox = SecureSandbox(inner, security_level="strict")
+    result = await sandbox.run(["python3", "script.py"])
+"""
 
 from __future__ import annotations
 
-import asyncio
+import logging
+import os
 import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from .subprocess_sandbox import SandboxResult, SubprocessSandbox
+
+_log = logging.getLogger(__name__)
+
 
 class SecurityLevel(Enum):
-    """Security levels for sandbox."""
     NONE = "none"
     BASIC = "basic"
     STRICT = "strict"
-    WASM_LIKE = "wasm_like"
 
 
 @dataclass
 class SandboxConfig:
-    """Sandbox security configuration."""
     timeout_s: int = 30
     memory_mb: int = 256
-    max_output_size: int = 1024 * 1024
+    max_output_size: int = 1_048_576
     max_processes: int = 4
     allow_network: bool = False
     allow_filesystem: bool = True
-    allowed_paths: list[str] = field(default_factory=list)
-    blocked_commands: list[str] = field(default_factory=lambda: ["rm", "dd", "mkfs", "shutdown", "reboot", "kill", "pkill"])
+    allowed_paths: list[str] = field(default_factory=lambda: ["/tmp"])
+    blocked_commands: list[str] = field(default_factory=lambda: [
+        "rm", "dd", "mkfs", "shutdown", "reboot", "kill", "pkill", "sudo",
+    ])
     security_level: SecurityLevel = SecurityLevel.BASIC
+    audit_enabled: bool = True
+    audit_max_entries: int = 1000
 
 
 @dataclass
-class SecurityAudit:
-    """Security audit trail entry."""
+class AuditEntry:
     timestamp: float
     action: str
     resource: str
@@ -43,136 +62,127 @@ class SecurityAudit:
 
 
 class SecureSandbox:
-    """Enhanced sandbox with security controls and audit logging."""
+    """Policy-enforcing wrapper around a base sandbox."""
 
-    def __init__(self, config: SandboxConfig | None = None):
+    def __init__(
+        self,
+        inner: SubprocessSandbox,
+        config: SandboxConfig | None = None,
+    ) -> None:
+        self._inner = inner
         self._config = config or SandboxConfig()
-        self._audit_log: list[SecurityAudit] = []
-        self._active_processes: dict[int, asyncio.Task] = {}
+        self._audit_log: list[AuditEntry] = []
         self._process_count = 0
 
     @property
     def config(self) -> SandboxConfig:
         return self._config
 
-    def _log_audit(self, action: str, resource: str, allowed: bool, reason: str, **metadata) -> None:
-        """Log a security audit entry."""
-        entry = SecurityAudit(
-            timestamp=time.time(),
-            action=action,
-            resource=resource,
-            allowed=allowed,
-            reason=reason,
-            metadata=metadata,
+    def _audit(self, action: str, resource: str, allowed: bool, reason: str, **meta: Any) -> None:
+        if not self._config.audit_enabled:
+            return
+        entry = AuditEntry(
+            timestamp=time.time(), action=action, resource=resource,
+            allowed=allowed, reason=reason, metadata=meta,
         )
         self._audit_log.append(entry)
-        if len(self._audit_log) > 1000:
-            self._audit_log = self._audit_log[-500:]
+        if len(self._audit_log) > self._config.audit_max_entries:
+            self._audit_log = self._audit_log[-(self._config.audit_max_entries // 2):]
 
-    def get_audit_log(self, limit: int = 100) -> list[dict]:
-        """Get recent audit log entries."""
+    def get_audit_log(self, limit: int = 100) -> list[dict[str, Any]]:
         return [
-            {
-                "timestamp": e.timestamp,
-                "action": e.action,
-                "resource": e.resource,
-                "allowed": e.allowed,
-                "reason": e.reason,
-            }
+            {"timestamp": e.timestamp, "action": e.action, "resource": e.resource,
+             "allowed": e.allowed, "reason": e.reason}
             for e in self._audit_log[-limit:]
         ]
 
-    def check_command(self, cmd: str) -> tuple[bool, str]:
-        """Check if a command is allowed."""
-        cmd_name = cmd.split()[0] if cmd.split() else ""
-        
-        if self._config.security_level == SecurityLevel.NONE:
-            return True, "allowed"
-        
-        for blocked in self._config.blocked_commands:
-            if cmd_name == blocked or cmd_name.startswith(blocked):
-                return False, f"command '{blocked}' is blocked"
-        
-        if self._config.security_level in (SecurityLevel.STRICT, SecurityLevel.WASM_LIKE):
-            if cmd_name in ("python", "python3", "node", "bash", "sh", "zsh"):
-                if self._process_count >= self._config.max_processes:
-                    return False, "max processes reached"
-        
-        return True, "allowed"
+    # -- policy checks -------------------------------------------------------
 
-    async def execute(
-        self,
-        command: str,
-        args: list[str] | None = None,
-        env: dict[str, str] | None = None,
-        cwd: str | None = None,
-    ) -> dict[str, Any]:
-        """Execute a command with security checks."""
-        full_cmd = f"{command} {' '.join(args)}" if args else command
-        
-        allowed, reason = self.check_command(full_cmd)
+    def _check_command(self, full_cmd: str) -> tuple[bool, str]:
+        if self._config.security_level == SecurityLevel.NONE:
+            return True, ""
+        cmd_name = full_cmd.split()[0] if full_cmd.strip() else ""
+        if not cmd_name:
+            return False, "empty command"
+        cmd_base = os.path.basename(cmd_name) or cmd_name
+        for blocked in self._config.blocked_commands:
+            if cmd_name == blocked or cmd_base == blocked:
+                return False, f"command '{blocked}' is blocked"
+        if self._config.security_level == SecurityLevel.STRICT:
+            restricted = {"python", "python3", "node", "bash", "sh", "zsh"}
+            if cmd_name in restricted and self._process_count >= self._config.max_processes:
+                return False, f"max processes ({self._config.max_processes}) reached"
+        return True, ""
+
+    def _check_output(self, output: str) -> str:
+        max_sz = self._config.max_output_size
+        if len(output) > max_sz:
+            _log.warning("output truncated from %d to %d bytes", len(output), max_sz)
+            return output[:max_sz] + "\n... [output truncated]"
+        return output
+
+    def _check_path(self, path: str | None) -> tuple[bool, str]:
+        if path is None:
+            return True, ""
+        if not self._config.allow_filesystem:
+            return False, "filesystem access denied"
+        resolved = os.path.realpath(path)
+        allowed = False
+        for ap in self._config.allowed_paths:
+            if resolved.startswith(os.path.realpath(ap)):
+                allowed = True
+                break
         if not allowed:
-            self._log_audit("execute", full_cmd, False, reason)
-            return {
-                "success": False,
-                "error": f"Security denied: {reason}",
-                "audit": self.get_audit_log(1)[0] if self._audit_log else {},
-            }
-        
-        self._log_audit("execute", full_cmd, True, "passed security checks")
-        
+            return False, f"path '{resolved}' not in allowed paths"
+        return True, ""
+
+    # -- public API (same interface as SubprocessSandbox) --------------------
+
+    async def run(
+        self,
+        argv: list[str] | str,
+        *,
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+        stdin: str | None = None,
+    ) -> SandboxResult:
+        cmd_str = argv if isinstance(argv, str) else " ".join(argv)
+        allowed, reason = self._check_command(cmd_str)
+        if not allowed:
+            self._audit("run", cmd_str, False, reason)
+            return SandboxResult(stdout="", stderr=reason, exit_code=-1, duration_ms=0.0)
+        path_allowed, path_reason = self._check_path(cwd)
+        if not path_allowed:
+            self._audit("run", cmd_str, False, path_reason, cwd=cwd)
+            return SandboxResult(stdout="", stderr=path_reason, exit_code=-1, duration_ms=0.0)
+
+        self._process_count += 1
+        self._audit("run", cmd_str, True, "passed policy checks")
         try:
-            proc = await asyncio.create_subprocess_exec(
-                command,
-                *(args or []),
-                cwd=cwd,
-                env=env,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            
-            self._process_count += 1
-            self._active_processes[proc.pid] = asyncio.create_task(proc.wait())
-            
-            try:
-                stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(),
-                    timeout=self._config.timeout_s,
-                )
-                output = stdout.decode("utf-8", "replace")
-                if len(output) > self._config.max_output_size:
-                    output = output[:self._config.max_output_size] + "\n... [output truncated]"
-                
-                result = {
-                    "success": proc.returncode == 0,
-                    "exit_code": proc.returncode,
-                    "stdout": output,
-                    "stderr": stderr.decode("utf-8", "replace"),
-                    "duration_ms": 0,
-                }
-            except asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
-                result = {
-                    "success": False,
-                    "error": "execution timeout",
-                    "exit_code": -1,
-                }
-            finally:
-                self._process_count = max(0, self._process_count - 1)
-                self._active_processes.pop(proc.pid, None)
-            
+            result = await self._inner.run(argv, cwd=cwd, env=env, stdin=stdin)
+            result.stdout = self._check_output(result.stdout)
             return result
-            
-        except Exception as e:
-            self._log_audit("execute", full_cmd, False, str(e))
-            return {
-                "success": False,
-                "error": str(e),
-            }
+        finally:
+            self._process_count = max(0, self._process_count - 1)
+
+    async def run_python(self, code: str) -> SandboxResult:
+        allowed, reason = self._check_command("python3")
+        if not allowed:
+            self._audit("run_python", "", False, reason)
+            return SandboxResult(stdout="", stderr=reason, exit_code=-1, duration_ms=0.0)
+
+        self._process_count += 1
+        self._audit("run_python", "", True, "passed policy checks")
+        try:
+            result = await self._inner.run_python(code)
+            result.stdout = self._check_output(result.stdout)
+            return result
+        finally:
+            self._process_count = max(0, self._process_count - 1)
+
+    # -- stats ---------------------------------------------------------------
 
     def get_stats(self) -> dict[str, Any]:
-        """Get sandbox statistics."""
         return {
             "security_level": self._config.security_level.value,
             "active_processes": self._process_count,
@@ -185,10 +195,12 @@ class SecureSandbox:
 
 
 def create_secure_sandbox(
+    inner: SubprocessSandbox | None = None,
     security_level: str = "basic",
-    **kwargs,
+    **kwargs: Any,
 ) -> SecureSandbox:
-    """Factory function to create a secure sandbox."""
-    level = SecurityLevel(security_level)
-    config = SandboxConfig(security_level=level, **kwargs)
-    return SecureSandbox(config)
+    """Factory: wraps *inner* (or a default SubprocessSandbox) with SecureSandbox."""
+    if inner is None:
+        inner = SubprocessSandbox(timeout_s=kwargs.get("timeout_s", 30), memory_mb=kwargs.get("memory_mb", 256))
+    config = SandboxConfig(security_level=SecurityLevel(security_level), **kwargs)
+    return SecureSandbox(inner, config)

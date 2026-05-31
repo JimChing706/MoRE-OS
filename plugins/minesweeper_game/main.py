@@ -58,8 +58,8 @@ class Plugin(PluginBase):
         self.logger.info(f"Minesweeper plugin listening on http://{self._host}:{self._port}")
 
         # 4. Subscribe to event bus
-        ctx.event_bus.subscribe("task.started", self._on_task_started)
-        ctx.event_bus.subscribe("task.completed", self._on_task_completed)
+        self._unsub_started = ctx.event_bus.subscribe("task.started", self._on_task_started)
+        self._unsub_completed = ctx.event_bus.subscribe("task.completed", self._on_task_completed)
 
     async def _run_server(self) -> None:
         """Run FastAPI in separate task"""
@@ -72,7 +72,10 @@ class Plugin(PluginBase):
             loop="asyncio",
         )
         server = uvicorn.Server(config)
-        await server.serve()
+        try:
+            await server.serve()
+        except (OSError, SystemExit) as e:
+            self.logger.warning(f"Minesweeper GUI server could not start on port {self._port}: {e}")
 
     async def deactivate(self) -> None:
         """Deactivate plugin - stop Web service and cleanup"""
@@ -85,9 +88,10 @@ class Plugin(PluginBase):
 
         await session_manager.stop()
 
-        if self._ctx and self._ctx.event_bus:
-            self._ctx.event_bus.unsubscribe("task.started", self._on_task_started)
-            self._ctx.event_bus.unsubscribe("task.completed", self._on_task_completed)
+        if hasattr(self, '_unsub_started'):
+            self._unsub_started()
+        if hasattr(self, '_unsub_completed'):
+            self._unsub_completed()
 
         await super().deactivate()
         self.logger.info("Minesweeper plugin deactivated")
@@ -107,13 +111,19 @@ class Plugin(PluginBase):
 
     # —— Event Handlers ——
 
-    async def _on_task_started(self, event_data: dict[str, Any]) -> None:
+    async def _on_task_started(self, event) -> None:
         """Task started event - record game start"""
+        event_data = event.data if hasattr(event, 'data') else event
+        if not isinstance(event_data, dict):
+            return
         if event_data.get("source") == "minesweeper":
             self.logger.info(f"Game task started: {event_data.get('task_id')}")
 
-    async def _on_task_completed(self, event_data: dict[str, Any]) -> None:
+    async def _on_task_completed(self, event) -> None:
         """Task completed event - collect metrics and store to evolution archive"""
+        event_data = event.data if hasattr(event, 'data') else event
+        if not isinstance(event_data, dict):
+            return
         status = event_data.get("status")
         if status in ("won", "lost"):
             # Record to audit log

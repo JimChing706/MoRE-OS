@@ -32,6 +32,7 @@ DEFAULT_PIPELINES: dict[TaskType, list[LayerId]] = {
     TaskType.CODE_GENERATION: [LayerId.L4, LayerId.L3, LayerId.L1, LayerId.L0],
     TaskType.CODE_DEBUGGING: [LayerId.L4, LayerId.L3, LayerId.L1, LayerId.L0],
     TaskType.CODE_REVIEW: [LayerId.L4, LayerId.L3, LayerId.L1, LayerId.L0],
+    TaskType.CODE_TESTING: [LayerId.L4, LayerId.L3, LayerId.L1, LayerId.L0],
     TaskType.DATA_ANALYSIS: [LayerId.L4, LayerId.L3, LayerId.L1, LayerId.L0],
     TaskType.NLP_TASK: [LayerId.L4, LayerId.L3, LayerId.L1, LayerId.L0],
     TaskType.ARCHITECTURE_DESIGN: [LayerId.L5, LayerId.L4, LayerId.L3, LayerId.L1, LayerId.L0],

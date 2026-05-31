@@ -1,7 +1,7 @@
 # LLM调用状态管理API文档
 
-**版本**: 0.3.0  
-**更新时间**: 2026-05-06
+**版本**: 0.5.1  
+**更新时间**: 2026-05-23
 
 ---
 
@@ -250,6 +250,46 @@
     ...
   ]
 }
+```
+
+---
+
+### 8. 流式调用 (v0.5.1)
+
+LLM Manager 新增 `stream()` 方法，支持 token 级流式输出：
+
+```python
+from more_core.llm.provider import LLMRequest
+
+req = LLMRequest(prompt="Count 1-5", system="You are a counter", temperature=0.7, max_tokens=100)
+
+async for token in core.llm.stream(req):
+    print(token, end="", flush=True)
+```
+
+REST API 流式端点：
+```
+POST /api/v1/tasks/stream  →  SSE Stream
+```
+
+### 9. Task Model Router (v0.5.1)
+
+系统根据任务类型自动选择最优模型：
+
+```
+NLP_TASK  → ollama / qwen2.5:7b
+CODE_GEN  → ollama / qwen2.5:7b (fallback: lmstudio)
+MATH      → ollama / qwen2.5:7b
+ARCHITECT → ollama / qwen2.5:7b
+```
+
+自定义绑定：
+
+```python
+from more_core.llm.task_router import ModelBinding, TaskType
+
+core.task_model_router.set_binding(TaskType.CODE_GENERATION,
+    ModelBinding(provider="lmstudio", model="qwen3.6-35b"))
 ```
 
 ---

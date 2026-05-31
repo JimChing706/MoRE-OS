@@ -37,6 +37,7 @@ class RequestCache:
     def __init__(self, config: CacheConfig | None = None):
         self._config = config or CacheConfig()
         self._cache: OrderedDict[str, tuple[Any, float]] = OrderedDict()
+        self._lock = asyncio.Lock()
         self._hits = 0
         self._misses = 0
     
@@ -44,32 +45,35 @@ class RequestCache:
         raw = f"{model}:{prompt}:{sorted(kwargs.items())}"
         return hashlib.sha256(raw.encode()).hexdigest()[:32]
     
-    def get(self, prompt: str, model: str, **kwargs) -> Any | None:
+    async def get(self, prompt: str, model: str, **kwargs) -> Any | None:
         key = self._key(prompt, model, **kwargs)
-        if key in self._cache:
-            value, expiry = self._cache[key]
-            if time.time() < expiry:
-                self._hits += 1
-                self._cache.move_to_end(key)
-                return value
-            else:
-                del self._cache[key]
-        self._misses += 1
-        return None
+        async with self._lock:
+            if key in self._cache:
+                value, expiry = self._cache[key]
+                if time.time() < expiry:
+                    self._hits += 1
+                    self._cache.move_to_end(key)
+                    return value
+                else:
+                    del self._cache[key]
+            self._misses += 1
+            return None
     
-    def set(self, prompt: str, model: str, value: Any, ttl: int | None = None) -> None:
+    async def set(self, prompt: str, model: str, value: Any, ttl: int | None = None) -> None:
         key = self._key(prompt, model)
         ttl = ttl or self._config.ttl_seconds
         
-        if key in self._cache:
-            self._cache.move_to_end(key)
-        elif len(self._cache) >= self._config.max_size:
-            self._cache.popitem(last=False)
-        
-        self._cache[key] = (value, time.time() + ttl)
+        async with self._lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+            elif len(self._cache) >= self._config.max_size:
+                self._cache.popitem(last=False)
+            
+            self._cache[key] = (value, time.time() + ttl)
     
-    def clear(self) -> None:
-        self._cache.clear()
+    async def clear(self) -> None:
+        async with self._lock:
+            self._cache.clear()
     
     def stats(self) -> dict:
         total = self._hits + self._misses

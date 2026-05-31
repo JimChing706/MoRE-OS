@@ -287,4 +287,4 @@ class TestBasicFunctionality:
         from more_core.tools.registry import ToolRegistry
         registry = ToolRegistry()
         assert hasattr(registry, '_tools')
-        assert len(registry.list()) == 0
+        assert len(registry.list_tools()) == 0

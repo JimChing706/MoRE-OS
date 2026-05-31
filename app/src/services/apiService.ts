@@ -1,14 +1,12 @@
 import type { TaskRequest, TaskResult, SystemState, DashboardData, LayerMetrics } from '@/types/morev3';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE || 'http://localhost:8001';
+const API_BASE_URL = import.meta.env.VITE_API_BASE || 'http://localhost:8015';
 
 class APIService {
   private baseUrl: string;
-  private apiKey: string | undefined;
 
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl;
-    this.apiKey = import.meta.env.VITE_BFF_API_KEY;
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -17,9 +15,6 @@ class APIService {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
-    if (this.apiKey) {
-      headers['Authorization'] = `Bearer ${this.apiKey}`;
-    }
     if (options.headers) {
       Object.assign(headers, options.headers);
     }
@@ -37,7 +32,7 @@ class APIService {
   }
 
   async executeTask(request: TaskRequest): Promise<TaskResult> {
-    return this.request<TaskResult>('/api/tasks/execute', {
+    return this.request<TaskResult>('/api/v1/tasks/execute', {
       method: 'POST',
       body: JSON.stringify(request),
     });
@@ -50,11 +45,8 @@ class APIService {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
-    if (this.apiKey) {
-      headers['Authorization'] = `Bearer ${this.apiKey}`;
-    }
 
-    const response = await fetch(`${this.baseUrl}/api/tasks/execute/stream`, {
+    const response = await fetch(`${this.baseUrl}/api/v1/tasks/execute/stream`, {
       method: 'POST',
       body: JSON.stringify(request),
       headers,
@@ -95,20 +87,20 @@ class APIService {
   }
 
   async getSystemState(): Promise<SystemState> {
-    return this.request<SystemState>('/api/system/state');
+    return this.request<SystemState>('/api/v1/system/state');
   }
 
   async getTaskHistory(limit: number = 20): Promise<{ tasks: TaskResult[]; total: number }> {
-    return this.request<{ tasks: TaskResult[]; total: number }>(`/api/tasks/history?limit=${limit}`);
+    return this.request<TaskResult[]>(`/api/v1/tasks/history?limit=${limit}`);
   }
 
   async getConfiguredProviders(): Promise<Record<string, { provider: string; model: string; configured: boolean }>> {
-    const response = await this.request<{ providers: Record<string, { provider: string; model: string; configured: boolean }> }>('/api/config/providers');
+    const response = await this.request<{ providers: Record<string, { provider: string; model: string; configured: boolean }> }>('/api/v1/config/providers');
     return response.providers;
   }
 
   async healthCheck(): Promise<{ status: string; message: string }> {
-    return this.request<{ status: string; message: string }>('/api/health');
+    return this.request<{ status: string; message: string }>('/api/v1/health');
   }
 
   async getDashboardData(): Promise<DashboardData> {

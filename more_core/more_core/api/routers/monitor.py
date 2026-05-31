@@ -2,22 +2,25 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from ...runtime.orchestrator import MoRECore
 
 
-def create_router(core: MoRECore) -> APIRouter:
+def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
     router = APIRouter(prefix="/api/v1")
 
-    @router.get("/monitor/dashboard")
+    deps = [Depends(require_api_key)] if require_api_key else []
+
+    @router.get("/monitor/dashboard", dependencies=deps)
     async def dashboard_snapshot() -> dict[str, Any]:
         from .monitor import build_dashboard_snapshot
         return build_dashboard_snapshot(core)
 
-    @router.get("/monitor/health")
+    @router.get("/monitor/health", dependencies=deps)
     async def full_health() -> dict[str, Any]:
         import time as _time
         return {
@@ -37,8 +40,14 @@ def create_router(core: MoRECore) -> APIRouter:
         }
 
     @router.websocket("/monitor")
-    async def ws_monitor(websocket):
+    async def ws_monitor(websocket: WebSocket):
         """WebSocket endpoint for real-time dashboard updates."""
+        expected = os.getenv("MORE_API_KEY", "")
+        if expected:
+            token = websocket.headers.get("authorization", "").removeprefix("Bearer ").strip()
+            if not token or token != expected:
+                await websocket.close(code=4001)
+                return
         await websocket.accept()
         import asyncio as _aio
         from .monitor import build_dashboard_snapshot
@@ -48,6 +57,8 @@ def create_router(core: MoRECore) -> APIRouter:
                 await _aio.sleep(3)
                 snapshot = build_dashboard_snapshot(core)
                 await websocket.send_json({"event": "update", "data": snapshot})
+        except WebSocketDisconnect:
+            pass
         except Exception:
             pass
 
