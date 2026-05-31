@@ -192,26 +192,22 @@ class TestIntegrationGovernanceAndAudit:
             os.unlink(temp_path)
 
     def test_rbac_permission_check(self):
-        """Test RBAC permission checking."""
-        from more_core.governance.rbac import RBACPolicy, User, Role, Permission
+        """Test RBAC permission checking with UnifiedRBAC (replaces governance RBAC)."""
+        from more_core.security.rbac import UnifiedRBAC, Permission
         
-        policy = RBACPolicy()
+        rbac = UnifiedRBAC(admin_users=["admin1"])
+        rbac.assign_role("user1", "operator")
         
-        # Add admin user
-        admin = User(id="admin1", name="Admin", role=Role.ADMIN)
-        policy.add_user(admin)
+        # Admin (in admin_users list) has all permissions
+        assert rbac.check("admin1", Permission.TASK_EXECUTE)
+        assert rbac.check("admin1", Permission.SYS_ADMIN)
         
-        # Add regular user
-        user = User(id="user1", name="User", role=Role.USER)
-        policy.add_user(user)
+        # Operator role grants TASK_EXECUTE but not SYS_ADMIN
+        assert rbac.check("user1", Permission.TASK_EXECUTE)
+        assert not rbac.check("user1", Permission.SYS_ADMIN)
         
-        # Admin should have all permissions
-        assert policy.has_permission("admin1", Permission.TASK_CREATE)
-        assert policy.has_permission("admin1", Permission.SYSTEM_CONFIGURE)
-        
-        # User should have limited permissions
-        assert policy.has_permission("user1", Permission.TASK_CREATE)
-        assert not policy.has_permission("user1", Permission.SYSTEM_CONFIGURE)
+        # Unknown user is blocked
+        assert not rbac.check("random", Permission.TASK_EXECUTE)
 
 
 class TestIntegrationIncidentResponse:

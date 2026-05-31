@@ -82,11 +82,10 @@ class TestModuleImports:
         assert builtins is not None
 
     def test_governance_rbac_import(self):
-        """Test RBAC can be imported."""
-        from more_core.governance.rbac import RBACPolicy, Role, Permission
-        from more_core.governance.rbac import ROLE_PERMISSIONS
-        assert RBACPolicy is not None
-        assert Role.ADMIN is not None
+        """Test UnifiedRBAC can be imported (replaces governance RBAC)."""
+        from more_core.security.rbac import UnifiedRBAC, Permission, Role
+        assert UnifiedRBAC is not None
+        assert Permission.TASK_EXECUTE is not None
 
     def test_governance_audit_import(self):
         """Test audit can be imported."""
@@ -218,18 +217,18 @@ class TestBasicFunctionality:
         assert LayerId.L5.value == "L5"
 
     def test_role_values(self):
-        """Test Role enum values."""
-        from more_core.governance.rbac import Role
-        assert Role.ADMIN.value == "admin"
-        assert Role.USER.value == "user"
+        """Test built-in role names."""
+        from more_core.security.rbac import ROLE_ADMIN, ROLE_VIEWER, ROLE_OPERATOR
+        assert ROLE_ADMIN.name == "admin"
+        assert ROLE_VIEWER.name == "viewer"
 
     def test_rbac_policy_creation(self):
-        """Test RBAC policy can be created."""
-        from more_core.governance.rbac import RBACPolicy, User, Role
-        policy = RBACPolicy()
-        user = User(id="test", name="Test", role=Role.ADMIN)
-        policy.add_user(user)
-        assert policy.get_user("test") is not None
+        """Test UnifiedRBAC can be created and users assigned."""
+        from more_core.security.rbac import UnifiedRBAC, Permission
+        rbac = UnifiedRBAC(admin_users=["admin1"])
+        rbac.assign_role("test_user", "viewer")
+        assert rbac.check("test_user", Permission.TASK_VIEW)
+        assert not rbac.check("test_user", Permission.TOOL_SHELL)
 
     def test_zen_rules_default_rules(self):
         """Test ZEN rules enforcer has default rules."""
