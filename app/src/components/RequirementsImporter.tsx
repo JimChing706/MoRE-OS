@@ -87,6 +87,9 @@ const LAYER_COLORS: Record<string, string> = {
   L0: '#FFD54F', L1: '#FFC107', L2: '#FFB300', L3: '#FFA000', L4: '#FF8F00', L5: '#FF6F00',
 };
 
+const MAX_QUERY_LENGTH = 5000;
+const QUERY_WARN_THRESHOLD = 4000;
+
 export function RequirementsImporter() {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('input');
@@ -179,11 +182,18 @@ export function RequirementsImporter() {
       return;
     }
 
+    // Query length validation
+    const trimmed = taskInput.trim();
+    if (trimmed.length > MAX_QUERY_LENGTH) {
+      setError(`任务描述过长 (${trimmed.length}/${MAX_QUERY_LENGTH} 字符)，请精简后再提交`);
+      return;
+    }
+
     setSubmitting(true);
     setError('');
 
     const sources = documents.length > 0 ? [...documents] : undefined;
-    const query = taskInput.trim() || '基于上传文档处理';
+    const query = trimmed || '基于上传文档处理';
     const taskId = `task_${Date.now()}`;
     
     const newTask: CustomTask = {
@@ -554,7 +564,11 @@ export function RequirementsImporter() {
                         onChange={(e) => setTaskInput(e.target.value)}
                         placeholder="描述任务需求，或直接上传文档后输入..."
                         className="flex-1 text-sm min-h-[120px]"
+                        maxLength={MAX_QUERY_LENGTH + 500}
                       />
+                      <div className={`text-[10px] text-right ${taskInput.length > MAX_QUERY_LENGTH ? 'text-red-500 font-bold' : taskInput.length > QUERY_WARN_THRESHOLD ? 'text-orange-500' : 'text-gray-400'}`}>
+                        {taskInput.length} / {MAX_QUERY_LENGTH}
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-4 mt-3 flex-shrink-0">
@@ -624,7 +638,11 @@ export function RequirementsImporter() {
                       onChange={(e) => setTaskInput(e.target.value)}
                       placeholder={QUICK_TASKS.find(t => t.type === selectedType)?.placeholder}
                       className="min-h-[120px] text-sm"
+                      maxLength={MAX_QUERY_LENGTH + 500}
                     />
+                    <div className={`text-[10px] text-right ${taskInput.length > MAX_QUERY_LENGTH ? 'text-red-500 font-bold' : taskInput.length > QUERY_WARN_THRESHOLD ? 'text-orange-500' : 'text-gray-400'}`}>
+                      {taskInput.length} / {MAX_QUERY_LENGTH}
+                    </div>
 
                     {error && (
                       <div className="flex items-center gap-2 text-red-500 text-sm p-2 bg-red-50 rounded">
@@ -679,12 +697,18 @@ export function RequirementsImporter() {
                     <Button
                       onClick={() => {
                         const lines = taskInput.split('\n').filter(l => l.trim());
-                        if (lines.length > 0) {
-                          handleBatchTasks(lines);
-                          setTaskInput('');
-                        } else {
+                        if (lines.length === 0) {
                           setError('请输入至少一个任务');
+                          return;
                         }
+                        // Validate each line length
+                        const tooLong = lines.filter(l => l.length > MAX_QUERY_LENGTH);
+                        if (tooLong.length > 0) {
+                          setError(`${tooLong.length} 个任务描述超长 (>${MAX_QUERY_LENGTH} 字符)，请精简后再提交`);
+                          return;
+                        }
+                        handleBatchTasks(lines);
+                        setTaskInput('');
                       }}
                       className="w-full gap-2 bg-blue-600 hover:bg-blue-700"
                     >

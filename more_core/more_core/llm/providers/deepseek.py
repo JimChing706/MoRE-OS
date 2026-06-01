@@ -18,6 +18,9 @@ class DeepSeekProvider:
         "deepseek-coder": "deepseek-coder",
         "deepseek-chat-v2": "deepseek-chat-v2",
         "deepseek-coder-v2": "deepseek-coder-v2",
+        "deepseek-chat-v3": "deepseek-chat",
+        "deepseek-reasoner": "deepseek-reasoner",
+        "deepseek-v3": "deepseek-chat",
     }
 
     def __init__(
@@ -46,6 +49,8 @@ class DeepSeekProvider:
             "max_tokens": request.max_tokens or 4096,
             "stream": False,
         }
+        if request.enable_thinking:
+            payload["thinking"] = {"type": "enabled"}
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             try:
                 r = await client.post(
@@ -60,12 +65,14 @@ class DeepSeekProvider:
             if r.status_code >= 400:
                 raise LLMError(f"deepseek {r.status_code}: {r.text}")
             data = r.json()
+        msg = data["choices"][0]["message"]
         return LLMResponse(
-            content=data["choices"][0]["message"]["content"],
+            content=msg["content"],
             provider=self.name,
             model=self.model,
             prompt_tokens=data.get("usage", {}).get("prompt_tokens", 0),
             completion_tokens=data.get("usage", {}).get("completion_tokens", 0),
+            reasoning_content=msg.get("reasoning_content"),
         )
 
     async def stream(self, request: LLMRequest) -> AsyncIterator[str]:

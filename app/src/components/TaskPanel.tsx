@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Separator } from '@/components/ui/separator';
 
 import { moreEngine } from '@/core/moreEngine';
+import { useApiHealth } from '@/hooks/useApiHealth';
 import { formatDuration, formatTokens } from '@/lib/format';
 import type { TaskRequest, TaskResult, TaskType, LayerId, ReasoningStep } from '@/types/morev3';
 import {
@@ -95,31 +96,9 @@ export function TaskPanel() {
   const [selectedResult, setSelectedResult] = useState<TaskResult | null>(null);
   const [viewMode, setViewMode] = useState<'cards' | 'chain'>('chain');
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
-  const [apiConnected, setApiConnected] = useState<boolean | null>(null);
-  const [apiError, setApiError] = useState<string | null>(null);
+  const { online } = useApiHealth();
 
   const categories = [...new Set(TASK_PRESETS.map(p => p.category))];
-
-  // Check API connection status on mount
-  useEffect(() => {
-    let cancelled = false;
-    async function check() {
-      try {
-        const res = await fetch(`${import.meta.env.VITE_API_BASE || 'http://localhost:8011'}/api/v1/health`);
-        if (!cancelled) {
-          setApiConnected(res.ok);
-          setApiError(res.ok ? null : `HTTP ${res.status}`);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setApiConnected(false);
-          setApiError(e instanceof Error ? e.message : 'Connection failed');
-        }
-      }
-    }
-    check();
-    return () => { cancelled = true; };
-  }, []);
 
   const toggleStep = (stepId: number) => {
     setExpandedSteps(prev => {
@@ -184,11 +163,7 @@ export function TaskPanel() {
             任务执行面板
           </h3>
           <div className="flex items-center gap-2">
-            {apiConnected === null ? (
-              <Badge variant="outline" className="text-xs bg-gray-100 text-gray-500 gap-1">
-                <div className="w-2 h-2 rounded-full bg-gray-400 animate-pulse" /> 检测中
-              </Badge>
-            ) : apiConnected ? (
+            {online ? (
               <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 gap-1">
                 <div className="w-2 h-2 rounded-full bg-green-500" /> API 已连接
               </Badge>
@@ -341,13 +316,13 @@ export function TaskPanel() {
         <Separator />
 
         {/* API offline warning */}
-        {apiConnected === false && (
+        {!online && (
           <div className="p-3 rounded-lg border-2 border-red-200 bg-red-50 text-sm text-red-700">
             <div className="flex items-center gap-2 mb-1">
               <AlertCircle className="w-4 h-4" />
               <span className="font-bold">API 服务不可达</span>
             </div>
-            <p className="text-xs text-red-600">{apiError || '请确认 API 服务已启动 (http://localhost:8011)'}</p>
+            <p className="text-xs text-red-600">{'请确认 API 服务已启动 (http://localhost:8011)'}</p>
           </div>
         )}
 

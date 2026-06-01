@@ -29,12 +29,12 @@ _DIFFICULTY_BASE: dict[TaskType, int] = {
     TaskType.PLUGIN_DEFINED: 5,
 }
 
-_DECOMPOSE_THRESHOLD = 7
+_DECOMPOSE_THRESHOLD = 6  # Lowered from 7: "optimize logistics with DP" difficulty=6 now triggers decomposition
 
 # Signals that increase estimated difficulty
 _COMPLEXITY_KEYWORDS = {
     "en": ["integrate", "distributed", "concurrent", "optimize", "architecture",
-           "migration", "refactor", "security", "scalab", "multi-"],
+           "migration", "refactor", "security", "scalable", "multi-"],
     "zh": ["集成", "分布式", "并发", "优化", "架构", "迁移", "重构", "安全", "可扩展", "多模块"],
 }
 

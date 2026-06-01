@@ -15,6 +15,7 @@ class LLMRequest:
     stop: list[str] = field(default_factory=list)
     extra: dict[str, object] = field(default_factory=dict)
     model_override: str | None = None
+    enable_thinking: bool = False  # DeepSeek V4 thinking tokens
 
 
 @dataclass(slots=True)
@@ -26,6 +27,7 @@ class LLMResponse:
     completion_tokens: int = 0
     latency_ms: float = 0.0
     cached: bool = False
+    reasoning_content: str | None = None
 
 
 @runtime_checkable
