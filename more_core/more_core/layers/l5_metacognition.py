@@ -80,7 +80,11 @@ class MetacognitionLayer(Layer):
         return LayerResult(
             layer=self.layer_id,
             description=description,
-            output={"calibration": calibration, "plan_health": plan_health},
+            output={
+                "calibration": calibration,
+                "plan_health": plan_health,
+                "structured_plan": ctx.scratch.get("structured_plan"),
+            },
             confidence=alignment,
         )
 

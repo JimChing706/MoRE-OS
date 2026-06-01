@@ -80,6 +80,14 @@ class CognitionLayer(Layer):
 
         ctx.scratch["difficulty"] = difficulty
         ctx.scratch["plan"] = plan
+
+        # Generate structured plan for L5 monitoring (DeepSeek TUI pattern)
+        from ..planning.structured_plan import merge_plan_with_l4_output
+        structured = merge_plan_with_l4_output(plan, ctx.request.query)
+        if structured:
+            structured.start_next_phase()  # activate first phase
+            ctx.scratch["structured_plan"] = structured.to_dict()
+            ctx.scratch["_structured_plan_obj"] = structured
         
         confidence = 0.88 if not plan.get("decomposed") else 0.92
         
