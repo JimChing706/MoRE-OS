@@ -16,24 +16,24 @@ import {
   Code, Bug, Calculator, BarChart3, MessageSquare,
   Users, Sparkles, ArrowRightLeft, Clock,
   CheckCircle2, AlertCircle, Terminal,
-  GitPullRequest, Layers, Info, ArrowDown, ArrowRight,
+  GitPullRequest, Layers, Info, ArrowDown, ArrowRight, Play,
   Zap, Brain, Network, Cpu, ChevronDown, ChevronUp, Activity,
   List, Grid3X3, ArrowUp, LayoutGrid, GitBranch,
   Timer, Hash, Percent, TrendingUp, BarChart2, Contrast
 } from 'lucide-react';
 
-const TASK_PRESETS: { type: TaskType; label: string; icon: React.ReactNode; query: string; description: string; category: string; layers: LayerId[]; features: string[] }[] = [
-  { type: 'code_generation', label: '代码生成', icon: <Code className="w-4 h-4" />, query: 'Generate a Python function to optimize supply chain logistics with dynamic programming', description: '认知→符号→编排→执行', category: '开发', layers: ['L4', 'L3', 'L1', 'L0'], features: ['语义解析', '符号推理', '编排调度', '代码执行'] },
-  { type: 'code_debugging', label: '代码调试', icon: <Bug className="w-4 h-4" />, query: 'Debug the memory leak in the async worker pool with detailed root cause analysis', description: '认知→符号→编排→执行', category: '开发', layers: ['L4', 'L3', 'L1', 'L0'], features: ['根因分析', '符号验证', '编排定位', '修复执行'] },
-  { type: 'code_review', label: '代码审查', icon: <GitPullRequest className="w-4 h-4" />, query: 'Review this code for security vulnerabilities, performance issues, and architectural improvements', description: '认知→符号→编排→执行', category: '开发', layers: ['L4', 'L3', 'L1', 'L0'], features: ['语义理解', '安全扫描', '协作审查', '改进输出'] },
-  { type: 'code_testing', label: '代码测试', icon: <CheckCircle2 className="w-4 h-4" />, query: 'Generate and run unit tests for the given Python module with coverage analysis', description: '认知→符号→编排→执行', category: '开发', layers: ['L4', 'L3', 'L1', 'L0'], features: ['测试生成', '符号验证', '沙箱执行', '覆盖率报告'] },
-  { type: 'architecture_design', label: '架构设计', icon: <Layers className="w-4 h-4" />, query: 'Design a scalable microservices architecture for an e-commerce platform with service mesh', description: '元认知→认知→符号→编排→执行', category: '开发', layers: ['L5', 'L4', 'L3', 'L1', 'L0'], features: ['需求分析', '元认知校准', '约束验证', '服务拆分', '架构输出'] },
-  { type: 'math_reasoning', label: '数学推理', icon: <Calculator className="w-4 h-4" />, query: 'Prove that every prime > 3 is of form 6k±1 with formal verification', description: 'NSPA-AI符号推理验证', category: '推理', layers: ['L4', 'L3', 'L0'], features: ['形式化证明', '约束验证', '推理链'] },
-  { type: 'data_analysis', label: '数据分析', icon: <BarChart3 className="w-4 h-4" />, query: 'Analyze customer churn patterns in the Q1 dataset with predictive modeling', description: '多Agent协作分析', category: '推理', layers: ['L1', 'L4', 'L0'], features: ['数据聚合', '模式识别', '预测建模'] },
-  { type: 'nlp_task', label: 'NLP任务', icon: <MessageSquare className="w-4 h-4" />, query: 'Extract named entities and relations from legal documents with context awareness', description: '神经符号融合', category: '推理', layers: ['L4', 'L3', 'L0'], features: ['实体识别', '关系抽取', '上下文融合'] },
-  { type: 'multi_agent_orchestration', label: 'Agent编排', icon: <Users className="w-4 h-4" />, query: 'Coordinate 5 agents to build a microservice architecture with optimal task distribution', description: 'OMAC优化编排', category: '协作', layers: ['L1', 'L4', 'L2'], features: ['任务分解', '负载均衡', '协作优化'] },
-  { type: 'self_improvement', label: '自我改进', icon: <Sparkles className="w-4 h-4" />, query: 'Evolve the reasoning strategy for code review tasks with performance metrics', description: 'DGM + HyperAgents', category: '协作', layers: ['L5', 'L2', 'L4'], features: ['策略学习', '性能迭代', '自适应'] },
-  { type: 'cross_domain_transfer', label: '跨域迁移', icon: <ArrowRightLeft className="w-4 h-4" />, query: 'Transfer math proof strategies to algorithm design with generalization', description: '元认知跨域迁移', category: '协作', layers: ['L5', 'L4', 'L3'], features: ['知识迁移', '泛化验证', '领域适配'] },
+const TASK_TEMPLATES: { type: TaskType; label: string; icon: React.ReactNode; placeholder: string; description: string; category: string; layers: LayerId[]; features: string[] }[] = [
+  { type: 'code_generation', label: '代码生成', icon: <Code className="w-4 h-4" />, placeholder: '描述你要生成的代码功能和语言...', description: '认知→符号→编排→执行', category: '开发', layers: ['L4', 'L3', 'L1', 'L0'], features: ['语义解析', '符号推理', '编排调度', '代码执行'] },
+  { type: 'code_debugging', label: '代码调试', icon: <Bug className="w-4 h-4" />, placeholder: '描述你遇到的 bug 和期望的修复...', description: '认知→符号→编排→执行', category: '开发', layers: ['L4', 'L3', 'L1', 'L0'], features: ['根因分析', '符号验证', '编排定位', '修复执行'] },
+  { type: 'code_review', label: '代码审查', icon: <GitPullRequest className="w-4 h-4" />, placeholder: '粘贴代码或描述审查重点...', description: '认知→符号→编排→执行', category: '开发', layers: ['L4', 'L3', 'L1', 'L0'], features: ['语义理解', '安全扫描', '协作审查', '改进输出'] },
+  { type: 'code_testing', label: '代码测试', icon: <CheckCircle2 className="w-4 h-4" />, placeholder: '描述需要生成测试的模块...', description: '认知→符号→编排→执行', category: '开发', layers: ['L4', 'L3', 'L1', 'L0'], features: ['测试生成', '符号验证', '沙箱执行', '覆盖率报告'] },
+  { type: 'architecture_design', label: '架构设计', icon: <Layers className="w-4 h-4" />, placeholder: '描述系统需求和约束条件...', description: '元认知→认知→符号→编排→执行', category: '开发', layers: ['L5', 'L4', 'L3', 'L1', 'L0'], features: ['需求分析', '元认知校准', '约束验证', '服务拆分', '架构输出'] },
+  { type: 'math_reasoning', label: '数学推理', icon: <Calculator className="w-4 h-4" />, placeholder: '输入数学问题或证明题...', description: 'NSPA-AI符号推理验证', category: '推理', layers: ['L4', 'L3', 'L0'], features: ['形式化证明', '约束验证', '推理链'] },
+  { type: 'data_analysis', label: '数据分析', icon: <BarChart3 className="w-4 h-4" />, placeholder: '描述数据源和分析目标...', description: '多Agent协作分析', category: '推理', layers: ['L1', 'L4', 'L0'], features: ['数据聚合', '模式识别', '预测建模'] },
+  { type: 'nlp_task', label: 'NLP任务', icon: <MessageSquare className="w-4 h-4" />, placeholder: '描述NLP任务需求...', description: '神经符号融合', category: '推理', layers: ['L4', 'L3', 'L0'], features: ['实体识别', '关系抽取', '上下文融合'] },
+  { type: 'multi_agent_orchestration', label: 'Agent编排', icon: <Users className="w-4 h-4" />, placeholder: '描述多Agent协作场景...', description: 'OMAC优化编排', category: '协作', layers: ['L1', 'L4', 'L2'], features: ['任务分解', '负载均衡', '协作优化'] },
+  { type: 'self_improvement', label: '自我改进', icon: <Sparkles className="w-4 h-4" />, placeholder: '描述需要优化的推理策略...', description: 'DGM + HyperAgents', category: '协作', layers: ['L5', 'L2', 'L4'], features: ['策略学习', '性能迭代', '自适应'] },
+  { type: 'cross_domain_transfer', label: '跨域迁移', icon: <ArrowRightLeft className="w-4 h-4" />, placeholder: '描述领域迁移的目标与源...', description: '元认知跨域迁移', category: '协作', layers: ['L5', 'L4', 'L3'], features: ['知识迁移', '泛化验证', '领域适配'] },
 ];
 
 const layerColors: Record<LayerId, string> = {
@@ -99,8 +99,10 @@ export function TaskPanel() {
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
   const { online } = useApiHealth();
   const { stats: memStats, remember, getRelatedContext } = useTaskMemory();
+  const [queryInput, setQueryInput] = useState('');
+  const [pendingTemplate, setPendingTemplate] = useState<typeof TASK_TEMPLATES[0] | null>(null);
 
-  const categories = [...new Set(TASK_PRESETS.map(p => p.category))];
+  const categories = [...new Set(TASK_TEMPLATES.map(p => p.category))];
 
   const toggleStep = (stepId: number) => {
     setExpandedSteps(prev => {
@@ -114,13 +116,13 @@ export function TaskPanel() {
     });
   };
 
-  const executeTask = async (preset: typeof TASK_PRESETS[0]) => {
+  const executeTask = async (preset: typeof TASK_TEMPLATES[0]) => {
     const taskId = `task_${Date.now()}`;
     setExecuting(taskId);
     setExecError(null);
 
     // Inject related past task context for memory-augmented execution
-    const memoryContext = getRelatedContext(preset.query, preset.type);
+    const memoryContext = getRelatedContext(queryInput, preset.type);
     const contextPayload: Record<string, any> = {
       source: 'task_panel_preset',
       task_label: preset.label,
@@ -132,7 +134,7 @@ export function TaskPanel() {
     const request: TaskRequest = {
       id: taskId,
       type: preset.type,
-      query: preset.query,
+      query: queryInput,
       context: contextPayload,
       requireMetacognitiveMonitoring: preset.type === 'self_improvement' || preset.type === 'cross_domain_transfer',
     };
@@ -142,7 +144,7 @@ export function TaskPanel() {
 
       // Record to memory bank for future context
       if (result.output && result.output.length > 100) {
-        remember(result, preset.query);
+        remember(result, queryInput);
       }
 
       setResults(prev => [result, ...prev].slice(0, 20));
@@ -355,6 +357,35 @@ export function TaskPanel() {
           </div>
         )}
 
+        {/* Query input dialog (shown when template is selected) */}
+        {pendingTemplate && (
+          <div className="p-3 rounded-lg border-2 border-orange-200 bg-orange-50">
+            <div className="flex items-center gap-2 mb-2">
+              {pendingTemplate.icon}
+              <span className="text-sm font-bold">{pendingTemplate.label}</span>
+              <Badge variant="outline" className="text-[10px]">{pendingTemplate.placeholder}</Badge>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={queryInput}
+                onChange={(e) => setQueryInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && queryInput.trim() && (executeTask(pendingTemplate), setPendingTemplate(null), setQueryInput(''))}
+                placeholder={pendingTemplate.placeholder}
+                className="flex-1 text-sm border rounded px-3 py-2"
+                autoFocus
+              />
+              <Button size="sm" onClick={() => { executeTask(pendingTemplate); setPendingTemplate(null); setQueryInput(''); }}
+                disabled={!queryInput.trim()} className="bg-orange-500 hover:bg-orange-600">
+                <Play className="w-3 h-3 mr-1" /> 执行
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => { setPendingTemplate(null); setQueryInput(''); }}>
+                取消
+              </Button>
+            </div>
+          </div>
+        )}
+
         <Tabs defaultValue={categories[0]} className="w-full">
           <TabsList className="w-full flex flex-wrap h-auto gap-1">
             {categories.map(cat => (
@@ -367,7 +398,7 @@ export function TaskPanel() {
           {categories.map(cat => (
             <TabsContent key={cat} value={cat} className="mt-2">
               <div className="grid grid-cols-2 gap-3">
-                {TASK_PRESETS.filter(p => p.category === cat).map(preset => (
+                {TASK_TEMPLATES.filter(p => p.category === cat).map(preset => (
                   <div
                     key={preset.type}
                     className={`
@@ -375,7 +406,7 @@ export function TaskPanel() {
                       border-gray-200 bg-white hover:border-orange-300 hover:shadow-md
                       ${executing ? 'opacity-60 pointer-events-none' : ''}
                     `}
-                    onClick={() => !executing && executeTask(preset)}
+                    onClick={() => !executing && (setPendingTemplate(preset), setQueryInput(''))}
                   >
                     {executing && (
                       <div className="absolute inset-0 flex items-center justify-center bg-white/50 rounded-xl z-10">
