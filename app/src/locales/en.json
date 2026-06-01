@@ -1,7 +1,7 @@
 {
   "app": {
-    "title": "MoRE v3.0",
-    "subtitle": "Neuro-Symbolic Metacognitive Architecture",
+    "title": "MoRE OS",
+    "subtitle": "Neuro-Symbolic Metacognitive Self-Evolving Agent OS",
     "status": {
       "running": "System Running",
       "stopped": "System Stopped",
@@ -97,7 +97,7 @@
     "retrievalAccuracy": "Retrieval Accuracy"
   },
   "footer": {
-    "architecture": "Six-layer Architecture: L0 Execution → L5 Metacognition",
+    "architecture": "Six-Layer: L0 Exec u2192 L1 Orch u2192 L2 Evol u2192 L3 Symbolic u2192 L4 Cognition u2192 L5 Metacognition",
     "integrations": "Integrations: HyperAgents + DGM + NSPA-AI + OMAC + AOW Ontology"
   },
   "common": {

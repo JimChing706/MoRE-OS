@@ -24,11 +24,17 @@ function getHealthSnapshot(): boolean {
   return apiService.healthOnline;
 }
 
+function getVersionSnapshot(): string {
+  return apiService.healthVersion;
+}
+
 export function useApiHealth(): {
   online: boolean;
+  version: string;
   checkNow: () => Promise<boolean>;
 } {
   const online = useSyncExternalStore(subscribeHealth, getHealthSnapshot);
+  const version = useSyncExternalStore(subscribeHealth, getVersionSnapshot);
 
   const checkNow = useCallback(async () => {
     return await apiService.checkHealth();
@@ -40,7 +46,7 @@ export function useApiHealth(): {
     return cleanup;
   }, []);
 
-  return { online, checkNow };
+  return { online, version, checkNow };
 }
 
 export { apiService };

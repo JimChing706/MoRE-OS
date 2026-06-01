@@ -1,5 +1,5 @@
 // ============================================================
-// MoRE v3.0 — 核心引擎系统
+// MoRE OS v0.6 — 核心引擎系统
 // ============================================================
 
 import type {
@@ -268,7 +268,45 @@ function determineRoutingLayers(request: TaskRequest): LayerId[] {
 
 function generateOutput(type: TaskType): string {
   const outputs: Record<TaskType, string> = {
-    code_generation: '生成经过优化的代码实现，通过符号验证和元认知校准确保质量。',
+    code_generation: `\`\`\`python
+def optimize_supply_chain(costs: list[list[int]], supply: list[int], demand: list[int]) -> int:
+    """
+    Optimize supply chain logistics using dynamic programming.
+    
+    Args:
+        costs: costs[i][j] = cost to ship from warehouse i to store j
+        supply: supply[i] = units available at warehouse i
+        demand: demand[j] = units needed at store j
+    
+    Returns:
+        Minimum total transportation cost.
+    """
+    m, n = len(supply), len(demand)
+    # dp[i][j] = min cost for first i warehouses serving first j stores
+    INF = float('inf')
+    dp = [[INF] * (sum(demand) + 1) for _ in range(m + 1)]
+    dp[0][0] = 0
+    
+    total = 0
+    for i in range(1, m + 1):
+        total += supply[i - 1]
+        for j in range(total + 1):
+            dp[i][j] = dp[i - 1][j]
+            # Try shipping k units from warehouse i
+            for k in range(1, min(j, supply[i - 1]) + 1):
+                prev = dp[i - 1][j - k]
+                if prev != INF:
+                    dp[i][j] = min(dp[i][j], prev + costs[i - 1][0] * k)
+    
+    return dp[m][sum(demand)] if dp[m][sum(demand)] != INF else -1
+
+# Example usage
+costs = [[2, 3, 1], [5, 4, 2]]
+supply = [20, 30]
+demand = [10, 15, 25]
+result = optimize_supply_chain(costs, supply, demand)
+print(f"Minimum transport cost: {result}")
+\`\`\``,
     code_debugging: '定位到3个关键bug，通过进化搜索找到最优修复方案。',
     code_review: '多维度代码审查完成，发现2个安全隐患、3处性能瓶颈、5项架构改进建议。',
     code_testing: '测试套件生成完成，覆盖单元测试和集成测试，测试通过率95%。',

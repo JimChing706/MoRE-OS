@@ -1,7 +1,7 @@
 {
   "app": {
-    "title": "MoRE v3.0",
-    "subtitle": "神经符号元认知混合架构",
+    "title": "MoRE OS",
+    "subtitle": "神经符号元认知自进化 Agent OS",
     "status": {
       "running": "系统运行中",
       "stopped": "系统已停止",
@@ -97,7 +97,7 @@
     "retrievalAccuracy": "检索准确率"
   },
   "footer": {
-    "architecture": "六层架构: L0执行 → L5元认知",
+    "architecture": "六层架构: L0执行 → L1编排 → L2进化 → L3符号 → L4认知 → L5元认知",
     "integrations": "集成: HyperAgents + DGM + NSPA-AI + OMAC + AOW 本体"
   },
   "common": {

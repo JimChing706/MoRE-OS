@@ -125,7 +125,6 @@ export function TaskPanel() {
     };
 
     try {
-      await new Promise(r => setTimeout(r, 300 + Math.random() * 500));
       const result = await moreEngine.executeTask(request);
 
       setResults(prev => [result, ...prev].slice(0, 20));

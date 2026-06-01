@@ -24,8 +24,8 @@ export class ApiError extends Error {
 
 class APIService {
   private baseUrl: string;
-  private _healthStatus: { online: boolean; lastCheck: number; consecutiveErrors: number } = {
-    online: false, lastCheck: 0, consecutiveErrors: 0,
+  private _healthStatus: { online: boolean; lastCheck: number; consecutiveErrors: number; version: string } = {
+    online: false, lastCheck: 0, consecutiveErrors: 0, version: 'unknown',
   };
   private _healthListeners = new Set<(online: boolean) => void>();
 
@@ -35,6 +35,7 @@ class APIService {
 
   // ── 健康状态订阅 ──
   get healthOnline(): boolean { return this._healthStatus.online; }
+  get healthVersion(): string { return this._healthStatus.version; }
 
   onHealthChange(fn: (online: boolean) => void): () => void {
     this._healthListeners.add(fn);
@@ -59,6 +60,10 @@ class APIService {
       const online = res.ok;
       if (online) {
         this._healthStatus.consecutiveErrors = 0;
+        try {
+          const body = await res.json();
+          if (body?.version) this._healthStatus.version = body.version;
+        } catch { /* keep old version */ }
       } else {
         this._healthStatus.consecutiveErrors++;
       }

@@ -43,7 +43,7 @@ export function LayerVisualizer({ data, selectedLayer, onSelectLayer }: LayerVis
     <div className="space-y-2">
       <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
         <Cpu className="w-5 h-5 text-orange-600" />
-        MoRE v3.0 六层架构
+        MoRE OS 六层架构 (L0–L5)
       </h3>
       {[...layers].reverse().map((layer) => {
         const metric = getMetricForLayer(layer.id);

@@ -13,6 +13,7 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { RequirementsImporter } from '@/components/RequirementsImporter';
 import { ProjectOutputReview } from '@/components/ProjectOutputReview';
 import { moreEngine, getDashboardData } from '@/core/moreEngine';
+import { useApiHealth } from '@/hooks/useApiHealth';
 import { NumberPrecision, formatDuration } from '@/lib/format';
 import type { DashboardData, LayerId } from '@/types/morev3';
 import { 
@@ -22,6 +23,7 @@ import {
 
 export default function Home() {
   const { t } = useTranslation();
+  const { online, version } = useApiHealth();
   const [data, setData] = useState<DashboardData>(getDashboardData());
   const [selectedLayer, setSelectedLayer] = useState<LayerId | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
@@ -52,7 +54,12 @@ export default function Home() {
                 <Cpu className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-lg font-bold text-gray-900 leading-tight">{t('app.title')}</h1>
+                <h1 className="text-lg font-bold text-gray-900 leading-tight">
+                  {t('app.title')}
+                  <span className="ml-2 text-xs font-mono text-orange-500 bg-orange-50 px-2 py-0.5 rounded">
+                    {version}
+                  </span>
+                </h1>
                 <p className="text-[10px] text-gray-500">{t('app.subtitle')}</p>
               </div>
             </div>
@@ -191,7 +198,7 @@ export default function Home() {
 
         {/* 底部信息栏 */}
         <footer className="mt-6 text-center text-[10px] text-gray-400 pb-4">
-          <p>{t('app.title')} — {t('app.subtitle')} | {t('footer.architecture')}</p>
+          <p>{t('app.title')} <span className="font-mono text-orange-500">{version}</span> — {t('app.subtitle')} | {t('footer.architecture')}</p>
           <p className="mt-0.5">{t('footer.integrations')}</p>
         </footer>
       </main>

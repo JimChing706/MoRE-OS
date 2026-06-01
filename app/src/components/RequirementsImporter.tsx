@@ -16,10 +16,11 @@ import {
   ListChecks, Code, Bug, Calculator, MessageSquare,
   Lightbulb, Sparkles, Settings,
   File, FileCode, Image, BookOpen,
-  Cpu, RefreshCw, Play, Trash2, Radio
+  Cpu, RefreshCw, Play, Trash2, Radio, Brain
 } from 'lucide-react';
 import type { TaskType, TaskRequest, TaskResult, ReasoningStep, PerformanceMetrics } from '@/types/morev3';
 import { moreEngine } from '@/core/moreEngine';
+import { useTaskMemory } from '@/hooks/useTaskMemory';
 
 interface DocumentInput {
   id: string;
@@ -113,6 +114,7 @@ export function RequirementsImporter() {
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { stats: memStats, remember, getRelatedContext } = useTaskMemory();
 
   // Check API connectivity on mount
   useEffect(() => {
@@ -207,20 +209,33 @@ export function RequirementsImporter() {
     setCustomTasks(prev => [newTask, ...prev]);
 
     // Build a real TaskRequest and call the backend via moreEngine
+    // Inject related past task context for memory-augmented execution
+    const memoryContext = getRelatedContext(query, task.type);
+    const contextPayload: Record<string, any> = {
+      source: 'requirements_importer',
+      document_count: documents.length,
+      documents: documents.map(d => ({ name: d.name, type: d.type })),
+    };
+    if (memoryContext) {
+      contextPayload.memory_context = memoryContext;
+    }
+
     const request: TaskRequest = {
       id: taskId,
       type: task.type,
       query,
-      context: {
-        source: 'requirements_importer',
-        document_count: documents.length,
-        documents: documents.map(d => ({ name: d.name, type: d.type })),
-      },
+      context: contextPayload,
       requireMetacognitiveMonitoring: false,
     };
 
     try {
       const result: TaskResult = await moreEngine.executeTask(request);
+
+      // Record to memory bank for future context
+      // Only record real API results to memory (not simulated fallbacks)
+      if (result.output && result.output.length > 100) {
+        remember(result, query);
+      }
 
       setCustomTasks(prev => prev.map(t => 
         t.id === taskId ? {
@@ -333,6 +348,11 @@ export function RequirementsImporter() {
             <div className="flex items-center gap-2">
               <Wand2 className="w-5 h-5 text-orange-500" />
               MoRE 任务输入端口
+              {memStats.totalMemories > 0 && (
+                <Badge variant="outline" className="text-[10px] bg-purple-50 text-purple-600 border-purple-200 gap-1">
+                  <Brain className="w-3 h-3" /> {memStats.totalMemories} 记忆
+                </Badge>
+              )}
               {apiConnected === null ? (
                 <Badge variant="outline" className="text-[10px] bg-gray-100 text-gray-500">
                   <div className="w-2 h-2 rounded-full bg-gray-400 animate-pulse mr-1" /> 检测中
