@@ -105,7 +105,7 @@ export function TaskPanel() {
     let cancelled = false;
     async function check() {
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_BASE || 'http://localhost:8010'}/api/v1/health`);
+        const res = await fetch(`${import.meta.env.VITE_API_BASE || 'http://localhost:8011'}/api/v1/health`);
         if (!cancelled) {
           setApiConnected(res.ok);
           setApiError(res.ok ? null : `HTTP ${res.status}`);
@@ -347,7 +347,7 @@ export function TaskPanel() {
               <AlertCircle className="w-4 h-4" />
               <span className="font-bold">API 服务不可达</span>
             </div>
-            <p className="text-xs text-red-600">{apiError || '请确认 API 服务已启动 (http://localhost:8015)'}</p>
+            <p className="text-xs text-red-600">{apiError || '请确认 API 服务已启动 (http://localhost:8011)'}</p>
           </div>
         )}
 

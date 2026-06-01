@@ -37,7 +37,7 @@ interface TaskState {
   executeTask: (query: string, type?: string) => Promise<void>
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8010'
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8011'
 
 export const useTaskStore = create<TaskState>((set, _get) => ({
   tasks: [],

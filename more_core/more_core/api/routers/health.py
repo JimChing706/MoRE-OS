@@ -18,7 +18,7 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
     async def health() -> dict[str, Any]:
         return {
             "status": "healthy",
-            "version": core.settings.version if hasattr(core.settings, "version") else "0.5.0",
+            "version": core.settings.version,
             "gates": {
                 "symbolic": core.settings.enable_symbolic,
                 "evolution": core.settings.enable_evolution,

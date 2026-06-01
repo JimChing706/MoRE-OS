@@ -43,29 +43,48 @@ Claude 可能在第 4 步已经坏掉的状态上继续完成第 5、6 步，而
 - 纪律永远比框架重要
 - 一个仓库，一个规则文件，没有例外
 
-## 项目上下文 (2026-05-22)
+## 项目上下文 (2026-06-01)
 
-- **版本**: v0.5.1
+- **版本**: v0.6.0-alpha
 - **运行环境**: Python 3.14, `.venv/`, macOS
-- **API 端口**: 8010 (当前活跃)
-- **LLM Provider**: Ollama `qwen2.5:7b` (primary) + LM Studio (fallback)
-- **dotenv**: `more_core/.env` 自动加载
-- **前端**: `app/` React + Vite, 端口 3002/3003
+- **API 端口**: 8011 (`.venv/bin/python -m more_core.cli serve`)
+- **前端端口**: 3003 (`cd app && npm run dev`)
+- **LLM Provider**: LM Studio (primary, port 1234) → Ollama (fallback, port 11434)
+- **LM Studio 模型**: `qwen3.6-35b-a3b-claude-4.6-opus-reasoning-distilled` (17 models available)
+- **Ollama 模型**: `qwen2.5:7b`, `aratan/qwen3.5-uncensored:9b`
+- **dotenv**: `more_core/.env` + `app/.env` 自动加载
+- **前端**: `app/` React + Vite + shadcn/ui
+
+### 安装与启动
+
+```bash
+# 一键安装
+bash install.sh --install
+
+# 启动 (三种方式)
+make start                                   # 后台启动 API
+./run-local-ai.sh start                      # 启动器
+.venv/bin/python -m more_core.cli serve --host 0.0.0.0 --port 8011  # 手动
+
+# 前端 (另一个终端)
+cd app && npm run dev                        # → http://localhost:3003
+
+# 健康检查
+bash scripts/health_check.sh
+make health
+```
+
+### 关键模块
+- `more_core/more_core/runtime/orchestrator.py` — 核心编排器 (L0–L5 管道)
+- `more_core/more_core/api/routers/` — 18 个路由模块
+- `more_core/more_core/llm/manager.py` — LLM 多 Provider + 熔断 + 缓存
+- `more_core/more_core/router/layer_router.py` — 难度感知层路由
+- `more_core/more_core/layers/` — L0(执行) L1(编排) L2(进化) L3(符号) L4(认知) L5(元认知)
+- `more_core/more_core/mcp/` — MCP Client + Server
+- `more_core/more_core/a2a/` — A2A 协议
+- `plugins/` — 3 个行业插件
 
 ### 已知问题
 - 扫雷 GUI (8080) 端口被系统占用，不影响核心
 - LM Studio 大模型响应慢 (~30s)，生产用 Ollama
 - `minesweeper_game` 依赖 `minesweeper_agent`，关闭顺序需反向依赖解析
-
-### 关键模块
-- `more_core/more_core/runtime/orchestrator.py` — 核心编排器
-- `more_core/more_core/api/routers/` — 18 个路由模块
-- `more_core/more_core/llm/manager.py` — LLM 多 Provider 管理
-- `more_core/more_core/mcp/` — MCP Client + Server
-- `more_core/more_core/a2a/` — A2A 协议
-- `plugins/` — 3 个行业插件 (mahjong, minesweeper_game, minesweeper_agent)
-
-### 验证脚本
-- `comprehensive_test.py` — 综合试运转
-- `status_dashboard.py` — 状态检视窗口
-- `module_audit.py` — 全模块故障排除

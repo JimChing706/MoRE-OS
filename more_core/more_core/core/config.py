@@ -87,6 +87,9 @@ class Settings(BaseModel):
     rate_limit_rps: float = 10.0
     rate_limit_burst: int = 20
 
+    # Version — sourced from version.py, overridable via env
+    version: str = "0.6.0-alpha"
+
     # Project root for file operations (set by BFF / CLI)
     project_root: str | None = None
 
@@ -241,11 +244,19 @@ class Settings(BaseModel):
             p.name for p in providers
         ]
 
+        # Resolve version from package metadata, falling back to default
+        try:
+            from ..version import __version__
+        except ImportError:
+            __version__ = "0.6.0-alpha"
+        version = os.getenv("MORE_VERSION", __version__)
+
         return cls(
             plugin_dir=os.getenv("MORE_PLUGIN_DIR", "plugins"),
             log_dir=os.getenv("MORE_LOG_DIR", "logs"),
             providers=providers,
             fallback_chain=fallback_chain,
+            version=version,
             enable_evolution=os.getenv("MORE_ENABLE_EVOLUTION", "0") == "1",
             enable_metacognition=os.getenv("MORE_ENABLE_METACOGNITION", "0") == "1",
             enable_symbolic=os.getenv("MORE_ENABLE_SYMBOLIC", "1") == "1",

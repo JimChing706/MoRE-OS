@@ -43,8 +43,8 @@
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
-| MoRE OS 后端 | 8001 | API 服务 |
-| 前端 Dashboard | 3002 | Web 界面 |
+| MoRE OS API | 8011 | 后端 API 服务 |
+| Dashboard | 3003 | 前端 Web 界面 |
 | LM Studio | 1234 | 本地模型 API |
 | Ollama | 11434 | 本地模型 API |
 
@@ -52,28 +52,33 @@
 
 ## 2. 快速启动
 
-### 2.1 一键启动所有服务
+### 2.1 一键安装
 
 ```bash
-cd /Users/qnming/AI_Cample/QNMing\ MoRE\ OS\ preVersion
-
-# 启动后端
-cd more_core && python3 -m more_core.cli serve --port 8001 &
-
-# 启动前端
-cd app && npm run dev &
+bash install.sh --install
 ```
 
-### 2.2 使用一键启动菜单
+### 2.2 启动服务
 
 ```bash
-# 交互式菜单
-./run-local-ai.sh
+make start                    # 后台启动 API → http://localhost:8011
+cd app && npm run dev         # 前端 Dashboard → http://localhost:3003 (另一个终端)
+```
 
-# 快捷命令
-./run-local-ai.sh status      # 查看状态
-./run-local-ai.sh models      # 查看模型
-./run-local-ai.sh chat        # 本地聊天
+### 2.3 健康检查
+
+```bash
+bash scripts/health_check.sh   # 全栈验证
+make health                    # API 速查
+```
+
+### 2.4 使用启动菜单
+
+```bash
+./run-local-ai.sh              # 交互式菜单
+./run-local-ai.sh start        # 直接启动
+./run-local-ai.sh status       # 查看状态
+./run-local-ai.sh health       # 健康检查
 ```
 
 ---
@@ -121,46 +126,31 @@ curl http://localhost:11434/api/tags
 
 ---
 
-## 4. Claude Code 集成
+## 4. LLM 集成
 
-### 4.1 API Key 配置
+MoRE OS 通过 `more_core/.env` 配置 LLM Provider，支持自动 fallback 链。
 
-**方式1: 环境变量**
+### 4.1 配置 Provider
+
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-api03-local-proxy-key"
+cp more_core/.env.template more_core/.env
+# 编辑 more_core/.env
 ```
 
-**方式2: 配置文件**
-```bash
-# 编辑 run-local-ai.sh 或 claude-local-run.sh
-# 在文件开头添加:
-export ANTHROPIC_API_KEY="sk-ant-api03-local-proxy-key"
-```
+### 4.2 支持的 Provider
 
-### 4.2 使用 Claude Code 调用本地模型
+| Provider | 端口 | 类型 | 说明 |
+|----------|------|------|------|
+| LM Studio | 1234 | 本地 | 大模型推理 (primary) |
+| Ollama | 11434 | 本地 | 轻量推理 (fallback) |
+| DeepSeek | cloud | 远程 | 可选云 API |
+| OpenAI 兼容 | 自定义 | 远程 | 支持 20+ Provider |
 
-```bash
-# 使用 LM Studio
-./scripts/claude-local-run.sh --provider lmstudio --print "你的任务"
-
-# 使用 Ollama
-./scripts/claude-local-run.sh --provider ollama --print "你的任务"
-
-# 指定模型
-./scripts/claude-local-run.sh --provider lmstudio --model "模型名" --print "任务"
-```
-
-### 4.3 常用 Claude Code 选项
+### 4.3 测试 LLM 连接
 
 ```bash
-# 交互模式
-claude --bare --dangerously-skip-permissions --model lmstudio/模型名
-
-# 单次任务
-claude -p "任务描述" --max-turns 1 --model lmstudio/模型名
-
-# 跳过权限检查
-claude --dangerously-skip-permissions -p "任务"
+curl http://localhost:1234/v1/models   # LM Studio
+curl http://localhost:11434/api/tags   # Ollama
 ```
 
 ---
@@ -173,57 +163,47 @@ claude --dangerously-skip-permissions -p "任务"
 
 | 功能 | 菜单选项 | 快捷命令 |
 |------|----------|----------|
-| 交互模式 | [1] | `./run-local-ai.sh i` |
-| 快速任务 | [2] | `./run-local-ai.sh t "任务"` |
-| LM Studio | [3] | `./run-local-ai.sh lmstudio` |
-| Ollama | [4] | `./run-local-ai.sh ollama` |
-| API Key | [5] | `./run-local-ai.sh api` |
-| 智能推荐 | [6] | - |
-| 本地聊天 | [7] | `./run-local-ai.sh chat` |
-| 会话管理 | [8] | - |
-| API Key管理 | [9] | - |
-| 配置环境 | [10] | - |
-| 安装 MCP | [11] | - |
-| 代码检查 | [12] | - |
-| 模型查看 | [13] | `./run-local-ai.sh models` |
-| 状态诊断 | [14] | `./run-local-ai.sh status` |
+| 启动 API | [1] | `./run-local-ai.sh start` |
+| 停止 API | [2] | `./run-local-ai.sh stop` |
+| 重启 API | [3] | `./run-local-ai.sh restart` |
+| 健康检查 | [4] | `./run-local-ai.sh health` |
+| 本地聊天 | [5] | `./run-local-ai.sh chat` |
+| 查看模型 | [6] | `./run-local-ai.sh models` |
+| 查看日志 | [7] | `./run-local-ai.sh logs` |
 
 ### 5.2 核心脚本说明
 
 | 脚本 | 功能 |
 |------|------|
-| `run-local-ai.sh` | 主入口，一键启动菜单 |
-| `scripts/claude-local-run.sh` | Claude Code 启动脚本 |
+| `run-local-ai.sh` | 主入口，服务启动菜单 |
+| `install.sh` | 一键安装脚本 |
+| `scripts/health_check.sh` | 全栈健康验证 |
 | `scripts/lmstudio-chat.py` | 本地模型聊天工具 |
-| `scripts/local-chat.sh` | 交互式本地聊天 |
 | `scripts/model-selector.sh` | 智能模型选择 |
 | `scripts/session-manager.sh` | 会话管理 |
 | `scripts/dev-workflow.sh` | 开发工作流 |
-| `scripts/set-api-key.sh` | API Key 管理 |
+| `scripts/setup_env.sh` | 旧版环境检查 (已弃用) |
 
 ### 5.3 使用示例
 
-**场景1: 本地模型聊天**
+**场景1: 全栈启动**
+```bash
+make start && cd app && npm run dev
+```
+
+**场景2: 本地模型聊天**
 ```bash
 ./run-local-ai.sh chat
-# 选择模型编号
-# 输入消息开始对话
-# 输入 quit 退出
 ```
 
-**场景2: Claude Code 快速任务**
+**场景3: 健康检查**
 ```bash
-./run-local-ai.sh t "帮我写一个排序算法"
+bash scripts/health_check.sh
 ```
 
-**场景3: 查看所有可用模型**
+**场景4: 查看所有可用模型**
 ```bash
 ./run-local-ai.sh models
-```
-
-**场景4: 诊断服务状态**
-```bash
-./run-local-ai.sh status
 ```
 
 ---
@@ -353,7 +333,7 @@ API Key 状态: ✗ 未配置
 ./run-local-ai.sh status
 
 # 手动检查各服务
-curl http://localhost:8001/api/v1/health    # 后端
+curl http://localhost:8011/api/v1/health    # API
 curl http://localhost:1234/v1/models       # LM Studio
 curl http://localhost:11434/api/tags       # Ollama
 ```
@@ -374,25 +354,20 @@ curl http://localhost:11434/api/tags       # Ollama
 
 ```bash
 # 启动系统
-cd more_core && python3 -m more_core.cli serve --port 8001
-cd app && npm run dev
+make start                    # API → http://localhost:8011
+cd app && npm run dev         # Dashboard → http://localhost:3003
 
 # 一键启动菜单
 ./run-local-ai.sh
 
-# 本地模型聊天
-./run-local-ai.sh chat
-python3 scripts/lmstudio-chat.py "你的问题"
-
-# Claude Code
-./run-local-ai.sh i              # 交互模式
-./run-local-ai.sh t "任务"       # 快速任务
-./run-local-ai.sh lmstudio        # LM Studio
-./run-local-ai.sh ollama          # Ollama
-
-# 工具
-./run-local-ai.sh models          # 查看模型
-./run-local-ai.sh status          # 状态诊断
+# 快捷命令
+./run-local-ai.sh start        # 启动 API
+./run-local-ai.sh stop         # 停止 API
+./run-local-ai.sh restart      # 重启 API
+./run-local-ai.sh status       # 服务状态
+./run-local-ai.sh health       # 健康检查
+./run-local-ai.sh chat         # 本地 LLM 聊天
+./run-local-ai.sh models       # 查看模型
 ```
 
 ### B. 环境变量
@@ -410,25 +385,27 @@ export OPENAI_API_BASE=http://localhost:1234/v1 # LM Studio
 
 ```
 QNMing-MoRE-OS/
-├── run-local-ai.sh                    # 一键启动主脚本
+├── install.sh                         # 一键安装脚本
+├── run-local-ai.sh                    # 服务启动菜单
+├── Makefile                           # 开发/运维命令
+├── more_core/                         # MoRE OS Python 核心
+│   ├── .env.template                  #   环境变量模板
+│   ├── .env                           #   当前环境配置
+│   └── more_core/                     #   源码
+├── app/                               # 前端 Dashboard
+├── plugins/                           # 行业插件
 ├── scripts/
-│   ├── claude-local-run.sh            # Claude Code 启动脚本
-│   ├── lmstudio-chat.py                # 本地模型聊天工具
-│   ├── local-chat.sh                   # 交互式本地聊天
-│   ├── model-selector.sh               # 智能模型选择
-│   ├── session-manager.sh              # 会话管理
-│   ├── dev-workflow.sh                 # 开发工作流
-│   ├── set-api-key.sh                  # API Key 管理
-│   ├── local-llm-server.py              # 本地 API 代理
-│   └── local-proxy.py                  # 简单代理
-├── .claude/
-│   ├── settings.json                   # Claude Code 设置
-│   ├── CLAUDE.md                       # 项目记忆
-│   ├── shortcuts.json                   # 快捷命令
-│   ├── agents/                         # 自定义子代理
-│   ├── templates/                      # 提示词模板
-│   └── mcp/                           # MCP 配置
-└── more_core/                         # MoRE OS 核心
+│   ├── health_check.sh                #   全栈健康验证
+│   ├── lmstudio-chat.py               #   本地模型聊天
+│   ├── model-selector.sh              #   模型选择
+│   ├── session-manager.sh             #   会话管理
+│   ├── dev-workflow.sh                #   开发工作流
+│   └── setup_env.sh                   #   旧版环境检查 (已弃用)
+├── docs/
+│   ├── INSTALL.md                     #   安装指南
+│   └── OPERATION_MANUAL.md            #   本文件
+├── data/                              # 运行时数据库
+└── README.md                          # 项目说明
 ```
 
 ---

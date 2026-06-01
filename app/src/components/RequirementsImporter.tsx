@@ -116,7 +116,7 @@ export function RequirementsImporter() {
     let cancelled = false;
     async function check() {
       try {
-        const baseUrl = import.meta.env.VITE_API_BASE || 'http://localhost:8010';
+        const baseUrl = import.meta.env.VITE_API_BASE || 'http://localhost:8011';
         const res = await fetch(`${baseUrl}/api/v1/health`);
         if (!cancelled) setApiConnected(res.ok);
       } catch {

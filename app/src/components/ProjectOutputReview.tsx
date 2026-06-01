@@ -70,13 +70,13 @@ export function ProjectOutputReview() {
   const [modalMode, setModalMode] = useState<'view' | 'review' | 'iterate'>('view');
   const [iterating, setIterating] = useState(false);
 
-  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8010';
+  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8011';
 
   useEffect(() => {
     // Check API health first
     fetch(`${API_BASE}/api/v1/health`)
       .then(r => { setApiOnline(r.ok); fetchOutputs(); })
-      .catch(() => { setApiOnline(false); setError('无法连接到服务器 (http://localhost:8010)'); setLoading(false); });
+      .catch(() => { setApiOnline(false); setError('无法连接到服务器 (http://localhost:8011)'); setLoading(false); });
   }, []);
 
   const fetchOutputs = async () => {
@@ -305,7 +305,7 @@ export function ProjectOutputReview() {
             </Button>
           </div>
           {apiOnline === false && (
-            <p className="text-xs text-red-500">API 服务未响应，请确认 http://localhost:8010 已启动</p>
+            <p className="text-xs text-red-500">API 服务未响应，请确认 http://localhost:8011 已启动</p>
           )}
         </div>
       )}

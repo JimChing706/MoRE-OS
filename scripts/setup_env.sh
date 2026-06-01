@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # ============================================================
-# QNMing MoRE OS — Environment Setup & Verification Script
+# QNMing MoRE OS — Environment Setup (DEPRECATED)
+# ============================================================
+# ⚠  This script is deprecated. Use the new installer instead:
+#      bash install.sh --install
+#    It will be removed in a future version.
 # ============================================================
 set -e
 

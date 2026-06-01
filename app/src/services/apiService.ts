@@ -1,17 +1,107 @@
 import type { TaskRequest, TaskResult, SystemState, DashboardData, LayerMetrics } from '@/types/morev3';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE || 'http://localhost:8015';
+const API_BASE_URL = import.meta.env.VITE_API_BASE || 'http://localhost:8011';
+
+// ── 增强配置 ──
+const REQUEST_TIMEOUT_MS = 15_000;
+const RETRY_MAX = 2;
+const RETRY_BASE_DELAY_MS = 500;
+const HEALTH_CHECK_INTERVAL_MS = 30_000;
+const CIRCUIT_BREAKER_THRESHOLD = 3;
+const CIRCUIT_RESET_MS = 60_000;
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status?: number,
+    public readonly isNetworkError: boolean = false,
+    public readonly isTimeout: boolean = false
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
 
 class APIService {
   private baseUrl: string;
+  private _healthStatus: { online: boolean; lastCheck: number; consecutiveErrors: number } = {
+    online: false, lastCheck: 0, consecutiveErrors: 0,
+  };
+  private _healthListeners = new Set<(online: boolean) => void>();
 
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl;
   }
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  // ── 健康状态订阅 ──
+  get healthOnline(): boolean { return this._healthStatus.online; }
+
+  onHealthChange(fn: (online: boolean) => void): () => void {
+    this._healthListeners.add(fn);
+    return () => this._healthListeners.delete(fn);
+  }
+
+  private _notifyHealth(online: boolean) {
+    this._healthStatus.online = online;
+    this._healthListeners.forEach(fn => fn(online));
+  }
+
+  async checkHealth(): Promise<boolean> {
+    const now = Date.now();
+    // 熔断器：连续失败过多时跳过检查
+    if (this._healthStatus.consecutiveErrors >= CIRCUIT_BREAKER_THRESHOLD &&
+        now - this._healthStatus.lastCheck < CIRCUIT_RESET_MS) {
+      return false;
+    }
+
+    try {
+      const res = await this._fetchWithTimeout(`${this.baseUrl}/api/v1/health`, {}, 5000);
+      const online = res.ok;
+      if (online) {
+        this._healthStatus.consecutiveErrors = 0;
+      } else {
+        this._healthStatus.consecutiveErrors++;
+      }
+      this._healthStatus.lastCheck = now;
+      if (online !== this._healthStatus.online) {
+        this._notifyHealth(online);
+      }
+      return online;
+    } catch {
+      this._healthStatus.consecutiveErrors++;
+      this._healthStatus.lastCheck = now;
+      if (this._healthStatus.online) {
+        this._notifyHealth(false);
+      }
+      return false;
+    }
+  }
+
+  startHealthPolling(intervalMs = HEALTH_CHECK_INTERVAL_MS): () => void {
+    this.checkHealth();
+    const id = setInterval(() => this.checkHealth(), intervalMs);
+    return () => clearInterval(id);
+  }
+
+  // ── 核心请求方法（含超时 + 重试） ──
+  private async _fetchWithTimeout(
+    url: string, options: RequestInit, timeoutMs: number = REQUEST_TIMEOUT_MS
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      return response;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async request<T>(
+    endpoint: string, options: RequestInit = {}, retries: number = RETRY_MAX
+  ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
-    
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -19,16 +109,47 @@ class APIService {
       Object.assign(headers, options.headers);
     }
 
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    });
+    let lastError: Error | null = null;
 
-    if (!response.ok) {
-      throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const response = await this._fetchWithTimeout(url, { ...options, headers });
+
+        if (!response.ok) {
+          throw new ApiError(
+            `服务器错误 ${response.status}: ${response.statusText}`,
+            response.status, false, false
+          );
+        }
+
+        return response.json();
+      } catch (err: any) {
+        lastError = err;
+
+        const isAbort = err.name === 'AbortError';
+        const isNetErr = err instanceof TypeError ||
+          err.message?.includes('Failed to fetch') ||
+          err.message?.includes('NetworkError');
+
+        if (isAbort || isNetErr) {
+          if (attempt < retries) {
+            const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+            console.warn(`[API] 请求失败，${delay}ms 后重试 (${attempt + 1}/${retries}): ${endpoint}`);
+            await new Promise(r => setTimeout(r, delay));
+            continue;
+          }
+          throw new ApiError(
+            isAbort ? '请求超时，无法连接到 API 服务' : '网络连接失败，请检查 API 服务是否运行',
+            undefined, true, isAbort
+          );
+        }
+
+        // 非网络错误不重试（如 4xx/5xx）
+        throw err instanceof ApiError ? err : new ApiError(err.message || String(err));
+      }
     }
 
-    return response.json();
+    throw lastError ?? new ApiError('未知请求错误');
   }
 
   async executeTask(request: TaskRequest): Promise<TaskResult> {

@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-brightgreen.svg)](https://python.org)
-[![Version](https://img.shields.io/badge/version-0.5.0-orange.svg)](more_core/more_core/version.py)
+[![Version](https://img.shields.io/badge/version-0.6.0--alpha-orange.svg)](more_core/more_core/version.py)
 
 ---
 
@@ -31,24 +31,29 @@
 
 ```text
 QNMing-MoRE-OS/
-├── more_core/              # Python 核心内核（pip 可安装包）
-│   ├── more_core/          #   源码：core/ layers/ llm/ tools/ plugins/ mcp/ a2a/
-│   ├── tests/              #   测试套件
-│   ├── examples/           #   示例插件
+├── more_core/              # Python 核心内核
+│   ├── more_core/          #   源码 (core/layers/llm/tools/plugins/mcp/a2a)
+│   ├── .env.template       #   环境变量模板
+│   ├── .env                #   当前环境配置
 │   ├── pyproject.toml      #   包配置
-│   ├── .env                #   环境配置模板
 │   └── ARCHITECTURE.md     #   架构白皮书
-├── app/                    # 前端 Dashboard（React + Vite + shadcn/ui）
+├── app/                    # 前端 Dashboard (React + Vite + shadcn/ui)
 │   ├── src/                #   React 源码
-│   ├── server/             #   BFF 后端（FastAPI）
 │   └── package.json        #   前端依赖
 ├── plugins/                # 行业插件目录
 │   ├── mahjong-industry-pack/  # 麻将策略
 │   ├── minesweeper_game/       # 扫雷游戏引擎
 │   └── minesweeper_agent/      # 扫雷 AI Agent
-├── docs/                   # 文档与报告
+├── data/                   # 运行时数据库
+├── docs/                   # 文档
+│   ├── INSTALL.md          #   安装指南
+│   ├── OPERATION_MANUAL.md #   操作手册
+│   └── adr/                #   架构决策记录
 ├── scripts/                # 工具脚本
-├── Makefile                # 开发快捷命令
+├── install.sh              # 一键安装脚本
+├── run-local-ai.sh         # 服务启动器
+├── Makefile                # 开发/运维命令
+├── CLAUDE.md               # 项目上下文
 ├── LICENSE                 # Apache-2.0
 └── CHANGELOG.md            # 版本变更记录
 ```
@@ -66,48 +71,43 @@ QNMing-MoRE-OS/
 ### 一键安装
 
 ```bash
-git clone https://github.com/QNMing/QNMing-MoRE-OS.git
 cd QNMing-MoRE-OS
-
-# 创建虚拟环境并安装
-python3 -m venv .venv
-source .venv/bin/activate
-cd more_core && pip install -e ".[api]"
+bash install.sh --install
 ```
 
 ### 配置 LLM
 
-编辑 `more_core/.env`：
+编辑 `more_core/.env`，或复制模板：
 
 ```bash
-# Ollama（推荐，本地免费）
-MORE_OLLAMA_ENDPOINT=http://localhost:11434
-MORE_OLLAMA_MODEL=qwen2.5:7b
+cp more_core/.env.template more_core/.env
+```
 
-# LM Studio（大模型推理）
+```bash
+# Primary: LM Studio
 MORE_LMSTUDIO_ENDPOINT=http://localhost:1234/v1
 MORE_LMSTUDIO_MODEL=qwen3.6-35b-a3b-claude-4.6-opus-reasoning-distilled
 
-# Provider 优先级
-MORE_LLM_FALLBACK_CHAIN=ollama,lmstudio
+# Fallback: Ollama
+MORE_OLLAMA_ENDPOINT=http://localhost:11434
+MORE_OLLAMA_MODEL=qwen2.5:7b
+
+# Fallback chain (tried in order)
+MORE_LLM_FALLBACK_CHAIN=lmstudio,ollama
 ```
 
 ### 启动服务
 
 ```bash
-# API 服务
-make serve
-# 或: .venv/bin/python3 -m more_core.cli serve --port 8001
-
-# 前端 Dashboard
-cd app && npm install && npm run dev
+make start                     # API → http://localhost:8011
+cd app && npm run dev          # Dashboard → http://localhost:3003 (另一个终端)
 ```
 
-### MCP Server 模式（供 Codex/Claude 调用）
+### 健康检查
 
 ```bash
-# stdio 模式 — 供外部 Agent 通过 MCP 协议编排
-.venv/bin/python3 -m more_core.cli mcp-serve
+bash scripts/health_check.sh   # 全栈验证
+make health                    # API 速查
 ```
 
 ### 运行测试
@@ -131,7 +131,7 @@ make test
 | A2A | `POST /a2a` | Agent-to-Agent 任务委托 |
 | A2A | `GET /a2a/agent-card` | Agent 能力卡片 |
 
-完整 API 文档：`http://localhost:8001/api/docs`
+完整 API 文档：`http://localhost:8011/docs`
 
 ---
 
@@ -160,7 +160,7 @@ MoRE OS 是 **"带治理的企业级 Agent OS"** —— 在编码Agent（Codex/C
 | 元认知 | Calibrator | ❌ | ❌ | ❌ |
 | 本地免费 | ✅ | $20/月 | $20/月 | ✅ |
 
-详见 `docs/reports/` 中的竞品对比报告。
+详见 `docs/adr/` 中的架构决策记录。
 
 ---
 

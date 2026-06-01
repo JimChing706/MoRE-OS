@@ -17,7 +17,7 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
 
     @router.get("/monitor/dashboard", dependencies=deps)
     async def dashboard_snapshot() -> dict[str, Any]:
-        from .monitor import build_dashboard_snapshot
+        from ..monitor import build_dashboard_snapshot
         return build_dashboard_snapshot(core)
 
     @router.get("/monitor/health", dependencies=deps)
@@ -33,7 +33,8 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
                 "deployments": core.deployment_manager.stats(),
                 "schedules": {"jobs": len(core.cron.list_jobs())},
                 "channels": {"count": len(core.channels.list_channels()), "running": core.channels.is_running()},
-                "llm": {"providers": len(core.llm.list_providers()), "aliases": core.model_aliases.stats()["total_aliases"]},
+                "llm": {"providers": len(core.llm.list_providers()),
+                         "aliases": getattr(core, 'model_aliases', None).stats()["total_aliases"] if getattr(core, 'model_aliases', None) else 0},
                 "security": {"rbac": core.rbac.enabled, "output_rules": core.output_filter.stats()["enabled_rules"]},
                 "sessions": core.session_manager.stats(),
             },
@@ -50,7 +51,7 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
                 return
         await websocket.accept()
         import asyncio as _aio
-        from .monitor import build_dashboard_snapshot
+        from ..monitor import build_dashboard_snapshot
         try:
             await websocket.send_json({"event": "snapshot", "data": build_dashboard_snapshot(core)})
             while True:

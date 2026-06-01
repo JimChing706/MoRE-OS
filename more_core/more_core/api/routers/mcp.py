@@ -13,6 +13,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
+from ...version import __version__
 from ...runtime.orchestrator import MoRECore
 from ...mcp.client import MCPClient, MCPClientError, ClientCapabilities
 from ...mcp.transport import ProcessTransport
@@ -52,7 +53,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                 read_callback=_read,
                 write_callback=_write,
                 client_capabilities=ClientCapabilities(),
-                client_info={"name": "QNMing MoRE OS", "version": "0.5.0"},
+                client_info={"name": "QNMing MoRE OS", "version": __version__},
             )
             tools = await session.list_tools()
             return {

@@ -22,7 +22,7 @@ def build_dashboard_snapshot(core: "MoRECore") -> dict[str, Any]:
     """
     return {
         "timestamp": time.time(),
-        "version": core.settings.version if hasattr(core.settings, "version") else "0.5.0",
+        "version": core.settings.version,
         "system": _system_section(core),
         "hands": _hands_section(core),
         "skills": _skills_section(core),
@@ -97,9 +97,10 @@ def _channels_section(core: "MoRECore") -> dict[str, Any]:
 
 
 def _llm_section(core: "MoRECore") -> dict[str, Any]:
+    aliases = getattr(core, 'model_aliases', None)
     return {
         "providers": core.llm.list_providers(),
-        "aliases": core.model_aliases.stats(),
+        "aliases": aliases.stats() if aliases else {"total_aliases": 0, "free_models": 0, "providers": []},
         "reasoning": core.reasoning_router.stats()["config"],
     }
 

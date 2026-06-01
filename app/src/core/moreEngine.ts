@@ -486,7 +486,7 @@ export class MoreV3Engine {
   private listeners: Set<(data: DashboardData) => void> = new Set();
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private useRealAPI: boolean = true;
-  private apiBaseUrl: string = import.meta.env.VITE_API_BASE || 'http://localhost:8010';
+  private apiBaseUrl: string = import.meta.env.VITE_API_BASE || 'http://localhost:8011';
 
   constructor() {
     this.state = getSystemState();
