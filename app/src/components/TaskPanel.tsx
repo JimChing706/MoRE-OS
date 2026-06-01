@@ -9,6 +9,7 @@ import { Separator } from '@/components/ui/separator';
 
 import { moreEngine } from '@/core/moreEngine';
 import { useApiHealth } from '@/hooks/useApiHealth';
+import { useTaskMemory } from '@/hooks/useTaskMemory';
 import { formatDuration, formatTokens } from '@/lib/format';
 import type { TaskRequest, TaskResult, TaskType, LayerId, ReasoningStep } from '@/types/morev3';
 import {
@@ -97,6 +98,7 @@ export function TaskPanel() {
   const [viewMode, setViewMode] = useState<'cards' | 'chain'>('chain');
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
   const { online } = useApiHealth();
+  const { stats: memStats, remember, getRelatedContext } = useTaskMemory();
 
   const categories = [...new Set(TASK_PRESETS.map(p => p.category))];
 
@@ -117,15 +119,31 @@ export function TaskPanel() {
     setExecuting(taskId);
     setExecError(null);
 
+    // Inject related past task context for memory-augmented execution
+    const memoryContext = getRelatedContext(preset.query, preset.type);
+    const contextPayload: Record<string, any> = {
+      source: 'task_panel_preset',
+      task_label: preset.label,
+    };
+    if (memoryContext) {
+      contextPayload.memory_context = memoryContext;
+    }
+
     const request: TaskRequest = {
       id: taskId,
       type: preset.type,
       query: preset.query,
+      context: contextPayload,
       requireMetacognitiveMonitoring: preset.type === 'self_improvement' || preset.type === 'cross_domain_transfer',
     };
 
     try {
       const result = await moreEngine.executeTask(request);
+
+      // Record to memory bank for future context
+      if (result.output && result.output.length > 100) {
+        remember(result, preset.query);
+      }
 
       setResults(prev => [result, ...prev].slice(0, 20));
       setSelectedResult(result);
