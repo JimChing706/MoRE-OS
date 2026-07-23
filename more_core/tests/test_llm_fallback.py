@@ -103,7 +103,7 @@ async def test_cache_hit_returns_cached_response() -> None:
     good = _GoodProvider()
     mgr = _manager_with_providers([good])
     req = LLMRequest(prompt="hello")
-    resp1 = await mgr.generate(req, use_cache=True)
+    await mgr.generate(req, use_cache=True)
     resp2 = await mgr.generate(req, use_cache=True)
     assert resp2.cached is True
     assert good.called == 1  # only one actual call
@@ -178,8 +178,8 @@ def test_dynamic_router_get_binding_default():
     mgr = _FakeLLMManagerForRouting()
     router = DynamicModelRouter(mgr)
     binding = router.get_binding(TaskType.CODE_GENERATION)
-    assert binding.provider == "ollama"
-    assert binding.model == "qwen2.5:7b"
+    assert binding.provider == "lmstudio"
+    assert binding.model == "gemma-4-coder"  # 27B 家族的 coder 变体
 
 
 def test_dynamic_router_select_provider():

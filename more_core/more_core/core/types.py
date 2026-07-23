@@ -88,6 +88,10 @@ class TaskRequest(BaseModel):
 
     ``plugin_type`` allows industry packs to carry their own sub-type without
     polluting the core enum.
+
+    v2 增强 (收敛性约束):
+    - deliverable_kind: 产出物类型，自动匹配默认契约
+    - expectation: 业务预期 (contract + kill_criteria)，存为 dict 避免循环引用
     """
 
     id: str = Field(default_factory=lambda: f"task_{uuid.uuid4().hex[:12]}")
@@ -99,6 +103,9 @@ class TaskRequest(BaseModel):
     require_metacognitive_monitoring: bool = False
     allow_self_improvement: bool = False  # L2/L5 gating
     timeout_s: float = 60.0
+    # v2: 产出物契约与收敛约束
+    deliverable_kind: str | None = None  # DeliverableKind value, 为 None 时使用通用默认
+    expectation: dict[str, Any] | None = None  # TaskExpectation.to_dict()
 
 
 class TaskResult(BaseModel):
@@ -111,6 +118,10 @@ class TaskResult(BaseModel):
     calibration: dict[str, Any] | None = None
     evolution_branch: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    # v2: 产出物评估
+    deliverable_complete: bool = False  # 是否满足契约完整性
+    deliverable_missing: list[str] = Field(default_factory=list)  # 缺失维度
+    convergence_report: dict[str, Any] | None = None  # 收敛性报告
 
 
 class ServiceMetadata(BaseModel):

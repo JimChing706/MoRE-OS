@@ -19,6 +19,7 @@ _log = logging.getLogger(__name__)
 @dataclass
 class WeChatConfig:
     """WeChat configuration."""
+
     corp_id: str = ""
     agent_id: str = ""
     secret: str = ""
@@ -29,7 +30,7 @@ class WeChatConfig:
 
 class WeChatAdapter(ChannelAdapter):
     """WeChat Work (企业微信) and WeCom webhook adapter."""
-    
+
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)
         self._corp_id = config.get("corp_id", "")
@@ -74,6 +75,7 @@ class WeChatAdapter(ChannelAdapter):
 
     async def _send_webhook(self, response: Response) -> bool:
         """Send via webhook (支持自定义机器人)."""
+        assert self._session is not None
         payload = {
             "msgtype": "text",
             "text": {"content": response.content},
@@ -81,26 +83,29 @@ class WeChatAdapter(ChannelAdapter):
         r = await self._session.post(self._webhook_url, json=payload)
         return r.status_code == 200
 
-    async def _send_work_message(self) -> bool:
+    async def _send_work_message(self, response: Response) -> bool:
         """Send via WeChat Work API."""
+        assert self._session is not None
         if not self._access_token:
             await self._get_access_token()
-        
+
         url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={self._access_token}"
         payload = {
             "touser": "@all",
             "msgtype": "text",
             "agentid": self._agent_id,
-            "text": {"content": self._config.get("message", "")},
+            "text": {"content": response.content},
         }
         r = await self._session.post(url, json=payload)
-        return r.json().get("errcode", 0) == 0
+        data: Any = r.json()
+        return bool(data.get("errcode", 0) == 0)
 
     async def _get_access_token(self) -> None:
         """Get WeChat Work access token."""
+        assert self._session is not None
         url = f"https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={self._corp_id}&corpsecret={self._secret}"
         r = await self._session.get(url)
-        data = r.json()
+        data: Any = r.json()
         if data.get("errcode") == 0:
             self._access_token = data.get("access_token")
             self._token_expires = time.time() + data.get("expires_in", 7200)
@@ -128,16 +133,20 @@ class WeChatAdapter(ChannelAdapter):
         """Parse WeChat webhook event."""
         try:
             root = ET.fromstring(body)
-            msg_type = root.find("MsgType").text if root.find("MsgType") is not None else ""
-            
+            msg_type_elem = root.find("MsgType")
+            msg_type = (msg_type_elem.text or "") if msg_type_elem is not None else ""
+
             if msg_type == "text":
+                msg_id_elem = root.find("MsgId")
+                from_user_elem = root.find("FromUserName")
+                content_elem = root.find("Content")
                 return Message(
-                    id=root.find("MsgId").text if root.find("MsgId") is not None else "",
+                    id=(msg_id_elem.text or "") if msg_id_elem is not None else "",
                     platform="wechat",
-                    chat_id=root.find("FromUserName").text if root.find("FromUserName") is not None else "",
-                    user_id=root.find("FromUserName").text if root.find("FromUserName") is not None else "",
-                    user_name=root.find("FromUserName").text if root.find("FromUserName") is not None else "",
-                    content=root.find("Content").text if root.find("Content") is not None else "",
+                    chat_id=(from_user_elem.text or "") if from_user_elem is not None else "",
+                    user_id=(from_user_elem.text or "") if from_user_elem is not None else "",
+                    user_name=(from_user_elem.text or "") if from_user_elem is not None else "",
+                    content=(content_elem.text or "") if content_elem is not None else "",
                     timestamp=time.time(),
                     metadata={"raw": body.decode()},
                 )
@@ -153,9 +162,11 @@ def create_wechat_adapter(
     secret: str = "",
 ) -> WeChatAdapter:
     """Factory for WeChat adapter."""
-    return WeChatAdapter({
-        "webhook_url": webhook_url,
-        "corp_id": corp_id,
-        "agent_id": agent_id,
-        "secret": secret,
-    })
+    return WeChatAdapter(
+        {
+            "webhook_url": webhook_url,
+            "corp_id": corp_id,
+            "agent_id": agent_id,
+            "secret": secret,
+        }
+    )

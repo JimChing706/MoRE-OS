@@ -21,7 +21,7 @@ __all__ = [
     "JobResult",
     "TriggerEngine",
     "Trigger",
-    "TriggerEvent", 
+    "TriggerEvent",
     "EventPattern",
     "TaskManager",
 ]

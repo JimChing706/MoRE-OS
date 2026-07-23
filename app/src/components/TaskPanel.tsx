@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -98,7 +98,7 @@ export function TaskPanel() {
   const [viewMode, setViewMode] = useState<'cards' | 'chain'>('chain');
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
   const { online } = useApiHealth();
-  const { stats: memStats, remember, getRelatedContext } = useTaskMemory();
+  const { remember, getRelatedContext } = useTaskMemory();
   const [queryInput, setQueryInput] = useState('');
   const [pendingTemplate, setPendingTemplate] = useState<typeof TASK_TEMPLATES[0] | null>(null);
 

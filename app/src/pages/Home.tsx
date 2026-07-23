@@ -11,6 +11,7 @@ import { SafetyPanel } from '@/components/SafetyPanel';
 import { MemoryPanel } from '@/components/MemoryPanel';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { RequirementsImporter } from '@/components/RequirementsImporter';
+import { ImportTaskImporter } from '@/components/ImportTaskImporter';
 import { ProjectOutputReview } from '@/components/ProjectOutputReview';
 import { moreEngine, getDashboardData } from '@/core/moreEngine';
 import { useApiHealth } from '@/hooks/useApiHealth';
@@ -23,7 +24,7 @@ import {
 
 export default function Home() {
   const { t } = useTranslation();
-  const { online, version } = useApiHealth();
+  const { version } = useApiHealth();
   const [data, setData] = useState<DashboardData>(getDashboardData());
   const [selectedLayer, setSelectedLayer] = useState<LayerId | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
@@ -67,6 +68,7 @@ export default function Home() {
             {/* 状态指示器 */}
             <div className="flex items-center gap-4">
               <RequirementsImporter />
+              <ImportTaskImporter />
               <Link to="/mahjong">
                 <Button variant="ghost" size="sm" className="text-xs">
                   <Gamepad2 className="w-3.5 h-3.5 mr-1" /> {t('nav.mahjong')}

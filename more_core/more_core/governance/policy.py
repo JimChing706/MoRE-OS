@@ -5,6 +5,7 @@ from __future__ import annotations
 from ..core.config import Settings
 from ..core.errors import GovernanceError
 from ..core.types import TaskRequest
+from typing import Any
 
 
 class PolicyEnforcer:
@@ -28,12 +29,12 @@ class GovernanceWorkflow:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._approvers: dict[str, str] = {}
-        self._pending_approvals: dict[str, dict] = {}
+        self._pending_approvals: dict[str, dict[str, Any]] = {}
 
     def register_approver(self, approver_id: str, approver_type: str = "human") -> None:
         self._approvers[approver_id] = approver_type
 
-    def submit_proposal(self, proposal_id: str, proposal_data: dict) -> str:
+    def submit_proposal(self, proposal_id: str, proposal_data: dict[str, Any]) -> str:
         approval_mode = self._determine_approval_mode(proposal_data)
         self._pending_approvals[proposal_id] = {
             "data": proposal_data,
@@ -44,7 +45,7 @@ class GovernanceWorkflow:
             return self.AUTO_APPROVED
         return self.APPROVAL_REQUIRED
 
-    def _determine_approval_mode(self, proposal_data: dict) -> str:
+    def _determine_approval_mode(self, proposal_data: dict[str, Any]) -> str:
         target = proposal_data.get("target", "")
         content = proposal_data.get("content", "")
 
@@ -72,5 +73,5 @@ class GovernanceWorkflow:
         self._pending_approvals[proposal_id]["reject_reason"] = reason
         return True
 
-    def get_status(self, proposal_id: str) -> dict | None:
+    def get_status(self, proposal_id: str) -> dict[str, Any] | None:
         return self._pending_approvals.get(proposal_id)

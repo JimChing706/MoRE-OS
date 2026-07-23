@@ -10,14 +10,14 @@ from pathlib import Path
 
 import pytest
 
+from more_core.core.errors import MoREError
 from more_core.core.event_bus import EventBus
 from more_core.core.types import TaskRequest, TaskStatus, TaskType
-from more_core.governance.audit import AuditLogger, AuditRecord
+from more_core.governance.audit import AuditLogger
 from more_core.metacognition.hyperagent import (
     HyperAgent,
     SelfModProposal,
     VersionControl,
-    VersionSnapshot,
 )
 
 
@@ -49,7 +49,7 @@ async def test_eventbus_stop_drains_pending_handlers() -> None:
 
 def test_hyperagent_rejects_path_traversal() -> None:
     agent = HyperAgent(project_root="/tmp/safe_root")
-    with pytest.raises(ValueError, match="escapes project root"):
+    with pytest.raises(MoREError, match="escapes project root"):
         agent.set_allowed_targets(["../../../etc/passwd"])
 
 

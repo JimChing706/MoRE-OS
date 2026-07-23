@@ -1,6 +1,5 @@
 """Tests for layer components."""
 
-import pytest
 import sys
 import os
 

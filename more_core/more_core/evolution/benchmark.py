@@ -25,6 +25,7 @@ if TYPE_CHECKING:  # pragma: no cover
 @dataclass(slots=True)
 class BenchmarkCase:
     """Single test case in a benchmark suite."""
+
     id: str
     input: str
     expected: str
@@ -131,6 +132,7 @@ class BenchmarkRunner:
         async def _eval_one(case: BenchmarkCase) -> CaseResult:
             async with sem:
                 from ..core.types import TaskRequest
+
                 t0 = time.perf_counter()
                 try:
                     task = TaskRequest(query=case.input, timeout_s=case.timeout_s)

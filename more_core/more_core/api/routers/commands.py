@@ -15,8 +15,9 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
     deps = [Depends(require_api_key)] if require_api_key else []
 
     @router.get("/commands", dependencies=deps)
-    async def list_commands(surface: str | None = None) -> list[dict[str, Any]]:
+    async def list_commands(surface: str | None = None) -> Any:
         from ...commands.registry import CommandSurface
+
         sf = None
         if surface:
             try:
@@ -26,7 +27,7 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
         return core.commands.to_api_dict(sf)
 
     @router.get("/commands/stats", dependencies=deps)
-    async def commands_stats() -> dict[str, Any]:
+    async def commands_stats() -> Any:
         return core.commands.stats()
 
     return router

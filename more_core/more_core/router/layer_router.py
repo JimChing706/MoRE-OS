@@ -66,14 +66,23 @@ class LayerRouter:
 
     def list_pipelines(self) -> dict[str, list[str]]:
         """Return current pipeline map (for introspection / API)."""
-        return {
-            tt.value: [lid.value for lid in layers]
-            for tt, layers in self._pipelines.items()
-        }
+        return {tt.value: [lid.value for lid in layers] for tt, layers in self._pipelines.items()}
 
     # -- core routing -------------------------------------------------------
 
-    def route(self, request: TaskRequest) -> RoutingDecision:
+    def route(
+        self,
+        request: TaskRequest,
+        *,
+        available_providers: set[str] | None = None,
+    ) -> RoutingDecision:
+        """Produce the layer pipeline for *request*.
+
+        When *available_providers* is supplied and empty, the pipeline is
+        downgraded to a minimal [L1, L0] path — skipping LLM-dependent
+        layers (L4 decomposition, L3 symbolic, L2 evolution,
+        L5 metacognition).
+        """
         if request.target_layer is not None:
             # Respect explicit routing: run L4 → target → L0 transitively.
             idx = int(request.target_layer.value[1])
@@ -87,6 +96,17 @@ class LayerRouter:
 
         if request.require_metacognitive_monitoring and LayerId.L5 not in pipeline:
             pipeline.insert(0, LayerId.L5)
+
+        # -- Model-aware downgrade: when no LLM providers are available,
+        #    skip layers that depend on LLM inference (L4, L3, L2, L5).
+        if available_providers is not None and not available_providers:
+            pipeline = [lid for lid in pipeline if lid in (LayerId.L1, LayerId.L0)]
+            if LayerId.L0 not in pipeline:
+                raise RoutingError("pipeline must end with L0")
+            return RoutingDecision(
+                pipeline=pipeline,
+                reasoning="no LLM providers available — minimal pipeline",
+            )
 
         # Enforce feature gates.
         if LayerId.L3 in pipeline and not self._settings.enable_symbolic:
@@ -106,6 +126,46 @@ class LayerRouter:
             pipeline=pipeline,
             reasoning=f"type={request.type.value} gates={self._gates_str()}",
         )
+
+    # -- scene-adaptive routing (P5: 借鉴 ai_council scene_engine) -----------
+
+    def route_with_scene(
+        self,
+        request: TaskRequest,
+        *,
+        available_providers: set[str] | None = None,
+    ) -> RoutingDecision:
+        """场景自适应路由: 先做场景分类，再叠加 TaskType 管道。
+
+        与 :meth:`route` 相比，此方法额外执行:
+        1. 基于 query 关键词的场景分类（零 LLM 依赖）
+        2. 将场景的 pipeline_hint 应用到 TaskType 默认管道上
+        3. 返回的 RoutingDecision.reasoning 中包含场景标签和置信度
+        """
+        from .scene_router import resolve_scene, apply_scene_hint
+
+        # 1. 场景分类
+        scene = resolve_scene(request.query)
+
+        # 2. 获取 TaskType 默认管道
+        base_decision = self.route(request, available_providers=available_providers)
+
+        # 3. 应用场景提示
+        adjusted_pipeline = apply_scene_hint(
+            base_decision.pipeline,
+            scene.pipeline_hint,
+        )
+
+        # 4. 合并 reasoning
+        scene_info = (
+            f"scene={scene.label}(conf={scene.confidence:.2f}) "
+            f"mode={scene.mode} "
+            f"hint=prepend:{[lid.value for lid in scene.pipeline_hint.prepend]},"
+            f"skip:{[lid.value for lid in scene.pipeline_hint.skip]}"
+        )
+        reasoning = f"{base_decision.reasoning} | {scene_info}"
+
+        return RoutingDecision(pipeline=adjusted_pipeline, reasoning=reasoning)
 
     def _gates_str(self) -> str:
         s = self._settings

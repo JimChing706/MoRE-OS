@@ -55,18 +55,18 @@ class TestIntegrationLLMStateAndProviders:
 class TestIntegrationOptimizationAndCaching:
     """Integration tests for optimization components."""
 
-    def test_cache_with_multiple_providers(self):
+    async def test_cache_with_multiple_providers(self):
         """Test cache behavior with multiple provider configurations."""
         from more_core.optimization import RequestCache
         
         cache = RequestCache()
         
         # Same prompt, different models should have different keys
-        cache.set("prompt", "model1", "response1")
-        cache.set("prompt", "model2", "response2")
+        await cache.set("prompt", "model1", "response1")
+        await cache.set("prompt", "model2", "response2")
         
-        assert cache.get("prompt", "model1") == "response1"
-        assert cache.get("prompt", "model2") == "response2"
+        assert await cache.get("prompt", "model1") == "response1"
+        assert await cache.get("prompt", "model2") == "response2"
 
     def test_rate_limiter_with_concurrent_requests(self):
         """Test rate limiter with concurrent requests."""
@@ -172,7 +172,7 @@ class TestIntegrationGovernanceAndAudit:
     def test_audit_log_writing(self):
         """Test audit log writing."""
         import tempfile
-        from more_core.governance.audit import AuditLogger, AuditRecord
+        from more_core.governance.audit import AuditLogger
         
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jsonl") as f:
             temp_path = f.name
@@ -215,7 +215,6 @@ class TestIntegrationIncidentResponse:
 
     def test_incident_creation_and_tracking(self):
         """Test incident creation and tracking."""
-        import tempfile
         from more_core.incident_response import IncidentManager, IncidentType, Severity
         from more_core.core.types import LayerId
         
@@ -238,8 +237,7 @@ class TestIntegrationIncidentResponse:
 
     def test_quarantine_functionality(self):
         """Test variant quarantine functionality."""
-        from more_core.incident_response import IncidentManager, IncidentType, Severity
-        from more_core.core.types import LayerId
+        from more_core.incident_response import IncidentManager
         
         manager = IncidentManager()
         

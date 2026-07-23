@@ -17,18 +17,23 @@ _log = logging.getLogger(__name__)
 
 # Known reasoning model patterns
 _REASONING_PATTERNS = [
-    re.compile(r"o[1-4](-mini|-preview)?", re.IGNORECASE),         # OpenAI o1/o3/o4
-    re.compile(r"claude.*thinking", re.IGNORECASE),                  # Claude with thinking
-    re.compile(r"deepseek.*reasoner", re.IGNORECASE),               # DeepSeek Reasoner
-    re.compile(r"qwq", re.IGNORECASE),                              # Qwen QwQ
-    re.compile(r"gemini.*thinking", re.IGNORECASE),                 # Gemini thinking
-    re.compile(r".*-r1", re.IGNORECASE),                            # DeepSeek R1
-    re.compile(r"marco-o1", re.IGNORECASE),                         # Marco-o1
+    re.compile(r"o[1-4](-mini|-preview)?", re.IGNORECASE),  # OpenAI o1/o3/o4
+    re.compile(r"claude.*thinking", re.IGNORECASE),  # Claude with thinking
+    re.compile(r"deepseek.*reasoner", re.IGNORECASE),  # DeepSeek Reasoner
+    re.compile(r"qwq", re.IGNORECASE),  # Qwen QwQ
+    re.compile(r"gemini.*thinking", re.IGNORECASE),  # Gemini thinking
+    re.compile(r".*-r1", re.IGNORECASE),  # DeepSeek R1
+    re.compile(r"marco-o1", re.IGNORECASE),  # Marco-o1
 ]
 
 # Models that support extended thinking budget
 _BUDGET_MODELS = {
-    "o1", "o1-preview", "o1-mini", "o3", "o3-mini", "o4-mini",
+    "o1",
+    "o1-preview",
+    "o1-mini",
+    "o3",
+    "o3-mini",
+    "o4-mini",
     "claude-sonnet-4-20250514",
     "deepseek-reasoner",
     "qwq-32b",
@@ -38,6 +43,7 @@ _BUDGET_MODELS = {
 @dataclass
 class ReasoningConfig:
     """Configuration for reasoning model invocation."""
+
     # Whether to enable extended thinking
     enable_thinking: bool = True
     # Token budget for the thinking/reasoning phase
@@ -53,6 +59,7 @@ class ReasoningConfig:
 @dataclass
 class ReasoningResult:
     """Result from a reasoning model call."""
+
     answer: str
     thinking: str | None = None
     thinking_tokens: int = 0
@@ -105,7 +112,9 @@ def get_reasoning_params(
             params["max_tokens"] = config.max_output_tokens
 
     # DeepSeek Reasoner
-    elif "deepseek" in model_name.lower() and ("reasoner" in model_name.lower() or "r1" in model_name.lower()):
+    elif "deepseek" in model_name.lower() and (
+        "reasoner" in model_name.lower() or "r1" in model_name.lower()
+    ):
         params["max_tokens"] = config.max_output_tokens
 
     # QwQ
@@ -165,7 +174,9 @@ class ReasoningRouter:
     def record_usage(self, model: str, thinking_tokens: int, answer_tokens: int) -> None:
         """Record reasoning model usage for monitoring."""
         self._usage_stats[model] = self._usage_stats.get(model, 0) + 1
-        _log.debug("Reasoning usage: %s (thinking=%d, answer=%d)", model, thinking_tokens, answer_tokens)
+        _log.debug(
+            "Reasoning usage: %s (thinking=%d, answer=%d)", model, thinking_tokens, answer_tokens
+        )
 
     def stats(self) -> dict[str, Any]:
         return {

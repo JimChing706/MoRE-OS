@@ -13,8 +13,11 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     router = APIRouter(prefix="/api/v1")
 
     @router.get("/deployments")
-    async def list_deployments(dtype: str | None = None, status: str | None = None) -> dict[str, Any]:
+    async def list_deployments(
+        dtype: str | None = None, status: str | None = None
+    ) -> dict[str, Any]:
         from ...deploy.manager import DeploymentType, DeploymentStatus
+
         dt = None
         ds = None
         if dtype:
@@ -33,21 +36,25 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         }
 
     @router.post("/deployments", dependencies=[Depends(require_api_key)])
-    async def create_deployment(payload: dict[str, Any]) -> dict[str, Any]:
+    async def create_deployment(payload: dict[str, Any]) -> Any:
         from ...deploy.manager import DeploymentType
+
         try:
             dtype = DeploymentType(payload.get("type", "hand"))
         except ValueError:
             raise HTTPException(status_code=422, detail="Invalid deployment type")
         dep = await core.deployment_manager.deploy(
-            name=payload.get("name", "unnamed"), dtype=dtype,
-            target_id=payload.get("target_id", ""), config=payload.get("config"),
-            labels=payload.get("labels"), auto_restart=payload.get("auto_restart", True),
+            name=payload.get("name", "unnamed"),
+            dtype=dtype,
+            target_id=payload.get("target_id", ""),
+            config=payload.get("config"),
+            labels=payload.get("labels"),
+            auto_restart=payload.get("auto_restart", True),
         )
         return dep.to_dict()
 
     @router.get("/deployments/{dep_id}")
-    async def get_deployment(dep_id: str) -> dict[str, Any]:
+    async def get_deployment(dep_id: str) -> Any:
         dep = core.deployment_manager.get(dep_id)
         if dep is None:
             raise HTTPException(status_code=404, detail=f"Deployment not found: {dep_id}")

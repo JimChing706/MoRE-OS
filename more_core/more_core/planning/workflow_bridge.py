@@ -90,9 +90,7 @@ class PlanWorkflowBridge:
 
         workflow_steps: list[WorkflowStep] = []
         for i, step in enumerate(plan.steps):
-            timeout_s, retry_count = _PRIORITY_POLICIES.get(
-                step.priority, (60, 0)
-            )
+            timeout_s, retry_count = _PRIORITY_POLICIES.get(step.priority, (60, 0))
             token_budget = allocations[i] if i < len(allocations) else step.estimated_tokens
 
             wf_step = WorkflowStep(
@@ -130,7 +128,10 @@ class PlanWorkflowBridge:
 
         _log.info(
             "Converted plan %s → workflow %s (%d steps, budget=%d tokens)",
-            plan.id, workflow_id, len(workflow_steps), plan.max_total_tokens,
+            plan.id,
+            workflow_id,
+            len(workflow_steps),
+            plan.max_total_tokens,
         )
         return definition
 
@@ -168,9 +169,7 @@ class PlanWorkflowBridge:
         from ..workflows.engine import StepStatus
 
         for wf_step in run.steps:
-            plan_step = next(
-                (s for s in plan.steps if s.id == wf_step.id), None
-            )
+            plan_step = next((s for s in plan.steps if s.id == wf_step.id), None)
             if plan_step is None:
                 continue
 
@@ -201,20 +200,19 @@ class PlanWorkflowBridge:
 
             # Feed back to predictor for learning
             config = wf_step.config or {}
-            self._predictor.observe(TokenObservation(
-                task_type=config.get("task_type", "nlp_task"),
-                query_length=len(config.get("query", "")),
-                estimated_tokens=config.get("predicted_tokens", 0),
-                actual_tokens=actual_tokens,
-                difficulty=run.context.get("difficulty", 5),
-                timestamp=time.time(),
-            ))
+            self._predictor.observe(
+                TokenObservation(
+                    task_type=config.get("task_type", "nlp_task"),
+                    query_length=len(config.get("query", "")),
+                    estimated_tokens=config.get("predicted_tokens", 0),
+                    actual_tokens=actual_tokens,
+                    difficulty=run.context.get("difficulty", 5),
+                    timestamp=time.time(),
+                )
+            )
 
         # Update plan-level status
-        all_done = all(
-            s.status in (PlanStatus.COMPLETED, PlanStatus.FAILED)
-            for s in plan.steps
-        )
+        all_done = all(s.status in (PlanStatus.COMPLETED, PlanStatus.FAILED) for s in plan.steps)
         if all_done:
             any_failed = any(
                 s.status == PlanStatus.FAILED and s.priority == StepPriority.CRITICAL

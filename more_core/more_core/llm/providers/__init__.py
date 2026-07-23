@@ -6,7 +6,7 @@ from .mock import MockProvider
 
 __all__ = [
     "OllamaProvider",
-    "LMStudioProvider", 
+    "LMStudioProvider",
     "OpenAICompatProvider",
     "DeepSeekProvider",
     "MockProvider",

@@ -4,18 +4,22 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field as _Field
 
 from ...security.rbac import Permission, require_permission
 from ...core.types import TaskRequest, TaskType
+from ...persistence.task_store import SQLiteTaskStore
 from ...runtime.orchestrator import MoRECore
+
+import os as _os
 
 
 class ExecuteTaskPayload(BaseModel):
     """Request body for POST /tasks/execute."""
+
     type: TaskType = TaskType.NLP_TASK
     plugin_type: str | None = None
     query: str = _Field(max_length=16384)
@@ -25,18 +29,32 @@ class ExecuteTaskPayload(BaseModel):
     target_layer: str | None = None
     timeout_s: float = 60.0
 
+
 # ---------------------------------------------------------------------------
 # Shared task store (module-level so other routers can import it)
 # ---------------------------------------------------------------------------
 
-_task_store: Dict[str, dict] = {}
+_db_path = _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), "..", "..", "..", "data", "tasks.db"
+)
+_db_norm = _os.path.normpath(_db_path)
+try:
+    _task_store = SQLiteTaskStore(_db_norm)
+except Exception:
+    # Fallback to /tmp when project data/ dir is TCC-protected
+    _task_store = SQLiteTaskStore("/tmp/more_tasks.db")
 
 
-async def _execute_task_background(task_id: str, task_info: dict, core: MoRECore) -> None:
+async def _execute_task_background(task_id: str, task_info: dict[str, Any], core: MoRECore) -> None:
     """Background task executor with concurrency protection."""
     try:
-        _task_store[task_id]["status"] = "in_progress"
-        _task_store[task_id]["started_at"] = datetime.now(timezone.utc).isoformat()
+        _task_store.update_task(
+            task_id,
+            {
+                "status": "in_progress",
+                "started_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
 
         req = TaskRequest(
             type=TaskType.NLP_TASK,
@@ -48,38 +66,54 @@ async def _execute_task_background(task_id: str, task_info: dict, core: MoRECore
 
         # Auto-create output from successful task result
         from .outputs import _auto_create_output
-        _auto_create_output({
-            "task_id": task_id,
-            "output": result.output,
-            "type": req.type.value,
-            "metadata": {
-                "task_type": req.type.value,
-                "task_label": req.type.value,
-            },
-            "reasoning_chain": [],
-            "performance": {},
-        })
 
-        _task_store[task_id].update({
-            "status": "completed",
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-            "result": result.output,
-            "progress": 100,
-        })
+        _auto_create_output(
+            {
+                "task_id": task_id,
+                "output": result.output,
+                "type": req.type.value,
+                "metadata": {
+                    "task_type": req.type.value,
+                    "task_label": req.type.value,
+                },
+                "reasoning_chain": [],
+                "performance": {},
+            }
+        )
+
+        _task_store.update_task(
+            task_id,
+            {
+                "status": "completed",
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "result": result.output,
+                "progress": 100,
+            },
+        )
     except Exception as e:
-        _task_store[task_id].update({
-            "status": "failed",
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-            "error": str(e),
-        })
+        _task_store.update_task(
+            task_id,
+            {
+                "status": "failed",
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "error": str(e),
+            },
+        )
 
 
 def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["Tasks"])
 
-    @router.post("/tasks/execute", dependencies=[Depends(require_api_key), Depends(require_permission(Permission.TASK_EXECUTE))])
+    @router.post(
+        "/tasks/execute",
+        dependencies=[
+            Depends(require_api_key),
+            Depends(require_permission(Permission.TASK_EXECUTE)),
+        ],
+    )
     async def execute(payload: ExecuteTaskPayload) -> dict[str, Any]:
         from ...core.types import LayerId
+
         target = LayerId(payload.target_layer) if payload.target_layer else None
         req = TaskRequest(
             type=payload.type,
@@ -92,28 +126,33 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
             timeout_s=payload.timeout_s,
         )
         result = await core.execute(req)
-        
+
         # Auto-create output from successful task result
         from .outputs import _auto_create_output
-        _auto_create_output({
-            "task_id": result.task_id if hasattr(result, "task_id") else "task_auto",
-            "output": result.output,
-            "type": payload.type.value,
-            "metadata": {
-                "task_type": payload.type.value,
-                "task_label": payload.query[:50],
-            },
-            "reasoning_chain": result.reasoning_chain if hasattr(result, "reasoning_chain") else [],
-            "performance": result.performance if hasattr(result, "performance") else {},
-        })
-        
+
+        _auto_create_output(
+            {
+                "task_id": result.task_id if hasattr(result, "task_id") else "task_auto",
+                "output": result.output,
+                "type": payload.type.value,
+                "metadata": {
+                    "task_type": payload.type.value,
+                    "task_label": payload.query[:50],
+                },
+                "reasoning_chain": result.reasoning_chain
+                if hasattr(result, "reasoning_chain")
+                else [],
+                "performance": result.performance if hasattr(result, "performance") else {},
+            }
+        )
+
         return result.model_dump()
 
     @router.get("/tasks/{task_id}/status")
     async def get_task_status(task_id: str) -> dict[str, Any]:
-        if task_id not in _task_store:
+        task = _task_store.get_task(task_id)
+        if task is None:
             return {"status": "not_found", "error": "Task not found"}
-        task = _task_store[task_id]
         return {
             "task_id": task_id,
             "status": task.get("status", "unknown"),
@@ -124,11 +163,17 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
             "completed_at": task.get("completed_at"),
         }
 
-    @router.post("/tasks/{task_id}/execute", dependencies=[Depends(require_api_key), Depends(require_permission(Permission.TASK_EXECUTE))])
+    @router.post(
+        "/tasks/{task_id}/execute",
+        dependencies=[
+            Depends(require_api_key),
+            Depends(require_permission(Permission.TASK_EXECUTE)),
+        ],
+    )
     async def execute_task(task_id: str) -> dict[str, Any]:
-        if task_id not in _task_store:
+        task = _task_store.get_task(task_id)
+        if task is None:
             return {"status": "not_found", "error": "Task not found"}
-        task = _task_store[task_id]
         if task.get("status") not in ["pending", "failed"]:
             return {"status": "invalid", "error": f"Task is already {task.get('status')}"}
         asyncio.create_task(_execute_task_background(task_id, task, core))
@@ -136,7 +181,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
 
     @router.get("/tasks/history")
     async def get_task_history(limit: int = 20) -> dict[str, Any]:
-        tasks = list(_task_store.values())[-limit:]
+        tasks = _task_store.list_tasks(limit=limit)
         return {
             "tasks": [
                 {
@@ -152,8 +197,14 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
             ]
         }
 
-    @router.post("/tasks/stream", dependencies=[Depends(require_api_key), Depends(require_permission(Permission.TASK_EXECUTE))])
-    async def stream_execute(payload: ExecuteTaskPayload):
+    @router.post(
+        "/tasks/stream",
+        dependencies=[
+            Depends(require_api_key),
+            Depends(require_permission(Permission.TASK_EXECUTE)),
+        ],
+    )
+    async def stream_execute(payload: ExecuteTaskPayload) -> Any:
         """Stream task execution as Server-Sent Events (SSE)."""
         from fastapi.responses import StreamingResponse
         from ...core.types import TaskRequest as TR

@@ -29,12 +29,13 @@ class Event:
 
 
 class EventBus:
-    def __init__(self, queue_size: int = 1024) -> None:
+    def __init__(self, queue_size: int = 1024, max_pending: int = 1024) -> None:
         self._subscribers: dict[str, list[Handler]] = defaultdict(list)
         self._queue: asyncio.Queue[Event] = asyncio.Queue(maxsize=queue_size)
         self._runner: asyncio.Task[None] | None = None
         self._running = False
         self._pending_tasks: set[asyncio.Task[None]] = set()
+        self._max_pending = max_pending
 
     def subscribe(self, topic: str, handler: Handler) -> Callable[[], None]:
         self._subscribers[topic].append(handler)
@@ -75,6 +76,13 @@ class EventBus:
             handlers = list(self._subscribers.get(event.topic, ()))
             # Also deliver to wildcard subscribers ("*").
             handlers.extend(self._subscribers.get("*", ()))
+            if len(self._pending_tasks) >= self._max_pending:
+                _log.warning(
+                    "EventBus pending tasks exceeded %d, dropping handlers for topic=%s",
+                    self._max_pending,
+                    event.topic,
+                )
+                continue
             for handler in handlers:
                 task = asyncio.create_task(self._safe_call(handler, event))
                 self._pending_tasks.add(task)

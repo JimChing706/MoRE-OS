@@ -23,17 +23,19 @@ _log = logging.getLogger(__name__)
 @dataclass
 class ReconnectConfig:
     """Configuration for reconnection behavior."""
-    max_retries: int = 10           # 0 = infinite
+
+    max_retries: int = 10  # 0 = infinite
     initial_delay_s: float = 1.0
-    max_delay_s: float = 300.0      # 5 minutes cap
+    max_delay_s: float = 300.0  # 5 minutes cap
     backoff_factor: float = 2.0
-    jitter: float = 0.3             # ±30% jitter
+    jitter: float = 0.3  # ±30% jitter
     reset_after_success_s: float = 60.0  # Reset backoff after stable connection
 
 
 @dataclass
 class ReconnectState:
     """Current reconnection state for a channel."""
+
     channel_name: str
     connected: bool = True
     attempt: int = 0
@@ -93,9 +95,7 @@ class ReconnectManager:
 
         # Start reconnection task if not already running
         if name not in self._tasks or self._tasks[name].done():
-            self._tasks[name] = asyncio.create_task(
-                self._reconnect_loop(name, adapter)
-            )
+            self._tasks[name] = asyncio.create_task(self._reconnect_loop(name, adapter))
 
     async def on_connect(self, name: str) -> None:
         """Called when a channel successfully connects."""

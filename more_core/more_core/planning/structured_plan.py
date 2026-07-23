@@ -30,6 +30,7 @@ class PhaseStatus(str, Enum):
 @dataclass
 class ChecklistItem:
     """A single granular task — equivalent to DeepSeek TUI's checklist_write item."""
+
     id: str
     content: str
     status: PhaseStatus = PhaseStatus.PENDING
@@ -47,6 +48,7 @@ class ChecklistItem:
 @dataclass
 class PlanPhase:
     """A high-level strategy phase — equivalent to DeepSeek TUI's update_plan step."""
+
     id: str
     name: str
     status: PhaseStatus = PhaseStatus.PENDING
@@ -85,6 +87,7 @@ class StructuredPlan:
 
     Equivalent to DeepSeek TUI's combination of update_plan + checklist_write.
     """
+
     plan_id: str
     title: str = ""
     description: str = ""
@@ -186,7 +189,7 @@ def create_plan_from_subtasks(
 
 
 def merge_plan_with_l4_output(
-    plan: dict,  # L4 decomposition output
+    plan: dict[str, Any],  # L4 decomposition output
     query: str,
 ) -> StructuredPlan | None:
     """Bridge L4 decomposition into structured plan format.
@@ -200,7 +203,9 @@ def merge_plan_with_l4_output(
     if not subtasks:
         return None
 
-    import hashlib, time
+    import hashlib
+    import time
+
     plan_id = hashlib.sha256(query.encode()).hexdigest()[:12]
     structured = StructuredPlan(
         plan_id=plan_id,
@@ -219,11 +224,13 @@ def merge_plan_with_l4_output(
         # Each subtask gets 2-3 granular items
         item_count = min(3, max(2, len(subtask) // 100))
         for j in range(item_count):
-            phase.add_item(ChecklistItem(
-                id=f"phase_{i}_item_{j}",
-                content=f"[Subtask {i+1}] Step {j+1}/{item_count}",
-                status=PhaseStatus.PENDING,
-            ))
+            phase.add_item(
+                ChecklistItem(
+                    id=f"phase_{i}_item_{j}",
+                    content=f"[Subtask {i + 1}] Step {j + 1}/{item_count}",
+                    status=PhaseStatus.PENDING,
+                )
+            )
         structured.phases.append(phase)
 
     return structured

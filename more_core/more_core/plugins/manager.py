@@ -8,7 +8,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 from ..core.errors import PluginError
 from .interface import PluginContext, PluginInterface, PluginMetadata
@@ -71,6 +71,7 @@ class PluginManager:
         package_name = f"more_core_plugins.{name}"
         if package_name not in sys.modules:
             import types
+
             pkg = types.ModuleType(package_name)
             # Set package path to plugin directory for module resolution
             pkg.__path__ = [str(self._plugin_dir / name)]
@@ -84,7 +85,7 @@ class PluginManager:
             raise PluginError(f"cannot create spec for {entry}")
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
-        spec.loader.exec_module(module)  # type: ignore[union-attr]
+        spec.loader.exec_module(module)
 
         plugin_cls = getattr(module, "Plugin", None)
         if plugin_cls is None:
@@ -144,8 +145,8 @@ class PluginManager:
     def is_active(self, name: str) -> bool:
         return name in self._active
 
-    def list(self) -> list[PluginMetadata]:
+    def list(self) -> List[PluginMetadata]:
         return list(self._metadata.values())
 
-    def active(self) -> list[PluginMetadata]:
+    def active(self) -> List[PluginMetadata]:
         return [self._metadata[n] for n in self._active]

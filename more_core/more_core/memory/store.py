@@ -2,6 +2,9 @@
 
 In-process baseline uses bounded lists; Redis-backed adapter can be
 substituted without touching callers (same interface).
+
+v0.8.1 — per-request tracking fields (task_id, layer, ttl) added for
+cross-request observability and lifecycle management.
 """
 
 from __future__ import annotations
@@ -12,7 +15,7 @@ import uuid
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Deque
+from typing import Deque, List
 
 
 class MemoryKind(str, Enum):
@@ -31,6 +34,11 @@ class MemoryEntry:
     created_at: float = field(default_factory=time.time)
     access_count: int = 0
 
+    # Per-request tracking — enables cross-request observability
+    task_id: str = ""
+    layer: str = ""  # e.g. "L0", "L4"
+    ttl: float | None = None  # absolute expiry timestamp (None = never)
+
 
 class MemoryStore:
     def __init__(self, capacity: int = 2048) -> None:
@@ -40,17 +48,37 @@ class MemoryStore:
         )
 
     def put(self, entry: MemoryEntry) -> None:
+        """Store a memory entry in its stream.
+
+        Entries with an expired TTL are silently dropped.
+        """
+        if entry.ttl is not None and time.time() > entry.ttl:
+            return
         self._streams[entry.kind].append(entry)
 
     def list(self, kind: MemoryKind | None = None) -> list[MemoryEntry]:
-        if kind is None:
-            return [e for stream in self._streams.values() for e in stream]
-        return list(self._streams[kind])
+        """List entries, optionally filtered by kind (TTL-aware)."""
+        now = time.time()
+        entries = (
+            [e for stream in self._streams.values() for e in stream]
+            if kind is None
+            else list(self._streams[kind])
+        )
+        return [e for e in entries if e.ttl is None or now <= e.ttl]
 
-    def search(self, query: str, kind: MemoryKind | None = None, top_k: int = 5) -> list[MemoryEntry]:
-        # NFKC normalize + casefold for CJK fullwidth/halfwidth parity
+    def search(
+        self,
+        query: str,
+        kind: MemoryKind | None = None,
+        top_k: int = 5,
+        *,
+        task_id: str = "",
+    ) -> List[MemoryEntry]:
+        """Full-text search across memory, with optional task_id filter."""
         q = unicodedata.normalize("NFKC", query).casefold()
         candidates = self.list(kind)
+        if task_id:
+            candidates = [e for e in candidates if e.task_id == task_id]
         ranked = sorted(
             candidates,
             key=lambda e: (
@@ -63,6 +91,31 @@ class MemoryStore:
         for e in ranked[:top_k]:
             e.access_count += 1
         return ranked[:top_k]
+
+    def by_task(self, task_id: str) -> List[MemoryEntry]:
+        """Return all memory entries for a given *task_id* (cross-request trace)."""
+        results: list[MemoryEntry] = []
+        for stream in self._streams.values():
+            for e in stream:
+                if e.task_id == task_id:
+                    results.append(e)
+        return results
+
+    def evict_expired(self) -> int:
+        """Remove all expired entries. Returns count of evicted items."""
+        now = time.time()
+        removed = 0
+        for stream in self._streams.values():
+            before = len(stream)
+            # Rebuild deque without expired entries
+            kept = deque(
+                (e for e in stream if e.ttl is None or now <= e.ttl),
+                maxlen=stream.maxlen,
+            )
+            removed += before - len(kept)
+            stream.clear()
+            stream.extend(kept)
+        return removed
 
     def stats(self) -> dict[str, int]:
         return {k.value: len(v) for k, v in self._streams.items()}

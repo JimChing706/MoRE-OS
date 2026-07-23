@@ -22,6 +22,7 @@ _log = logging.getLogger(__name__)
 
 class ReloadScope(Enum):
     """What can be hot-reloaded."""
+
     CONFIG = "config"
     LLM_PROVIDERS = "llm_providers"
     HANDS = "hands"
@@ -35,6 +36,7 @@ class ReloadScope(Enum):
 @dataclass
 class ReloadEvent:
     """Record of a reload operation."""
+
     scope: ReloadScope
     timestamp: float = field(default_factory=time.time)
     success: bool = True
@@ -75,8 +77,9 @@ class HotReloader:
         last = self._last_reload.get(scope, 0)
         if time.time() - last < self._min_interval_s:
             return ReloadEvent(
-                scope=scope, success=False,
-                error=f"Debounced: last reload was {time.time() - last:.1f}s ago"
+                scope=scope,
+                success=False,
+                error=f"Debounced: last reload was {time.time() - last:.1f}s ago",
             )
 
         handler = self._handlers.get(scope)
@@ -93,7 +96,9 @@ class HotReloader:
             return event
         except Exception as exc:
             event = ReloadEvent(
-                scope=scope, success=False, error=str(exc),
+                scope=scope,
+                success=False,
+                error=str(exc),
                 duration_ms=(time.perf_counter() - start) * 1000,
             )
             self._history.append(event)
@@ -109,7 +114,7 @@ class HotReloader:
         return results
 
     def history(self, limit: int = 20) -> list[ReloadEvent]:
-        return self._history[-limit:]
+        return list(self._history)[-limit:]
 
     def stats(self) -> dict[str, Any]:
         return {
@@ -128,18 +133,21 @@ class HotReloader:
     async def _reload_config(self, **kwargs: Any) -> ReloadEvent:
         """Reload settings from environment."""
         from ..core.config import Settings
+
         new_settings = Settings.from_env()
         old_providers = len(self._core.settings.providers)
         self._core.settings = new_settings
         new_providers = len(new_settings.providers)
         return ReloadEvent(
-            scope=ReloadScope.CONFIG, success=True,
+            scope=ReloadScope.CONFIG,
+            success=True,
             changes={"providers": f"{old_providers} -> {new_providers}"},
         )
 
     async def _reload_llm_providers(self, **kwargs: Any) -> ReloadEvent:
         """Rebuild LLM providers from current settings."""
         from ..llm.manager import LLMManager
+
         old_count = len(self._core.llm.list_providers())
         self._core.llm = LLMManager(
             self._core.settings.providers,
@@ -147,28 +155,35 @@ class HotReloader:
         )
         new_count = len(self._core.llm.list_providers())
         return ReloadEvent(
-            scope=ReloadScope.LLM_PROVIDERS, success=True,
+            scope=ReloadScope.LLM_PROVIDERS,
+            success=True,
             changes={"providers": f"{old_count} -> {new_count}"},
         )
 
     async def _reload_hands(self, **kwargs: Any) -> ReloadEvent:
         """Re-register built-in hands (preserves active state)."""
         from ..hands.builtins import register_builtin_hands
+
         active_ids = list(self._core.hands._active.keys())
         register_builtin_hands(self._core.hand_registry)
         return ReloadEvent(
-            scope=ReloadScope.HANDS, success=True,
-            changes={"registered": len(self._core.hand_registry.list_ids()),
-                     "active_preserved": active_ids},
+            scope=ReloadScope.HANDS,
+            success=True,
+            changes={
+                "registered": len(self._core.hand_registry.list_ids()),
+                "active_preserved": active_ids,
+            },
         )
 
     async def _reload_skills(self, **kwargs: Any) -> ReloadEvent:
         """Reload skill registry."""
         from ..skills.base import SkillManager
+
         old_count = len(self._core.skill_manager.list_skills())
         self._core.skill_manager = SkillManager()
         return ReloadEvent(
-            scope=ReloadScope.SKILLS, success=True,
+            scope=ReloadScope.SKILLS,
+            success=True,
             changes={"old_skills": old_count, "new_skills": 0},
         )
 
@@ -176,17 +191,20 @@ class HotReloader:
         """Reload channel adapters."""
         channels = self._core.channels.list_channels()
         return ReloadEvent(
-            scope=ReloadScope.CHANNELS, success=True,
+            scope=ReloadScope.CHANNELS,
+            success=True,
             changes={"channels": channels},
         )
 
     async def _reload_commands(self, **kwargs: Any) -> ReloadEvent:
         """Re-register built-in commands."""
         from ..commands.registry import register_builtin_commands, CommandRegistry
+
         self._core.commands = CommandRegistry()
         register_builtin_commands(self._core.commands)
         return ReloadEvent(
-            scope=ReloadScope.COMMANDS, success=True,
+            scope=ReloadScope.COMMANDS,
+            success=True,
             changes={"commands": len(self._core.commands.list_commands())},
         )
 
@@ -194,13 +212,15 @@ class HotReloader:
         """Rediscover plugins."""
         self._core.plugins.discover()
         return ReloadEvent(
-            scope=ReloadScope.PLUGINS, success=True,
+            scope=ReloadScope.PLUGINS,
+            success=True,
             changes={"plugins": [md.name for md in self._core.plugins.list()]},
         )
 
     async def _reload_security(self, **kwargs: Any) -> ReloadEvent:
         """Reload security settings (RBAC stays in-memory)."""
         return ReloadEvent(
-            scope=ReloadScope.SECURITY, success=True,
+            scope=ReloadScope.SECURITY,
+            success=True,
             changes={"rbac_enabled": self._core.rbac.enabled},
         )

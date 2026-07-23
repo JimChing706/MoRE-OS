@@ -36,6 +36,7 @@ class DeploymentType(Enum):
 @dataclass
 class HealthCheck:
     """Health check result for a deployment."""
+
     healthy: bool = True
     last_check: float = 0
     consecutive_failures: int = 0
@@ -45,6 +46,7 @@ class HealthCheck:
 @dataclass
 class Deployment:
     """A deployment slot tracking an active agent/service."""
+
     id: str
     name: str
     type: DeploymentType
@@ -230,8 +232,11 @@ class DeploymentManager:
                     and dep.auto_restart
                     and dep.restart_count < dep.max_restarts
                 ):
-                    _log.warning("Auto-restarting %s (failures=%d)",
-                                 dep.name, dep.health.consecutive_failures)
+                    _log.warning(
+                        "Auto-restarting %s (failures=%d)",
+                        dep.name,
+                        dep.health.consecutive_failures,
+                    )
                     await self.restart(dep.id)
             await asyncio.sleep(10)
 
@@ -272,8 +277,14 @@ class DeploymentManager:
         for d in self._deployments.values():
             by_status[d.status.value] = by_status.get(d.status.value, 0) + 1
             by_type[d.type.value] = by_type.get(d.type.value, 0) + 1
-        healthy = sum(1 for d in self._deployments.values() if d.health.healthy and d.status == DeploymentStatus.RUNNING)
-        total_running = sum(1 for d in self._deployments.values() if d.status == DeploymentStatus.RUNNING)
+        healthy = sum(
+            1
+            for d in self._deployments.values()
+            if d.health.healthy and d.status == DeploymentStatus.RUNNING
+        )
+        total_running = sum(
+            1 for d in self._deployments.values() if d.status == DeploymentStatus.RUNNING
+        )
         return {
             "total": len(self._deployments),
             "running": total_running,

@@ -71,3 +71,13 @@ htmlcov/
 
 # Docker
 docker-compose.override.yml
+
+# Release archives
+*.tar.gz
+*.tgz
+
+# Data (runtime generated)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+!data/.gitkeep

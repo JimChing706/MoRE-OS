@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from typing import Any, List
 
 from .store import MemoryEntry, MemoryKind, MemoryStore
 
@@ -49,6 +50,7 @@ class SQLiteMemoryStore(MemoryStore):
         # Store NFKC-normalised content so LOWER() LIKE matches the
         # casefolded + NFKC-normalised query in search().
         import unicodedata
+
         normalized = unicodedata.normalize("NFKC", entry.content)
         self._conn.execute(
             "INSERT OR REPLACE INTO memories (id, kind, content, tags, score, created_at, access_count) "
@@ -65,11 +67,14 @@ class SQLiteMemoryStore(MemoryStore):
         )
         self._conn.commit()
 
-    def search(self, query: str, kind: MemoryKind | None = None, top_k: int = 5) -> list[MemoryEntry]:
+    def search(
+        self, query: str, kind: MemoryKind | None = None, top_k: int = 5, *, task_id: str = ""
+    ) -> List[MemoryEntry]:
         import unicodedata
+
         q = unicodedata.normalize("NFKC", query).casefold()
         sql = "SELECT id, kind, content, tags, score, created_at, access_count FROM memories"
-        params: list = []
+        params: list[Any] = []
         clauses: list[str] = []
         if kind is not None:
             clauses.append("kind = ?")
@@ -106,7 +111,7 @@ class SQLiteMemoryStore(MemoryStore):
 
     def list(self, kind: MemoryKind | None = None) -> list[MemoryEntry]:
         sql = "SELECT id, kind, content, tags, score, created_at, access_count FROM memories"
-        params: list = []
+        params: list[Any] = []
         if kind is not None:
             sql += " WHERE kind = ?"
             params.append(kind.value)
@@ -114,16 +119,19 @@ class SQLiteMemoryStore(MemoryStore):
         rows = self._conn.execute(sql, params).fetchall()
         return [
             MemoryEntry(
-                id=r[0], kind=MemoryKind(r[1]), content=r[2],
-                tags=json.loads(r[3]), score=r[4], created_at=r[5], access_count=r[6],
+                id=r[0],
+                kind=MemoryKind(r[1]),
+                content=r[2],
+                tags=json.loads(r[3]),
+                score=r[4],
+                created_at=r[5],
+                access_count=r[6],
             )
             for r in rows
         ]
 
     def stats(self) -> dict[str, int]:
-        rows = self._conn.execute(
-            "SELECT kind, COUNT(*) FROM memories GROUP BY kind"
-        ).fetchall()
+        rows = self._conn.execute("SELECT kind, COUNT(*) FROM memories GROUP BY kind").fetchall()
         return {r[0]: r[1] for r in rows}
 
     def close(self) -> None:

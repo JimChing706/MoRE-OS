@@ -23,7 +23,7 @@ API_PORT="${MORE_PORT:-8011}"
 show_banner() {
     echo ""
     echo -e "${BLUE}╔══════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║        QNMing MoRE OS — v0.6.0-alpha                 ║${NC}"
+    echo -e "${BLUE}║        QNMing MoRE OS — v0.8.0                       ║${NC}"
     echo -e "${BLUE}╚══════════════════════════════════════════════════════╝${NC}"
 }
 

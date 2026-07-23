@@ -1,0 +1,68 @@
+{
+  "permissions": {
+    "allow": ["read", "write", "execute", "browser"]
+  },
+  "slashCommands": [
+    {
+      "name": "test",
+      "description": "Run Python test suite",
+      "command": "make test"
+    },
+    {
+      "name": "test-cov",
+      "description": "Run tests with coverage",
+      "command": "make test-cov"
+    },
+    {
+      "name": "lint",
+      "description": "Run ruff linter",
+      "command": "make lint"
+    },
+    {
+      "name": "format",
+      "description": "Auto-format Python files with ruff",
+      "command": "make format"
+    },
+    {
+      "name": "typecheck",
+      "description": "Run mypy type checker",
+      "command": "make typecheck"
+    },
+    {
+      "name": "health",
+      "description": "API health check",
+      "command": "make health"
+    },
+    {
+      "name": "frontend-test",
+      "description": "Run frontend tests",
+      "command": "cd app && npm test"
+    },
+    {
+      "name": "frontend-lint",
+      "description": "Run frontend ESLint",
+      "command": "cd app && npm run lint"
+    },
+    {
+      "name": "frontend-tsc",
+      "description": "TypeScript type check",
+      "command": "cd app && npx tsc -b --noEmit"
+    },
+    {
+      "name": "serve",
+      "description": "Start API server (foreground)",
+      "command": "make serve"
+    },
+    {
+      "name": "status",
+      "description": "Show running processes and port usage",
+      "command": "make status"
+    },
+    {
+      "name": "check-env",
+      "description": "Verify development environment",
+      "command": "make check-env"
+    }
+  ],
+  "customInstructions": "This is a Python monorepo with two main components: more_core/ (backend API) and app/ (React frontend). Always verify your working directory matches the component you're modifying. For Python, always typecheck with mypy after changes. Use relative imports (from ..x.y import Z) within the more_core package. Raise typed exceptions from core/errors.py, never generic Exception."
+}

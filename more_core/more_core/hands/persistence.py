@@ -25,6 +25,7 @@ _log = logging.getLogger(__name__)
 @dataclass
 class HandSnapshot:
     """Serializable snapshot of a Hand's state."""
+
     hand_id: str
     config: dict[str, Any]
     status: str
@@ -98,10 +99,7 @@ class HandPersistence:
 
     def list_saved(self) -> list[str]:
         """List all Hand IDs with saved state."""
-        return [
-            p.stem.replace(".state", "")
-            for p in self._dir.glob("*.state.json")
-        ]
+        return [p.stem.replace(".state", "") for p in self._dir.glob("*.state.json")]
 
     def exists(self, hand_id: str) -> bool:
         return self._path(hand_id).exists()
@@ -148,6 +146,7 @@ class HandCloner:
 
         # Register the clone with a new manifest
         from .base import HandManifest
+
         original_manifest = source.manifest
         clone_manifest = HandManifest(
             id=new_id,

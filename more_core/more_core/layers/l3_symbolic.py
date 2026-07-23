@@ -1,21 +1,29 @@
-"""L3 — Symbolic Reasoning Layer (ontology + forward-chaining rule engine).
+"""L3 — Symbolic Reasoning Layer (governance rules + symbolic mathematics).
 
-Replaces the baseline ontology-only check with a genuine production rule
-engine that performs forward-chaining inference.  Ontology constraints are
-still checked, but the rule engine adds richer governance logic including
-code safety, evolution gating, and extensible custom rules.
+Two-phase reasoning:
+1. **Governance phase**: ontology check + forward-chaining rule engine
+   (code safety, query length limits, review checklists, etc.)
+2. **Symbolic phase** (MATH_REASONING tasks only): SymPy-based symbolic
+   computation (equation solving, calculus, simplification, etc.)
+   Results flow to L0 via ``scratch["inference_annotations"]`` and
+   ``scratch["symbolic_result"]``.
 """
 
 from __future__ import annotations
 
+import logging
+
 from ..core.errors import GovernanceError
-from ..core.types import LayerId
+from ..core.types import LayerId, TaskType
 from ..ontology.rule_engine import (
     Fact,
     RuleEngine,
     default_governance_rules,
 )
+from ..ontology.symbolic_engine import SymbolicEngine, SymbolicResult
 from .base import Layer, LayerContext, LayerResult
+
+_log = logging.getLogger(__name__)
 
 
 class SymbolicLayer(Layer):
@@ -26,10 +34,15 @@ class SymbolicLayer(Layer):
         self._engine = RuleEngine()
         for rule in default_governance_rules():
             self._engine.add_rule(rule)
+        self._symbolic = SymbolicEngine()
 
     @property
     def rule_engine(self) -> RuleEngine:
         return self._engine
+
+    @property
+    def symbolic_engine(self) -> SymbolicEngine:
+        return self._symbolic
 
     async def process(self, ctx: LayerContext) -> LayerResult:
         # 1. Classic ontology check
@@ -37,40 +50,79 @@ class SymbolicLayer(Layer):
 
         # 2. Build working-memory facts from request + pipeline scratch
         facts: list[Fact] = [
-            Fact(kind="request", data={
-                "query": ctx.request.query,
-                "type": ctx.request.type.value,
-                "allow_self_improvement": ctx.request.allow_self_improvement,
-                "evolution_enabled": ctx.core.settings.enable_evolution,
-            }),
+            Fact(
+                kind="request",
+                data={
+                    "query": ctx.request.query,
+                    "type": ctx.request.type.value,
+                    "allow_self_improvement": ctx.request.allow_self_improvement,
+                    "evolution_enabled": ctx.core.settings.enable_evolution,
+                },
+            ),
         ]
         if "sandbox_result" in ctx.scratch:
             sbx = ctx.scratch["sandbox_result"]
-            facts.append(Fact(kind="code_output", data={
-                "code": getattr(sbx, "output", str(sbx)),
-            }))
+            facts.append(
+                Fact(
+                    kind="code_output",
+                    data={
+                        "code": getattr(sbx, "output", str(sbx)),
+                    },
+                )
+            )
 
-        # 3. Run forward-chaining inference
+        # 3. Run forward-chaining inference (governance rules)
         inference = self._engine.run(facts, context={"settings": ctx.core.settings})
         all_violations = violations + inference.violations
 
         if all_violations and ctx.core.settings.strict_ontology:
             raise GovernanceError(f"symbolic violations: {all_violations}")
 
+        # 4. Symbolic mathematics phase (MATH_REASONING only)
+        symbolic_result: SymbolicResult | None = None
+        if ctx.request.type == TaskType.MATH_REASONING:
+            symbolic_result = self._symbolic.analyse(ctx.request.query)
+            if symbolic_result.success:
+                ctx.scratch["symbolic_result"] = symbolic_result
+                inference.annotations["symbolic_math"] = symbolic_result.result
+                if symbolic_result.steps:
+                    inference.annotations["symbolic_steps"] = symbolic_result.steps
+            else:
+                _log.warning(
+                    "symbolic analysis failed for task %s: %s",
+                    ctx.request.id,
+                    symbolic_result.error,
+                )
+                inference.annotations["symbolic_error"] = symbolic_result.error
+
         ctx.scratch["inference_annotations"] = inference.annotations
         ctx.scratch["fired_rules"] = inference.fired_rules
 
+        # Build description
+        desc_parts = [
+            f"governance: {len(inference.fired_rules)} rules, {len(all_violations)} violations",
+        ]
+        if symbolic_result is not None:
+            if symbolic_result.success:
+                desc_parts.append("symbolic math: OK")
+            else:
+                desc_parts.append("symbolic math: failed")
+
         return LayerResult(
             layer=self.layer_id,
-            description=(
-                f"symbolic reasoning: {len(inference.fired_rules)} rules fired, "
-                f"{len(all_violations)} violations"
-            ),
+            description=" | ".join(desc_parts),
             output={
                 "violations": all_violations,
                 "fired_rules": inference.fired_rules,
                 "annotations": inference.annotations,
                 "new_facts": len(inference.new_facts),
+                "symbolic_success": symbolic_result.success if symbolic_result else None,
+                "symbolic_result": str(symbolic_result.result)
+                if symbolic_result and symbolic_result.success
+                else None,
+                "symbolic_error": symbolic_result.error
+                if symbolic_result and not symbolic_result.success
+                else None,
             },
             confidence=1.0 if not all_violations else 0.5,
         )

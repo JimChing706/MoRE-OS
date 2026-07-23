@@ -1,7 +1,6 @@
 """Tests for optimization module - RequestCache, RateLimiter, CircuitBreaker."""
 
 import pytest
-import asyncio
 import sys
 import os
 
@@ -25,17 +24,17 @@ class TestRequestCache:
         cache = RequestCache()
         assert cache is not None
 
-    def test_cache_set_and_get(self):
+    async def test_cache_set_and_get(self):
         """Test basic cache set and get operations."""
         cache = RequestCache()
-        cache.set("prompt", "model", "value")
-        result = cache.get("prompt", "model")
+        await cache.set("prompt", "model", "value")
+        result = await cache.get("prompt", "model")
         assert result == "value"
 
-    def test_cache_miss(self):
+    async def test_cache_miss(self):
         """Test cache returns None for missing keys."""
         cache = RequestCache()
-        result = cache.get("nonexistent", "model")
+        result = await cache.get("nonexistent", "model")
         assert result is None
 
     def test_cache_with_config(self):
@@ -45,12 +44,12 @@ class TestRequestCache:
         assert cache._config.max_size == 100
         assert cache._config.ttl_seconds == 60
 
-    def test_cache_stats(self):
+    async def test_cache_stats(self):
         """Test cache stats."""
         cache = RequestCache()
-        cache.set("prompt1", "model", "value1")
-        cache.get("prompt1", "model")  # hit
-        cache.get("prompt2", "model")  # miss
+        await cache.set("prompt1", "model", "value1")
+        await cache.get("prompt1", "model")  # hit
+        await cache.get("prompt2", "model")  # miss
         stats = cache.stats()
         assert "hits" in stats
         assert "misses" in stats

@@ -34,12 +34,12 @@ def get_context() -> RequestContext | None:
     return _request_ctx.get()
 
 
-def set_context(ctx: RequestContext) -> contextvars.Token:
+def set_context(ctx: RequestContext) -> contextvars.Token[RequestContext | None]:
     """Set the request context for the current async task."""
     return _request_ctx.set(ctx)
 
 
-def clear_context(token: contextvars.Token) -> None:
+def clear_context(token: contextvars.Token[RequestContext | None]) -> None:
     """Reset context after request completes."""
     _request_ctx.reset(token)
 
@@ -49,8 +49,8 @@ class CorrelationFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         ctx = _request_ctx.get()
-        record.correlation_id = ctx.correlation_id if ctx else "-"  # type: ignore[attr-defined]
-        record.task_id = ctx.task_id if ctx else "-"  # type: ignore[attr-defined]
+        record.correlation_id = ctx.correlation_id if ctx else "-"
+        record.task_id = ctx.task_id if ctx else "-"
         return True
 
 
@@ -64,6 +64,9 @@ def configure_structured_logging(level: int = logging.INFO) -> None:
     root = logging.getLogger("more_core")
     root.setLevel(level)
     # Avoid duplicate handlers on repeated calls
-    if not any(isinstance(h, logging.StreamHandler) and hasattr(h, '_more_configured') for h in root.handlers):
+    if not any(
+        isinstance(h, logging.StreamHandler) and hasattr(h, "_more_configured")
+        for h in root.handlers
+    ):
         handler._more_configured = True  # type: ignore[attr-defined]
         root.addHandler(handler)

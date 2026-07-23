@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from asyncio import Task as AsyncTask
 import logging
 import re
 from dataclasses import dataclass, field
@@ -15,6 +16,7 @@ _log = logging.getLogger(__name__)
 
 class TriggerEventType(Enum):
     """Types of trigger events."""
+
     TASK_STARTED = "task.started"
     TASK_COMPLETED = "task.completed"
     TASK_FAILED = "task.failed"
@@ -30,6 +32,7 @@ class TriggerEventType(Enum):
 @dataclass
 class TriggerEvent:
     """Represents a trigger event."""
+
     event_type: TriggerEventType
     source: str
     data: dict[str, Any] = field(default_factory=dict)
@@ -40,34 +43,36 @@ class TriggerEvent:
 @dataclass
 class EventPattern:
     """Pattern for matching events."""
+
     event_type: TriggerEventType | None = None
     source_pattern: str | None = None
     data_pattern: dict[str, Any] | None = None
     custom_filter: Callable[[TriggerEvent], bool] | None = None
-    
+
     def matches(self, event: TriggerEvent) -> bool:
         """Check if event matches pattern."""
         if self.event_type and event.event_type != self.event_type:
             return False
-        
+
         if self.source_pattern:
             if not re.match(self.source_pattern, event.source):
                 return False
-        
+
         if self.data_pattern:
             for key, value in self.data_pattern.items():
                 if key not in event.data or event.data[key] != value:
                     return False
-        
+
         if self.custom_filter:
             return self.custom_filter(event)
-        
+
         return True
 
 
 @dataclass
 class Trigger:
     """Trigger definition."""
+
     trigger_id: str
     name: str
     pattern: EventPattern
@@ -83,15 +88,15 @@ class Trigger:
 
 class TriggerEngine:
     """Event-driven trigger engine."""
-    
+
     def __init__(self) -> None:
         self._triggers: dict[str, Trigger] = {}
         self._running = False
         self._event_queue: asyncio.Queue[TriggerEvent] = asyncio.Queue()
-        self._processor_task: asyncio.Task | None = None
+        self._processor_task: AsyncTask[Any] | None = None
         self._event_history: list[TriggerEvent] = []
         self._max_history = 1000
-    
+
     def add_trigger(
         self,
         trigger_id: str,
@@ -114,11 +119,11 @@ class TriggerEngine:
             cooldown_s=cooldown_s,
             max_executions=max_executions,
         )
-        
+
         self._triggers[trigger_id] = trigger
         _log.info(f"Added trigger: {trigger_id}")
         return trigger
-    
+
     def remove_trigger(self, trigger_id: str) -> bool:
         """Remove a trigger."""
         if trigger_id in self._triggers:
@@ -126,15 +131,15 @@ class TriggerEngine:
             _log.info(f"Removed trigger: {trigger_id}")
             return True
         return False
-    
+
     def get_trigger(self, trigger_id: str) -> Trigger | None:
         """Get a trigger."""
         return self._triggers.get(trigger_id)
-    
+
     def list_triggers(self) -> list[Trigger]:
         """List all triggers."""
         return list(self._triggers.values())
-    
+
     def enable_trigger(self, trigger_id: str) -> bool:
         """Enable a trigger."""
         trigger = self._triggers.get(trigger_id)
@@ -142,7 +147,7 @@ class TriggerEngine:
             trigger.enabled = True
             return True
         return False
-    
+
     def disable_trigger(self, trigger_id: str) -> bool:
         """Disable a trigger."""
         trigger = self._triggers.get(trigger_id)
@@ -150,13 +155,13 @@ class TriggerEngine:
             trigger.enabled = False
             return True
         return False
-    
+
     async def start(self) -> None:
         """Start the trigger engine."""
         self._running = True
         self._processor_task = asyncio.create_task(self._process_events())
         _log.info("Trigger engine started")
-    
+
     async def stop(self) -> None:
         """Stop the trigger engine."""
         self._running = False
@@ -167,15 +172,15 @@ class TriggerEngine:
             except asyncio.CancelledError:
                 pass
         _log.info("Trigger engine stopped")
-    
+
     async def emit(self, event: TriggerEvent) -> None:
         """Emit an event to the trigger engine."""
         self._event_history.append(event)
         if len(self._event_history) > self._max_history:
-            self._event_history = self._event_history[-self._max_history:]
-        
+            self._event_history = self._event_history[-self._max_history :]
+
         await self._event_queue.put(event)
-    
+
     async def emit_simple(
         self,
         event_type: TriggerEventType,
@@ -191,7 +196,7 @@ class TriggerEngine:
             correlation_id=correlation_id,
         )
         await self.emit(event)
-    
+
     async def _process_events(self) -> None:
         """Process events from the queue."""
         while self._running:
@@ -200,42 +205,42 @@ class TriggerEngine:
                     self._event_queue.get(),
                     timeout=1.0,
                 )
-                
+
                 await self._handle_event(event)
-                
+
             except asyncio.TimeoutError:
                 continue
             except Exception as e:
                 _log.error(f"Error processing event: {e}")
-    
+
     async def _handle_event(self, event: TriggerEvent) -> None:
         """Handle a single event."""
         for trigger in self._triggers.values():
             if not trigger.enabled:
                 continue
-            
+
             if not trigger.pattern.matches(event):
                 continue
-            
+
             if trigger.cooldown_s and trigger.last_execution:
                 elapsed = event.timestamp - trigger.last_execution
                 if elapsed < trigger.cooldown_s:
                     _log.debug(f"Trigger {trigger.name} in cooldown")
                     continue
-            
+
             if trigger.max_executions and trigger.execution_count >= trigger.max_executions:
                 _log.info(f"Trigger {trigger.name} reached max executions")
                 continue
-            
+
             try:
                 await trigger.handler(event)
                 trigger.execution_count += 1
                 trigger.last_execution = event.timestamp
                 _log.info(f"Trigger {trigger.name} executed successfully")
-                
+
             except Exception as e:
                 _log.error(f"Trigger {trigger.name} failed: {e}")
-    
+
     def get_event_history(
         self,
         event_type: TriggerEventType | None = None,
@@ -244,15 +249,15 @@ class TriggerEngine:
     ) -> list[TriggerEvent]:
         """Get event history."""
         events = self._event_history
-        
+
         if event_type:
             events = [e for e in events if e.event_type == event_type]
-        
+
         if source:
             events = [e for e in events if e.source == source]
-        
+
         return events[-limit:]
-    
+
     def get_trigger_stats(self) -> dict[str, dict[str, Any]]:
         """Get statistics for all triggers."""
         stats = {}

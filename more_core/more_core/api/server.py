@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 try:
@@ -42,6 +43,7 @@ from .routers import (
     create_outputs_router,
     create_mcp_router,
     create_a2a_router,
+    create_import_task_router,
 )
 
 _log = logging.getLogger(__name__)
@@ -64,7 +66,7 @@ def create_app(core: MoRECore | None = None) -> FastAPI:
     core = core or MoRECore.from_env()
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI):
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await core.start()
         try:
             yield
@@ -107,7 +109,7 @@ Include `Authorization: Bearer <key>` header for protected endpoints.
     # CORS — restricted to configured origins
     _raw_origins = os.getenv(
         "MORE_CORS_ORIGINS",
-        "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3002,http://127.0.0.1:3002,http://localhost:3003,http://127.0.0.1:3003,http://localhost:3004,http://127.0.0.1:3004"
+        "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3002,http://127.0.0.1:3002,http://localhost:3003,http://127.0.0.1:3003,http://localhost:3004,http://127.0.0.1:3004",
     )
     _allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
     app.add_middleware(
@@ -138,5 +140,6 @@ Include `Authorization: Bearer <key>` header for protected endpoints.
     app.include_router(create_outputs_router(core, _require_api_key))
     app.include_router(create_mcp_router(core, _require_api_key))
     app.include_router(create_a2a_router(core, _require_api_key))
+    app.include_router(create_import_task_router(core, _require_api_key))
 
     return app

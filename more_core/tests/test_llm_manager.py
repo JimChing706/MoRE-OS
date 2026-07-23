@@ -1,6 +1,5 @@
 """Tests for LLM Manager."""
 
-import pytest
 import sys
 import os
 

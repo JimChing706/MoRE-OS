@@ -1,6 +1,5 @@
 """Tests for ZEN_RULES system."""
 
-import pytest
 import sys
 import os
 

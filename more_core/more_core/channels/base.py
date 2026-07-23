@@ -11,6 +11,7 @@ from typing import Any, Callable, Awaitable
 
 class ChannelType(Enum):
     """Supported messaging channel types."""
+
     DISCORD = "discord"
     SLACK = "slack"
     TELEGRAM = "telegram"
@@ -21,6 +22,7 @@ class ChannelType(Enum):
 @dataclass
 class ChannelConfig:
     """Configuration for a channel adapter."""
+
     channel_type: ChannelType
     enabled: bool = True
     bot_token: str | None = None
@@ -31,6 +33,7 @@ class ChannelConfig:
 @dataclass
 class ChannelUser:
     """Unified user representation across channels."""
+
     id: str
     name: str = ""
     username: str | None = None
@@ -39,6 +42,7 @@ class ChannelUser:
 @dataclass
 class ChannelMessage:
     """Unified incoming message representation across channels."""
+
     message_id: str
     channel_type: ChannelType
     channel_id: str
@@ -52,6 +56,7 @@ class ChannelMessage:
 
 class MediaType(Enum):
     """Supported media types in messages."""
+
     IMAGE = "image"
     AUDIO = "audio"
     VIDEO = "video"
@@ -63,6 +68,7 @@ class MediaType(Enum):
 @dataclass
 class MediaAttachment:
     """A media attachment in a message."""
+
     type: MediaType
     url: str | None = None
     data: bytes | None = None
@@ -75,6 +81,7 @@ class MediaAttachment:
 @dataclass
 class Message:
     """Unified message format across all channels."""
+
     id: str
     platform: str
     chat_id: str
@@ -92,6 +99,7 @@ class Message:
 @dataclass
 class Response:
     """Response to be sent back to the user."""
+
     content: str
     chat_id: str
     metadata: dict[str, Any] | None = None
@@ -166,56 +174,3 @@ class ChannelAdapter(ABC):
     async def health_check(self) -> bool:
         """Check if the adapter is healthy."""
         return True
-
-
-class ChannelManager:
-    """DEPRECATED: use ``channels.manager.ChannelManager`` instead.
-
-    Kept for backward compatibility. Delegates to the canonical
-    implementation in :mod:`channels.manager`.
-    """
-
-    def __init__(self):
-        import warnings
-        warnings.warn(
-            "channels.base.ChannelManager is deprecated; "
-            "use channels.manager.ChannelManager",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self._adapters: dict[str, ChannelAdapter] = {}
-        self._manager = None  # lazy: delegate to manager.ChannelManager
-
-    def _get_manager(self):
-        if self._manager is None:
-            from .manager import ChannelManager as RealManager
-            self._manager = RealManager()
-        return self._manager
-
-    def register(self, adapter: ChannelAdapter) -> None:
-        """Register a channel adapter (delegates to manager.ChannelManager)."""
-        mgr = self._get_manager()
-        mgr.register_channel(adapter.platform_name, adapter)
-        self._adapters[adapter.platform_name] = adapter
-
-    def get(self, platform: str) -> ChannelAdapter | None:
-        """Get an adapter by platform name."""
-        return self._adapters.get(platform)
-
-    def list_platforms(self) -> list[str]:
-        """List all registered platforms."""
-        return list(self._adapters.keys())
-
-    async def start_all(self) -> None:
-        """Start all registered adapters."""
-        for adapter in self._adapters.values():
-            await adapter.start()
-
-    async def stop_all(self) -> None:
-        """Stop all registered adapters."""
-        for adapter in self._adapters.values():
-            await adapter.stop()
-
-    async def health_all(self) -> dict[str, bool]:
-        """Check health of all adapters."""
-        return {name: await adapter.health_check() for name, adapter in self._adapters.items()}

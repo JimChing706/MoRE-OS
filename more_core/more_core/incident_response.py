@@ -15,6 +15,7 @@ from .core.types import LayerId
 
 class Severity(Enum):
     """Incident severity levels."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -23,6 +24,7 @@ class Severity(Enum):
 
 class IncidentType(Enum):
     """Types of security/evolution incidents."""
+
     UNAUTHORIZED_ACCESS = "unauthorized_access"
     SELF_MODIFICATION = "self_modification"
     DGM_VARIANT_REJECTED = "dgm_variant_rejected"
@@ -33,6 +35,7 @@ class IncidentType(Enum):
 
 class ResponseAction(Enum):
     """Incident response actions."""
+
     QUARANTINE = "quarantine"
     BLOCK = "block"
     AUDIT = "audit"
@@ -44,6 +47,7 @@ class ResponseAction(Enum):
 @dataclass
 class Incident:
     """Represents a security or evolution incident."""
+
     id: str
     incident_type: IncidentType
     severity: Severity
@@ -59,6 +63,7 @@ class Incident:
 @dataclass
 class IncidentReport:
     """Detailed incident report."""
+
     incident_id: str
     root_cause: str
     impact: str
@@ -80,7 +85,7 @@ class IncidentManager:
 
     def register_escalation_callback(self, callback: Callable[..., Any]) -> None:
         """Register a callback for incident escalation.
-        
+
         Args:
             callback: Async function to call when escalation is needed
         """
@@ -95,14 +100,14 @@ class IncidentManager:
         context: dict[str, Any] | None = None,
     ) -> Incident:
         """Report a new incident and trigger appropriate response.
-        
+
         Args:
             incident_type: Type of incident (unauthorized_access, dgm_variant_rejected, etc.)
             severity: Incident severity level
             layer: Layer where incident occurred
             description: Human-readable description
             context: Additional context data
-            
+
         Returns:
             Created Incident object
         """
@@ -152,7 +157,7 @@ class IncidentManager:
         context: dict[str, Any] | None = None,
     ) -> Incident:
         self._blocked_actors.add(actor)
-        
+
         return await self.report_incident(
             incident_type=IncidentType.UNAUTHORIZED_ACCESS,
             severity=Severity.CRITICAL,
@@ -173,7 +178,7 @@ class IncidentManager:
         verification_output: dict[str, Any] | None = None,
     ) -> Incident:
         self._quarantined_variants.add(variant_id)
-        
+
         return await self.report_incident(
             incident_type=IncidentType.SELF_MODIFICATION,
             severity=Severity.HIGH,
@@ -193,12 +198,12 @@ class IncidentManager:
                 if incident.id == incident_id:
                     incident.resolved = True
                     incident.resolution = resolution
-                    
+
                     if "variant_id" in incident.context:
                         self._quarantined_variants.discard(incident.context["variant_id"])
                     if "actor" in incident.context:
                         self._blocked_actors.discard(incident.context["actor"])
-                    
+
                     self._log.info("Incident %s resolved: %s", incident_id, resolution)
                     return True
         return False
@@ -217,8 +222,8 @@ class IncidentManager:
     def is_actor_blocked(self, actor: str) -> bool:
         return actor in self._blocked_actors
 
-    def get_incident_stats(self) -> dict:
-        stats = {
+    def get_incident_stats(self) -> dict[str, Any]:
+        stats: dict[str, Any] = {
             "total": len(self._incidents),
             "active": sum(1 for i in self._incidents if not i.resolved),
             "by_severity": {s.value: 0 for s in Severity},

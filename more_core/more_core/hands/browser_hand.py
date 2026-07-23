@@ -87,6 +87,7 @@ class BrowserHand(Hand):
 
         try:
             import httpx
+
             timeout = self._config.get("timeout_page_s", 30)
             headers = {}
             ua = self._config.get("user_agent")
@@ -127,6 +128,7 @@ class BrowserHand(Hand):
         selector = context.get("selector", "body")
         try:
             import httpx
+
             async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
                 resp = await client.get(url)
                 # Simple extraction — full version would use BeautifulSoup/lxml

@@ -10,12 +10,14 @@ from __future__ import annotations
 import asyncio
 import json as _json
 import re
+
+from ..core.errors import MoREError
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, cast
 
 from ..governance.audit import AuditLogger
 
@@ -91,13 +93,16 @@ class VersionControl:
     def _write_snapshot(self, snapshot: VersionSnapshot) -> None:
         snapshot_file = self._base_dir / f"{snapshot.id}.json"
         snapshot_file.write_text(
-            _json.dumps({
-                "id": snapshot.id,
-                "file_path": snapshot.file_path,
-                "proposal_id": snapshot.proposal_id,
-                "created_at": snapshot.created_at,
-                "description": snapshot.description,
-            }, ensure_ascii=False),
+            _json.dumps(
+                {
+                    "id": snapshot.id,
+                    "file_path": snapshot.file_path,
+                    "proposal_id": snapshot.proposal_id,
+                    "created_at": snapshot.created_at,
+                    "description": snapshot.description,
+                },
+                ensure_ascii=False,
+            ),
             encoding="utf-8",
         )
         content_file = self._base_dir / f"{snapshot.id}.content"
@@ -126,18 +131,17 @@ class SandboxValidator:
         import tempfile
         from pathlib import Path
 
-        allowed_imports = {
-            "math", "random", "re", "json", "datetime", "time", "collections"
-        }
-        for line in code.splitlines():
-            if line.strip().startswith("import "):
-                module = line.strip().split()[1]
-                if module.split(".")[0] not in allowed_imports:
-                    return False, f"Disallowed import: {module}"
-            if line.strip().startswith("from "):
-                module = line.strip().split()[1]
-                if module.split(".")[0] not in allowed_imports:
-                    return False, f"Disallowed import: {module}"
+        # Use unified SandboxPolicy for import and keyword checks
+        try:
+            from ..sandbox.policy import default_policy
+
+            policy = default_policy()
+            safe, reason = policy.is_safe(code)
+            if not safe:
+                return False, reason
+        except Exception:
+            # Fallback: policy unavailable (bootstrap edge-case)
+            pass
 
         try:
             compile(code, "<hyperagent>", "exec")
@@ -148,7 +152,9 @@ class SandboxValidator:
             script = Path(tmp) / "validate.py"
             script.write_text(code, encoding="utf-8")
             proc = await asyncio.create_subprocess_exec(
-                "python3", "-I", str(script),
+                "python3",
+                "-I",
+                str(script),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=tmp,
@@ -183,7 +189,9 @@ class HyperAgent:
         self._sandbox_validator = sandbox_validator or SandboxValidator()
         self._audit_logger = audit_logger
         self._event_bus = event_bus
-        self._project_root: Path = Path(project_root).resolve() if project_root else Path.cwd().resolve()
+        self._project_root: Path = (
+            Path(project_root).resolve() if project_root else Path.cwd().resolve()
+        )
         self._allowed_targets: list[str] = [
             "more_core/layers/l4_cognition.py",
             "more_core/layers/l3_symbolic.py",
@@ -199,7 +207,7 @@ class HyperAgent:
         for t in targets:
             resolved = (self._project_root / t).resolve()
             if not str(resolved).startswith(str(self._project_root)):
-                raise ValueError(f"target escapes project root: {t}")
+                raise MoREError(f"target escapes project root: {t}")
             validated.append(t)
         self._allowed_targets = validated
 
@@ -238,7 +246,7 @@ class HyperAgent:
     async def consider(
         self, ctx: "LayerContext", calibration: dict[str, object]
     ) -> SelfModProposal | None:
-        alignment = float(calibration.get("alignment", 1.0))
+        alignment = cast(float, calibration.get("alignment", 1.0))
         if alignment >= 0.85:
             return None
 
@@ -270,9 +278,9 @@ class HyperAgent:
         """Use LLM to generate intelligent self-modification proposals."""
         try:
             from ..llm.provider import LLMRequest
-            
+
             core = ctx.core
-            if not hasattr(core, 'llm') or core.llm is None:
+            if not hasattr(core, "llm") or core.llm is None:
                 return None
 
             prompt = self._build_llm_prompt(ctx, calibration)
@@ -288,15 +296,18 @@ class HyperAgent:
 
         except Exception as e:
             import logging
+
             logging.getLogger(__name__).warning(f"LLM proposal generation failed: {e}")
             return None
 
-    def _build_llm_prompt(self, ctx: "LayerContext", calibration: dict) -> str:
-        steps_summary = "\n".join([
-            f"  {s.layer.value}: {s.description} (conf={s.confidence:.2f}, {s.duration_ms:.1f}ms)"
-            for s in ctx.accumulated_steps[-5:]
-        ])
-        
+    def _build_llm_prompt(self, ctx: "LayerContext", calibration: dict[str, object]) -> str:
+        steps_summary = "\n".join(
+            [
+                f"  {s.layer.value}: {s.description} (conf={s.confidence:.2f}, {s.duration_ms:.1f}ms)"
+                for s in ctx.accumulated_steps[-5:]
+            ]
+        )
+
         return f"""Analyze the following task execution and propose a self-modification.
 
 ## Task
@@ -308,9 +319,9 @@ Query: {ctx.request.query[:200]}...
 {steps_summary}
 
 ## Calibration
-Alignment: {calibration.get('alignment', 0):.2f}
-Accuracy: {calibration.get('accuracy', 0):.2f}
-Confidence: {calibration.get('confidence', 0):.2f}
+Alignment: {calibration.get("alignment", 0):.2f}
+Accuracy: {calibration.get("accuracy", 0):.2f}
+Confidence: {calibration.get("confidence", 0):.2f}
 
 ## Scratch Data
 {_json.dumps({k: str(v)[:100] for k, v in ctx.scratch.items()}, indent=2)}
@@ -336,14 +347,15 @@ Generate a self-modification proposal in JSON format:
 Output ONLY valid JSON wrapped in <proposal> tags:"""
 
     def _parse_llm_response(
-        self, response: str, ctx: "LayerContext", calibration: dict
+        self, response: str, ctx: "LayerContext", calibration: dict[str, object]
     ) -> SelfModProposal | None:
         import re
+
         match = re.search(r"<proposal>\s*(\{.*?\})\s*</proposal>", response, re.DOTALL)
         if not match:
             if "```json" in response:
                 match = re.search(r"```json\s*(\{.*?\})\s*```", response, re.DOTALL)
-        
+
         if not match:
             return None
 
@@ -355,7 +367,10 @@ Output ONLY valid JSON wrapped in <proposal> tags:"""
                 target_line_end=data.get("line_end", 0),
                 modification_type=data.get("modification_type", "replace"),
                 content=data.get("content", ""),
-                rationale=data.get("rationale", f"LLM-generated from alignment={calibration.get('alignment', 0):.2f}"),
+                rationale=data.get(
+                    "rationale",
+                    f"LLM-generated from alignment={calibration.get('alignment', 0):.2f}",
+                ),
             )
         except _json.JSONDecodeError:
             return None
@@ -463,7 +478,11 @@ Output ONLY valid JSON wrapped in <proposal> tags:"""
 
             if proposal.target_line_start > 0:
                 start_idx = proposal.target_line_start - 1
-                end_idx = proposal.target_line_end if proposal.target_line_end > start_idx else start_idx + 1
+                end_idx = (
+                    proposal.target_line_end
+                    if proposal.target_line_end > start_idx
+                    else start_idx + 1
+                )
 
                 if proposal.modification_type == ModificationType.DELETE.value:
                     lines = lines[:start_idx] + lines[end_idx:]
@@ -486,9 +505,7 @@ Output ONLY valid JSON wrapped in <proposal> tags:"""
         except Exception as e:
             return False, f"Failed to apply modification: {str(e)}"
 
-    def _apply_difficulty_heuristic_change(
-        self, lines: list[str], content: str
-    ) -> list[str]:
+    def _apply_difficulty_heuristic_change(self, lines: list[str], content: str) -> list[str]:
         new_lines = []
         for line in lines:
             if "def calculate_difficulty" in line or "difficulty_score" in line:
@@ -499,9 +516,7 @@ Output ONLY valid JSON wrapped in <proposal> tags:"""
             new_lines = lines
         return new_lines
 
-    def _apply_rule_weight_change(
-        self, lines: list[str], content: str
-    ) -> list[str]:
+    def _apply_rule_weight_change(self, lines: list[str], content: str) -> list[str]:
         new_lines = []
         for line in lines:
             if "rule_weight" in line or "weight" in line:
@@ -512,9 +527,7 @@ Output ONLY valid JSON wrapped in <proposal> tags:"""
             new_lines = lines
         return new_lines
 
-    def _apply_fallback_order_change(
-        self, lines: list[str], content: str
-    ) -> list[str]:
+    def _apply_fallback_order_change(self, lines: list[str], content: str) -> list[str]:
         new_lines = []
         for line in lines:
             if "fallback" in line or "fallback_chain" in line:
@@ -573,9 +586,7 @@ Output ONLY valid JSON wrapped in <proposal> tags:"""
                 source="hyperagent",
             )
 
-    def list_proposals(
-        self, status_filter: str | None = None
-    ) -> list[SelfModProposal]:
+    def list_proposals(self, status_filter: str | None = None) -> list[SelfModProposal]:
         if status_filter:
             return [p for p in self._proposals if p.status == status_filter]
         return list(self._proposals)

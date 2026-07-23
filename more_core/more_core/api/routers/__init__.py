@@ -19,6 +19,7 @@ from .sessions import create_router as create_sessions_router
 from .outputs import create_router as create_outputs_router
 from .mcp import create_router as create_mcp_router
 from .a2a import create_router as create_a2a_router
+from .import_task import create_router as create_import_task_router
 
 __all__ = [
     "create_health_router",
@@ -40,4 +41,5 @@ __all__ = [
     "create_outputs_router",
     "create_mcp_router",
     "create_a2a_router",
+    "create_import_task_router",
 ]

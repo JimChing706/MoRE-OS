@@ -1,6 +1,5 @@
 """Tests for the forward-chaining rule engine."""
 
-import pytest
 
 from more_core.ontology.rule_engine import (
     Fact,

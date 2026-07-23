@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, TYPE_CHECKING
+from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
+from ..core.errors import PluginError
 from .base import Hand, HandResult, HandStatus
 from .registry import HandRegistry
 from ..security.rbac import Permission, get_rbac
@@ -41,15 +42,18 @@ class HandManager:
     async def activate(self, hand_id: str, config: dict[str, Any] | None = None) -> Hand:
         """Activate a registered Hand."""
         if hand_id in self._active:
-            raise ValueError(f"Hand {hand_id} is already active")
+            raise PluginError(f"Hand {hand_id} is already active")
 
         hand_cls = self._registry.get_class(hand_id)
         if hand_cls is None:
-            raise KeyError(f"Unknown Hand: {hand_id}")
+            raise PluginError(f"Unknown Hand: {hand_id}")
 
         rbac = get_rbac()
         if rbac is not None:
-            rbac.check_raise(config.get("_user_id", "anonymous") if config else "anonymous", Permission.HAND_ACTIVATE)
+            rbac.check_raise(
+                config.get("_user_id", "anonymous") if config else "anonymous",
+                Permission.HAND_ACTIVATE,
+            )
 
         hand = hand_cls(config)
         await hand.activate()
@@ -99,7 +103,10 @@ class HandManager:
 
         rbac = get_rbac()
         if rbac is not None:
-            rbac.check_raise(context.get("_user_id", "anonymous") if context else "anonymous", Permission.HAND_RUN)
+            rbac.check_raise(
+                context.get("_user_id", "anonymous") if context else "anonymous",
+                Permission.HAND_RUN,
+            )
 
         hand = self._active.get(hand_id)
         if hand is None:
@@ -145,8 +152,9 @@ class HandManager:
 
     # -- internal ----------------------------------------------------------
 
-    def _cron_handler(self, hand_id: str):
+    def _cron_handler(self, hand_id: str) -> Callable[..., Awaitable[Any]]:
         async def _handler(**kwargs: Any) -> Any:
             result = await self.run_once(hand_id)
             return result.output
+
         return _handler

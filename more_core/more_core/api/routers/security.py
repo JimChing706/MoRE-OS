@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from ...security.rbac import Permission, require_permission
 from ...runtime.orchestrator import MoRECore
 
 
@@ -22,7 +23,11 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     async def security_status() -> dict[str, Any]:
         return {
             "layers": [
-                {"id": 1, "name": "API Authentication", "status": "active" if os.getenv("MORE_API_KEY") else "dev_mode"},
+                {
+                    "id": 1,
+                    "name": "API Authentication",
+                    "status": "active" if os.getenv("MORE_API_KEY") else "dev_mode",
+                },
                 {"id": 2, "name": "RBAC", "status": "active" if core.rbac.enabled else "disabled"},
                 {"id": 3, "name": "Input Validation", "status": "active"},
                 {"id": 4, "name": "Path Traversal Protection", "status": "active"},
@@ -45,10 +50,13 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         }
 
     @router.get("/security/rbac/roles")
-    async def rbac_roles() -> list[dict[str, Any]]:
+    async def rbac_roles() -> Any:
         return core.rbac.list_roles()
 
-    @router.post("/security/rbac/assign", dependencies=[Depends(require_api_key)])
+    @router.post(
+        "/security/rbac/assign",
+        dependencies=[Depends(require_api_key), Depends(require_permission(Permission.SYS_ADMIN))],
+    )
     async def rbac_assign(payload: dict[str, str]) -> dict[str, Any]:
         user_id = payload.get("user_id", "")
         role = payload.get("role", "")
@@ -60,18 +68,21 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         return {"success": True, "user_id": user_id, "role": role}
 
     @router.get("/security/taint")
-    async def taint_status() -> dict[str, Any]:
+    async def taint_status() -> Any:
         return core.taint_tracker.stats()
 
     @router.get("/security/taint/violations")
-    async def taint_violations() -> list[dict[str, Any]]:
+    async def taint_violations() -> Any:
         return core.taint_tracker.get_violations()
 
     @router.get("/security/output-filter/stats")
-    async def output_filter_stats() -> dict[str, Any]:
+    async def output_filter_stats() -> Any:
         return core.output_filter.stats()
 
-    @router.post("/security/output-filter/scan", dependencies=[Depends(require_api_key)])
+    @router.post(
+        "/security/output-filter/scan",
+        dependencies=[Depends(require_api_key), Depends(require_permission(Permission.SYS_ADMIN))],
+    )
     async def output_filter_scan(payload: dict[str, str]) -> dict[str, Any]:
         text = payload.get("text", "")
         findings = core.output_filter.scan(text)
@@ -80,6 +91,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     @router.get("/incidents")
     async def incidents(severity: str | None = None) -> dict[str, Any]:
         from ...incident_response import Severity
+
         try:
             sev = Severity(severity) if severity else None
         except ValueError:
@@ -87,15 +99,27 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         active = core._incident_manager.get_active_incidents(sev)
         return {
             "incidents": [
-                {"id": i.id, "type": i.incident_type.value, "severity": i.severity.value,
-                 "layer": i.layer.value, "timestamp": i.timestamp,
-                 "description": i.description, "resolved": i.resolved}
+                {
+                    "id": i.id,
+                    "type": i.incident_type.value,
+                    "severity": i.severity.value,
+                    "layer": i.layer.value,
+                    "timestamp": i.timestamp,
+                    "description": i.description,
+                    "resolved": i.resolved,
+                }
                 for i in active
             ],
             "stats": core._incident_manager.get_incident_stats(),
         }
 
-    @router.post("/incidents/{incident_id}/resolve", dependencies=[Depends(require_api_key)])
+    @router.post(
+        "/incidents/{incident_id}/resolve",
+        dependencies=[
+            Depends(require_api_key),
+            Depends(require_permission(Permission.GOV_RESOLVE)),
+        ],
+    )
     async def resolve_incident(incident_id: str, resolution: dict[str, str]) -> dict[str, Any]:
         success = await core._incident_manager.resolve_incident(
             incident_id, resolution.get("resolution", "")

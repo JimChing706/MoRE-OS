@@ -17,6 +17,7 @@ _log = logging.getLogger(__name__)
 @dataclass(slots=True)
 class TokenObservation:
     """Historical token usage observation."""
+
     task_type: str
     query_length: int
     estimated_tokens: int
@@ -126,12 +127,10 @@ class TokenPredictor:
         # Update EMA of relative prediction error
         if observation.estimated_tokens > 0:
             relative_error = (
-                (observation.actual_tokens - observation.estimated_tokens)
-                / observation.estimated_tokens
-            )
+                observation.actual_tokens - observation.estimated_tokens
+            ) / observation.estimated_tokens
             self._ema_error = (
-                self._ema_alpha * relative_error
-                + (1 - self._ema_alpha) * self._ema_error
+                self._ema_alpha * relative_error + (1 - self._ema_alpha) * self._ema_error
             )
 
     def allocate_budget(

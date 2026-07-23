@@ -45,9 +45,7 @@ class MetacognitionService:
         self.calibrator.observe(confidence=avg_conf, accuracy=accuracy)
         return self.calibrator.snapshot()
 
-    async def maybe_self_modify(
-        self, ctx: "LayerContext", calibration: dict[str, object]
-    ) -> None:
+    async def maybe_self_modify(self, ctx: "LayerContext", calibration: dict[str, object]) -> None:
         proposal = await self.hyperagent.consider(ctx, calibration)
         if not proposal:
             return
@@ -72,9 +70,7 @@ class MetacognitionService:
             else:
                 self.hyperagent.reject_proposal(proposal.id, "Rejected by governance")
 
-    async def apply_approved_proposals(
-        self, dry_run: bool = False
-    ) -> list[tuple[str, bool, str]]:
+    async def apply_approved_proposals(self, dry_run: bool = False) -> list[tuple[str, bool, str]]:
         results = []
         approved = self.hyperagent.list_proposals(status_filter="approved")
         for proposal in approved:

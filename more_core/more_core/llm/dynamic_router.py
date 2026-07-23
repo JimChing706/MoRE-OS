@@ -30,7 +30,7 @@ def _load_env_overrides() -> dict[TaskType, ModelBinding]:
     for key, val in os.environ.items():
         if not key.startswith(_ENV_PREFIX):
             continue
-        task_name = key[len(_ENV_PREFIX):].lower()
+        task_name = key[len(_ENV_PREFIX) :].lower()
         try:
             task_type = TaskType(task_name)
         except ValueError:
@@ -149,9 +149,7 @@ class DynamicModelRouter(TaskModelRouter):
             extra["extra_params"] = self._reasoning_router.get_params_for_model(binding.model)
         return extra
 
-    def select_provider(
-        self, task_type: TaskType, difficulty: int | None = None
-    ) -> str | None:
+    def select_provider(self, task_type: TaskType, difficulty: int | None = None) -> str | None:
         """Select best provider, optionally considering task difficulty."""
         binding = self.get_binding(task_type)
         if difficulty is not None:
@@ -164,9 +162,7 @@ class DynamicModelRouter(TaskModelRouter):
             return binding.provider
         return None
 
-    def select_model(
-        self, task_type: TaskType, difficulty: int | None = None
-    ) -> str:
+    def select_model(self, task_type: TaskType, difficulty: int | None = None) -> str:
         """Select best model, optionally considering task difficulty."""
         if difficulty is not None:
             complexity = difficulty / 10.0

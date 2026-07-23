@@ -80,9 +80,7 @@ CONFIG = AgentConfig()
 
     # -- LLM-based proposal ----------------------------------------------------------
 
-    async def propose_variant_llm(
-        self, parent: EvolvedAgent, request: TaskRequest
-    ) -> EvolvedAgent:
+    async def propose_variant_llm(self, parent: EvolvedAgent, request: TaskRequest) -> EvolvedAgent:
         """Use LLM to propose an improved variant of the parent agent."""
         if self._core is None:
             _log.warning("No core configured; falling back to basic variant")
@@ -99,7 +97,7 @@ CONFIG = AgentConfig()
         try:
             resp = await self._core.llm.generate(llm_req)
             code = self._extract_variant_code(resp.content)
-            
+
             if not code:
                 _log.warning("LLM did not return valid variant code; using basic")
                 return await self.propose_variant(parent, request)
@@ -181,7 +179,7 @@ Output the improved code in <variant_code> tags:
             "# --- Evolution Enhancement ---",
             "async def enhanced_execute(query: str, context: dict) -> str:",
             "    try:",
-            '        return await execute_task(query, context)',
+            "        return await execute_task(query, context)",
             "    except Exception as e:",
             '        return f"Error: {{e}}"',
         ]
@@ -203,14 +201,11 @@ Output the improved code in <variant_code> tags:
         if report.score >= (self._parent_score(variant) + _IMPROVEMENT_THRESHOLD):
             variant.verified = True
             variant.description = (
-                f"verified (score={report.score:.3f}, "
-                f"pass_rate={report.pass_rate:.1%})"
+                f"verified (score={report.score:.3f}, pass_rate={report.pass_rate:.1%})"
             )
             _log.info("variant %s VERIFIED score=%.3f", variant.id, report.score)
         else:
-            variant.description = (
-                f"rejected (score={report.score:.3f} < threshold)"
-            )
+            variant.description = f"rejected (score={report.score:.3f} < threshold)"
             _log.info("variant %s REJECTED score=%.3f", variant.id, report.score)
         # Persist updated fields back to archive
         self.archive.update(variant)

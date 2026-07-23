@@ -12,6 +12,7 @@ _log = logging.getLogger(__name__)
 
 class CommandSurface(Flag):
     """Where a command is available."""
+
     CLI = auto()
     WEB = auto()
     CHANNEL = auto()
@@ -21,6 +22,7 @@ class CommandSurface(Flag):
 @dataclass
 class Command:
     """A registered slash command."""
+
     name: str
     description: str
     category: str = "general"
@@ -102,7 +104,11 @@ class CommandRegistry:
                 "description": c.description,
                 "category": c.category,
                 "aliases": c.aliases,
-                "surfaces": [s.name.lower() for s in CommandSurface if s in c.surfaces and s.name != "ALL"],
+                "surfaces": [
+                    s.name.lower()
+                    for s in CommandSurface
+                    if s in c.surfaces and s.name != "ALL" and s.name is not None
+                ],
                 "usage": c.usage,
                 "examples": c.examples,
                 "requires_auth": c.requires_auth,
@@ -114,38 +120,96 @@ class CommandRegistry:
         return {
             "total_commands": len(self._commands),
             "total_aliases": len(self._alias_map),
-            "categories": {cat: len([c for c in self._commands.values() if c.category == cat]) for cat in self.categories()},
+            "categories": {
+                cat: len([c for c in self._commands.values() if c.category == cat])
+                for cat in self.categories()
+            },
         }
 
 
 def register_builtin_commands(registry: CommandRegistry) -> None:
     """Register platform-level commands."""
     builtins = [
-        Command(name="help", description="Show available commands", category="system", aliases=["h", "?"]),
+        Command(
+            name="help",
+            description="Show available commands",
+            category="system",
+            aliases=["h", "?"],
+        ),
         Command(name="status", description="Show system status", category="system", aliases=["st"]),
         Command(name="health", description="Check system health", category="system"),
-        Command(name="hand", description="Manage Hands (list/activate/pause/status)", category="hands",
-                aliases=["hands"], usage="/hand <list|activate|pause|status> [hand_id]"),
-        Command(name="task", description="Execute a task", category="tasks",
-                aliases=["run", "exec"], usage="/task <query>", requires_auth=True),
-        Command(name="memory", description="Search or store memory", category="memory",
-                usage="/memory <search|store> <query>"),
-        Command(name="skill", description="List or run skills", category="skills",
-                usage="/skill <list|run> [skill_id]"),
-        Command(name="schedule", description="Manage cron schedules", category="cron",
-                aliases=["cron"], usage="/schedule <list|add|remove> [job_id]"),
-        Command(name="channel", description="Manage channel adapters", category="channels",
-                usage="/channel <list|status>"),
-        Command(name="llm", description="LLM provider status and control", category="llm",
-                usage="/llm <status|switch|reset>"),
-        Command(name="zen", description="ZEN rules compliance", category="governance",
-                usage="/zen <report|violations>"),
-        Command(name="incident", description="Incident management", category="governance",
-                aliases=["inc"], usage="/incident <list|resolve> [id]"),
-        Command(name="config", description="View/update configuration", category="system",
-                requires_auth=True),
-        Command(name="stop", description="Stop a running agent or hand", category="system",
-                surfaces=CommandSurface.ALL, requires_auth=True),
+        Command(
+            name="hand",
+            description="Manage Hands (list/activate/pause/status)",
+            category="hands",
+            aliases=["hands"],
+            usage="/hand <list|activate|pause|status> [hand_id]",
+        ),
+        Command(
+            name="task",
+            description="Execute a task",
+            category="tasks",
+            aliases=["run", "exec"],
+            usage="/task <query>",
+            requires_auth=True,
+        ),
+        Command(
+            name="memory",
+            description="Search or store memory",
+            category="memory",
+            usage="/memory <search|store> <query>",
+        ),
+        Command(
+            name="skill",
+            description="List or run skills",
+            category="skills",
+            usage="/skill <list|run> [skill_id]",
+        ),
+        Command(
+            name="schedule",
+            description="Manage cron schedules",
+            category="cron",
+            aliases=["cron"],
+            usage="/schedule <list|add|remove> [job_id]",
+        ),
+        Command(
+            name="channel",
+            description="Manage channel adapters",
+            category="channels",
+            usage="/channel <list|status>",
+        ),
+        Command(
+            name="llm",
+            description="LLM provider status and control",
+            category="llm",
+            usage="/llm <status|switch|reset>",
+        ),
+        Command(
+            name="zen",
+            description="ZEN rules compliance",
+            category="governance",
+            usage="/zen <report|violations>",
+        ),
+        Command(
+            name="incident",
+            description="Incident management",
+            category="governance",
+            aliases=["inc"],
+            usage="/incident <list|resolve> [id]",
+        ),
+        Command(
+            name="config",
+            description="View/update configuration",
+            category="system",
+            requires_auth=True,
+        ),
+        Command(
+            name="stop",
+            description="Stop a running agent or hand",
+            category="system",
+            surfaces=CommandSurface.ALL,
+            requires_auth=True,
+        ),
     ]
     for cmd in builtins:
         registry.register(cmd)

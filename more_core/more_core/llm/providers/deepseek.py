@@ -103,6 +103,7 @@ class DeepSeekProvider:
                         data = line[6:]
                         try:
                             import json
+
                             obj = json.loads(data)
                             chunk = obj["choices"][0].get("delta", {}).get("content")
                             if chunk:
@@ -121,7 +122,7 @@ class DeepSeekProvider:
         except Exception:
             return False
 
-    def _build_messages(self, request: LLMRequest) -> list[dict]:
+    def _build_messages(self, request: LLMRequest) -> list[dict[str, str]]:
         messages = []
         if request.system:
             messages.append({"role": "system", "content": request.system})

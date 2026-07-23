@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any, Callable, Awaitable
 
@@ -19,12 +20,14 @@ _log = logging.getLogger(__name__)
 
 class MCPServerError(Exception):
     """MCP Server error."""
+
     pass
 
 
 @dataclass
 class ToolHandler:
     """Tool handler definition."""
+
     name: str
     description: str
     input_schema: dict[str, Any]
@@ -34,6 +37,7 @@ class ToolHandler:
 @dataclass
 class ResourceHandler:
     """Resource handler definition."""
+
     uri: str
     name: str
     description: str | None = None
@@ -44,6 +48,7 @@ class ResourceHandler:
 @dataclass
 class PromptHandler:
     """Prompt handler definition."""
+
     name: str
     description: str
     arguments_schema: list[dict[str, Any]] | None = None
@@ -52,7 +57,7 @@ class PromptHandler:
 
 class MCPRequestHandler:
     """Handles MCP requests - registers tools, resources, prompts."""
-    
+
     def __init__(
         self,
         server_name: str = "QNMing MoRE OS",
@@ -63,13 +68,13 @@ class MCPRequestHandler:
         self._protocol = JSONRPCProtocol()
         self._client_capabilities: ClientCapabilities | None = None
         self._initialized = False
-        
+
         self._tools: dict[str, ToolHandler] = {}
         self._resources: dict[str, ResourceHandler] = {}
         self._prompts: dict[str, PromptHandler] = {}
-        
+
         self._setup_handlers()
-    
+
     def _setup_handlers(self) -> None:
         """Setup protocol handlers."""
         self._protocol.register_handler("initialize", self._handle_initialize)
@@ -81,7 +86,7 @@ class MCPRequestHandler:
         self._protocol.register_handler("prompts/list", self._handle_prompts_list)
         self._protocol.register_handler("prompts/get", self._handle_prompts_get)
         self._protocol.register_handler("shutdown", self._handle_shutdown)
-    
+
     def register_tool(
         self,
         name: str,
@@ -96,7 +101,7 @@ class MCPRequestHandler:
             input_schema=input_schema,
             handler=handler,
         )
-    
+
     def register_resource(
         self,
         uri: str,
@@ -113,7 +118,7 @@ class MCPRequestHandler:
             mime_type=mime_type,
             read_handler=read_handler,
         )
-    
+
     def register_prompt(
         self,
         name: str,
@@ -128,7 +133,7 @@ class MCPRequestHandler:
             arguments_schema=arguments_schema,
             handler=handler,
         )
-    
+
     def get_capabilities(self) -> ServerCapabilities:
         """Get server capabilities."""
         return ServerCapabilities(
@@ -136,22 +141,28 @@ class MCPRequestHandler:
             resources={"subscribe": True, "listChanged": True} if self._resources else None,
             prompts={"listChanged": True} if self._prompts else None,
         )
-    
+
     async def handle_message(self, message: str) -> str | None:
         """Handle incoming message and return response."""
         msg = self._protocol.parse_message(message)
         if not msg:
             return None
-        
+
         response = await self._protocol.handle_message(msg)
         if response:
             return self._protocol.serialize_message(response)
         return None
-    
+
     async def _handle_initialize(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Handle initialize request."""
+        """Handle initialize request — with optional Bearer token auth."""
+        expected = os.getenv("MORE_MCP_KEY", os.getenv("MORE_API_KEY", ""))
+        if expected:
+            client_token = params.get("_auth", {}).get("token", "")
+            if client_token != expected:
+                _log.warning("MCP initialize rejected: invalid token")
+                raise MCPServerError("Unauthorized: invalid MCP token")
         self._client_capabilities = ClientCapabilities(**params.get("capabilities", {}))
-        
+
         result = {
             "protocolVersion": "2024-11-05",
             "capabilities": self.get_capabilities().__dict__,
@@ -160,15 +171,15 @@ class MCPRequestHandler:
                 "version": self._server_version,
             },
         }
-        
+
         self._initialized = True
         _log.info("MCP Server initialized by client")
         return result
-    
+
     async def _handle_initialized(self, params: dict[str, Any]) -> None:
         """Handle initialized notification."""
         _log.debug("Client sent initialized notification")
-    
+
     async def _handle_tools_list(self, params: dict[str, Any]) -> dict[str, Any]:
         """Handle tools/list request."""
         tools = [
@@ -180,23 +191,23 @@ class MCPRequestHandler:
             for t in self._tools.values()
         ]
         return {"tools": tools}
-    
+
     async def _handle_tools_call(self, params: dict[str, Any]) -> dict[str, Any]:
         """Handle tools/call request."""
         name = params.get("name")
         arguments = params.get("arguments", {})
-        
+
         if name not in self._tools:
             raise MCPServerError(f"Unknown tool: {name}")
-        
+
         tool = self._tools[name]
         result = await tool.handler(arguments)
-        
+
         return {
             "content": result.content,
             "isError": result.isError,
         }
-    
+
     async def _handle_resources_list(self, params: dict[str, Any]) -> dict[str, Any]:
         """Handle resources/list request."""
         resources = [
@@ -209,21 +220,21 @@ class MCPRequestHandler:
             for r in self._resources.values()
         ]
         return {"resources": resources}
-    
+
     async def _handle_resources_read(self, params: dict[str, Any]) -> dict[str, Any]:
         """Handle resources/read request."""
         uri = params.get("uri")
-        
+
         if uri not in self._resources:
             raise MCPServerError(f"Unknown resource: {uri}")
-        
+
         resource = self._resources[uri]
-        
+
         if resource.read_handler:
             content = await resource.read_handler()
         else:
             content = ""
-        
+
         return {
             "contents": [
                 {
@@ -233,7 +244,7 @@ class MCPRequestHandler:
                 }
             ]
         }
-    
+
     async def _handle_prompts_list(self, params: dict[str, Any]) -> dict[str, Any]:
         """Handle prompts/list request."""
         prompts = [
@@ -245,24 +256,24 @@ class MCPRequestHandler:
             for p in self._prompts.values()
         ]
         return {"prompts": prompts}
-    
+
     async def _handle_prompts_get(self, params: dict[str, Any]) -> dict[str, Any]:
         """Handle prompts/get request."""
         name = params.get("name")
         arguments = params.get("arguments", {})
-        
+
         if name not in self._prompts:
             raise MCPServerError(f"Unknown prompt: {name}")
-        
+
         prompt = self._prompts[name]
-        
+
         if prompt.handler:
             result = await prompt.handler(arguments)
         else:
             result = {"messages": []}
-        
+
         return result
-    
+
     async def _handle_shutdown(self, params: dict[str, Any]) -> None:
         """Handle shutdown request."""
         self._initialized = False
@@ -271,7 +282,7 @@ class MCPRequestHandler:
 
 class MCPServer:
     """MCP Server - exposes MoRE OS tools via MCP protocol."""
-    
+
     def __init__(
         self,
         server_name: str = "QNMing MoRE OS",
@@ -281,7 +292,7 @@ class MCPServer:
         self._server_version = server_version
         self._handler = MCPRequestHandler(server_name, server_version)
         self._running = False
-    
+
     def register_tool(
         self,
         name: str,
@@ -291,7 +302,7 @@ class MCPServer:
     ) -> None:
         """Register a tool to expose via MCP."""
         self._handler.register_tool(name, description, input_schema, handler)
-    
+
     def register_resource(
         self,
         uri: str,
@@ -302,7 +313,7 @@ class MCPServer:
     ) -> None:
         """Register a resource to expose via MCP."""
         self._handler.register_resource(uri, name, description, mime_type, read_handler)
-    
+
     def register_prompt(
         self,
         name: str,
@@ -312,38 +323,41 @@ class MCPServer:
     ) -> None:
         """Register a prompt to expose via MCP."""
         self._handler.register_prompt(name, description, arguments_schema, handler)
-    
-    async def handle_stdio(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+
+    async def handle_stdio(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
         """Handle stdio-based MCP connection."""
         _log.info("MCP stdio connection started")
-        
+
         buffer = ""
-        
+
         try:
             while self._running:
                 line = await reader.readline()
                 if not line:
                     break
-                
+
                 buffer += line.decode("utf-8")
-                
+
                 if buffer.strip():
                     response = await self._handler.handle_message(buffer)
                     if response:
                         writer.write((response + "\n").encode("utf-8"))
                         await writer.drain()
                     buffer = ""
-        
+
         except Exception as e:
             _log.error(f"MCP stdio error: {e}")
         finally:
             writer.close()
             await writer.wait_closed()
             _log.info("MCP stdio connection closed")
-    
+
     async def run_stdio(self) -> None:
         """Run MCP server on stdio."""
         import sys
+
         self._running = True
 
         reader = asyncio.StreamReader()
@@ -352,15 +366,18 @@ class MCPServer:
         loop = asyncio.get_running_loop()
         await loop.connect_read_pipe(lambda: protocol, sys.stdin.buffer)
 
-        writer_transport, writer_protocol = await loop.create_connection(
-            lambda: asyncio.StreamWriterProtocol(asyncio.get_running_loop()),
+        from .transport import _StdoutProtocol
+
+        writer_protocol = _StdoutProtocol()
+        writer_transport, _ = await loop.create_connection(  # type: ignore[call-overload]
+            lambda: writer_protocol,
             None,
             None,
         )
         writer = asyncio.StreamWriter(writer_transport, writer_protocol, None, loop)
 
         await self.handle_stdio(reader, writer)
-    
+
     async def run_tcp(self, host: str = "127.0.0.1", port: int = 8765) -> None:
         """Run MCP server on TCP."""
         self._running = True
@@ -369,16 +386,16 @@ class MCPServer:
             host,
             port,
         )
-        
+
         _log.info(f"MCP server listening on {host}:{port}")
-        
+
         async with server:
             await server.serve_forever()
-    
+
     def get_capabilities(self) -> ServerCapabilities:
         """Get server capabilities."""
         return self._handler.get_capabilities()
-    
+
     async def shutdown(self) -> None:
         """Shutdown the server."""
         self._running = False

@@ -29,11 +29,11 @@ __all__ = [
 def create_default_skill_manager() -> SkillManager:
     """Create skill manager with default skills."""
     manager = SkillManager()
-    
+
     manager.register(WebSearchSkill())
     manager.register(WebBrowseSkill())
     manager.register(CodeExecutionSkill())
     manager.register(DataAnalysisSkill())
     manager.register(APICallSkill())
-    
+
     return manager

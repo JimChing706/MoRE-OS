@@ -1,7 +1,5 @@
 """Tests for SQLite persistence backends."""
 
-import os
-import tempfile
 
 import pytest
 

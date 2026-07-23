@@ -11,14 +11,21 @@ const CIRCUIT_BREAKER_THRESHOLD = 3;
 const CIRCUIT_RESET_MS = 60_000;
 
 export class ApiError extends Error {
+  readonly status?: number;
+  readonly isNetworkError: boolean = false;
+  readonly isTimeout: boolean = false;
+
   constructor(
     message: string,
-    public readonly status?: number,
-    public readonly isNetworkError: boolean = false,
-    public readonly isTimeout: boolean = false
+    status?: number,
+    isNetworkError: boolean = false,
+    isTimeout: boolean = false
   ) {
     super(message);
     this.name = 'ApiError';
+    this.status = status;
+    this.isNetworkError = isNetworkError;
+    this.isTimeout = isTimeout;
   }
 }
 
@@ -217,7 +224,7 @@ class APIService {
   }
 
   async getTaskHistory(limit: number = 20): Promise<{ tasks: TaskResult[]; total: number }> {
-    return this.request<TaskResult[]>(`/api/v1/tasks/history?limit=${limit}`);
+    return this.request<{ tasks: TaskResult[]; total: number }>(`/api/v1/tasks/history?limit=${limit}`);
   }
 
   async getConfiguredProviders(): Promise<Record<string, { provider: string; model: string; configured: boolean }>> {

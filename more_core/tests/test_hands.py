@@ -1,10 +1,11 @@
 """Tests for the Hands subsystem."""
 
 import pytest
+from more_core.core.errors import PluginError
 from more_core.hands.base import Hand, HandManifest, HandResult, HandStatus
 from more_core.hands.registry import HandRegistry
 from more_core.hands.manager import HandManager
-from more_core.hands.builtins import register_builtin_hands, ResearcherHand, CoderHand
+from more_core.hands.builtins import register_builtin_hands
 
 
 class _TestHand(Hand):
@@ -130,7 +131,7 @@ async def test_manager_duplicate_activate_raises():
     reg.register(_TestHand, _TestHand().manifest)
     mgr = HandManager(reg)
     await mgr.activate("test")
-    with pytest.raises(ValueError, match="already active"):
+    with pytest.raises(PluginError, match="already active"):
         await mgr.activate("test")
     await mgr.stop_all()
 
@@ -139,5 +140,5 @@ async def test_manager_duplicate_activate_raises():
 async def test_manager_unknown_hand_raises():
     reg = HandRegistry()
     mgr = HandManager(reg)
-    with pytest.raises(KeyError, match="Unknown Hand"):
+    with pytest.raises(PluginError, match="Unknown Hand"):
         await mgr.activate("nonexistent")

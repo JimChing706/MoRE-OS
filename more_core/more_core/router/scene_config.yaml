@@ -1,0 +1,151 @@
+# P5-3 场景-管道映射表 — 借鉴 ai_council 2 scene_config.yaml 设计模式 (v2 增强版)
+# 关键词驱动的任务场景分类，自动调整管道深度和推理策略
+#
+# 设计原则:
+# - 任何 TaskRequest 可先经场景分类，再叠加 TaskType 管道
+# - 场景决定: pipeline_depth (quick/standard/deep)、认知策略、输出侧重
+# - 关键词未命中时回退到 general 场景（不改变默认管道行为）
+# - 增强: 13 场景覆盖 + 短关键词精确匹配 + 阶梯评分
+
+clarification_threshold: 0.5  # 分类置信度低于此值时标记为需要澄清
+
+scenes:
+  # ── 原 8 场景（增强关键词）─────────────────────────────────────
+
+  code_architecture:     # 架构设计: 全深度管道 + 元认知
+    keywords: [架构, 重构, 设计模式, 系统设计, 微服务, 模块划分, architecture, refactor,
+               design pattern, 模块, 接口, 解耦, 技术债]
+    mode: deep
+    pipeline_hint:
+      prepend: [L5]       # 前置元认知
+      append: []
+    output_focus: [架构图, 模块边界, 耦合分析]
+    description: "复杂架构决策，启用全深度管道+元认知监控"
+
+  code_debugging:        # 代码调试: 轻量管道，跳过符号推理层
+    keywords: [bug, 报错, 异常, 崩溃, 调试, 修复, debug, error, crash, fix, 失败,
+               堆栈, 日志, 定位]
+    mode: quick
+    pipeline_hint:
+      prepend: []
+      append: []
+      skip: [L3, L5]     # 调试时跳过符号推理和元认知
+    output_focus: [根因分析, 修复方案, 回归风险]
+    description: "快速调试，跳过非必要推理层"
+
+  creative_generation:   # 创意生成: 保留发散思维
+    keywords: [头脑风暴, 创意, 点子, 设计, 原型, 想法, brainstorm, creative, prototype,
+               灵感, 创新, 构思, 设想]
+    mode: quick
+    pipeline_hint:
+      prepend: [L4]       # 确保认知层参与
+      append: []
+      skip: [L2]          # 跳过进化层
+    output_focus: [创意空间, 可行性初筛]
+    description: "创意发散场景，注重可能性探索"
+
+  data_analysis:         # 数据分析: 启用符号推理层
+    keywords: [数据, 统计, 分析, 图表, 可视化, SQL, 报表, data, analysis, chart, statistics,
+               数据集, 指标, benchmark]
+    mode: deep
+    pipeline_hint:
+      prepend: []
+      append: [L3]        # 确保符号推理层参与
+    output_focus: [数据来源, 统计方法, 可视化]
+    description: "数据分析任务，启用符号推理层"
+
+  security_critical:     # 安全敏感: 最大深度 + 完整审计
+    keywords: [安全, 加密, 认证, 授权, 漏洞, 渗透, 隐私, security, auth, crypto, vulnerability,
+               敏感, 合规, 监管, 法规, 公平性, 偏见]
+    mode: deep
+    pipeline_hint:
+      prepend: [L5, L4]   # 前置元认知+认知
+      append: [L2]        # 后置进化评估
+    output_focus: [威胁模型, 攻击面, 合规性]
+    description: "安全关键任务，全深度管道"
+
+  urgent_execution:      # 紧急执行: 最小管道
+    keywords: [紧急, 立刻, 马上, deadline, 必须现在, urgent, asap, 生产事故, 火急, 即时]
+    mode: quick
+    pipeline_hint:
+      prepend: []
+      append: []
+      skip: [L2, L3, L4, L5]  # 只保留 L1+L0
+    output_focus: [最小可行方案, 风险控制]
+    description: "紧急情况，最小管道直接执行"
+
+  learning_exploration:  # 学习探索: 启用元认知+进化
+    keywords: [学习, 理解, 解释, 原理, 为什么, 教程, learn, explain, tutorial, 概念,
+               推导, 论文, 综述, survey]
+    mode: deep
+    pipeline_hint:
+      prepend: [L5, L4]
+      append: [L2]        # 允许自我进化
+    output_focus: [概念图, 知识结构, 类比]
+    description: "学习探索场景，允许自我进化"
+
+  # ── 新增 5 场景（借鉴 ai_council 2）────────────────────────────
+
+  technical_validation:  # 技术验证: 数学/物理/工程模型正确性验证
+    keywords: [拓扑, 三维, 模型, 映射, 算法, 还原, 矩阵, 同态, 同构, 函数, 抽象, 群论,
+               对称, 旋转, 变换, 置换, 排列, 状态空间, 搜索, 启发式, A*, 回溯, 约束满足,
+               一致性, 完备性, 可靠性, 验证, 测试用例, 基准, 正确性, 复杂度, 完整性]
+    mode: deep
+    pipeline_hint:
+      prepend: [L4, L3]
+      append: []
+      skip: [L2]
+    output_focus: [正确性, 复杂度, 验证方法]
+    description: "数学模型/算法验证，强推理+符号层"
+
+  software_engineering:  # 软件工程: APP/系统/平台的架构与质量
+    keywords: [APP, 应用, 系统, 平台, 开发, 编程, 代码, 模块, 接口, API, 数据库, 前端, 后端,
+               部署, CI, CD, 微服务, 容器, Docker, K8s, 性能, 可扩展, 解耦, 重构, 技术债]
+    mode: standard
+    pipeline_hint:
+      prepend: []
+      append: []
+      skip: [L2]
+    output_focus: [架构质量, 可维护性, 性能]
+    description: "软件工程任务，标准管道"
+
+  academic_research:     # 学术研究: 论文/课题/方法论
+    keywords: [论文, 研究, 课题, 方法论, 实验, 对比, SOTA, 基线, 消融, ablation, 量化,
+               指标, 数据集, benchmark, 综述, survey, 假设, 推导, 收敛, 泛化, 过拟合]
+    mode: deep
+    pipeline_hint:
+      prepend: [L5, L4]
+      append: [L3]
+    output_focus: [方法论, 实验设计, 可复现性]
+    description: "学术研究场景，全深度分析"
+
+  product_design:        # 产品设计: 用户体验/界面/交互
+    keywords: [产品, 设计, 用户体验, UX, UI, 交互, 界面, 原型, 需求分析, 用户调研,
+               功能设计, 信息架构, 用户旅程, 痛点, 场景]
+    mode: standard
+    pipeline_hint:
+      prepend: [L4]
+      append: []
+    output_focus: [用户价值, 可用性, 体验]
+    description: "产品设计场景，注重用户视角"
+
+  strategy_decision:     # 战略决策: 企业/团队方向性决策
+    keywords: [战略, 策略, 规划, 布局, 路线图, 优先级, 资源分配, OKR, KPI, 目标,
+               规划, 方向, 取舍, 投入, 产出, ROI, 合同, 签订, 协议, 采购, 供应,
+               供应链, 成本, 定价, 报价, 谈判, 交付, 履约, 决策, 措施]
+    mode: standard
+    pipeline_hint:
+      prepend: [L5]
+      append: []
+      skip: [L2]
+    output_focus: [战略对齐, 资源效率, 风险评估]
+    description: "战略决策场景，元认知+执行导向"
+
+  general:               # 兜底场景 — 不改变默认管道
+    keywords: []
+    mode: standard
+    pipeline_hint:
+      prepend: []
+      append: []
+    output_focus: [综合评估]
+    description: "通用场景，沿用 TaskType 默认管道"

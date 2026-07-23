@@ -28,17 +28,19 @@ _SECRET_PATTERNS = re.compile(
 @dataclass
 class ConfigVar:
     """A skill configuration variable declaration."""
+
     name: str
     description: str = ""
-    env: str | None = None        # Environment variable to read from
+    env: str | None = None  # Environment variable to read from
     default: Any = None
     required: bool = False
-    is_secret: bool = False       # Auto-detected if not explicit
+    is_secret: bool = False  # Auto-detected if not explicit
 
 
 @dataclass
 class ConfigSchema:
     """Schema for skill configuration."""
+
     vars: list[ConfigVar] = field(default_factory=list)
 
     def var_names(self) -> list[str]:
@@ -155,14 +157,16 @@ def parse_config_schema(raw: dict[str, Any]) -> ConfigSchema:
     for name, spec in raw.items():
         if isinstance(spec, dict):
             is_secret = spec.get("is_secret", is_secret_name(name))
-            vars_list.append(ConfigVar(
-                name=name,
-                description=spec.get("description", ""),
-                env=spec.get("env"),
-                default=spec.get("default"),
-                required=spec.get("required", False),
-                is_secret=is_secret,
-            ))
+            vars_list.append(
+                ConfigVar(
+                    name=name,
+                    description=spec.get("description", ""),
+                    env=spec.get("env"),
+                    default=spec.get("default"),
+                    required=spec.get("required", False),
+                    is_secret=is_secret,
+                )
+            )
         else:
             # Simple value = default
             vars_list.append(ConfigVar(name=name, default=spec))

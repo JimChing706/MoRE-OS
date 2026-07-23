@@ -14,7 +14,7 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
     router = APIRouter(prefix="/api/v1")
 
     @router.post("/sessions", dependencies=deps)
-    async def create_session(payload: dict[str, str]) -> dict[str, Any]:
+    async def create_session(payload: dict[str, str]) -> Any:
         session = core.session_manager.create_session(
             user_id=payload.get("user_id", "anonymous"),
             user_name=payload.get("user_name", ""),
@@ -25,10 +25,13 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
 
     @router.get("/sessions", dependencies=deps)
     async def list_sessions() -> dict[str, Any]:
-        return {"sessions": core.session_manager.list_sessions(), "stats": core.session_manager.stats()}
+        return {
+            "sessions": core.session_manager.list_sessions(),
+            "stats": core.session_manager.stats(),
+        }
 
     @router.get("/sessions/{session_id}", dependencies=deps)
-    async def get_session(session_id: str) -> dict[str, Any]:
+    async def get_session(session_id: str) -> Any:
         session = core.session_manager.get_session(session_id)
         if session is None:
             raise HTTPException(status_code=404, detail="Session not found or expired")

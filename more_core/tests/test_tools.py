@@ -1,6 +1,5 @@
 """Tests for built-in tools."""
 
-import pytest
 import sys
 import os
 

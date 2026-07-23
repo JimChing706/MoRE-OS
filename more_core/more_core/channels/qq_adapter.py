@@ -17,6 +17,7 @@ _log = logging.getLogger(__name__)
 @dataclass
 class QQConfig:
     """QQ bot configuration."""
+
     host: str = "127.0.0.1"
     port: int = 5700
     access_token: str = ""
@@ -26,7 +27,7 @@ class QQConfig:
 
 class QQAdapter(ChannelAdapter):
     """QQ bot adapter compatible with go-cqhttp / NoneBot2."""
-    
+
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)
         self._host = config.get("host", "127.0.0.1")
@@ -35,7 +36,7 @@ class QQAdapter(ChannelAdapter):
         self._api_path = config.get("api_path", "/")
         self._session: httpx.AsyncClient | None = None
         self._running = False
-        self._event_queue: asyncio.Queue | None = None
+        self._event_queue: asyncio.Queue[Any] | None = None
 
     @property
     def platform_name(self) -> str:
@@ -52,16 +53,18 @@ class QQAdapter(ChannelAdapter):
             headers=headers,
             timeout=30,
         )
-        
+
         try:
             resp = await self._session.get(f"{self.base_url}/get_login_info")
             if resp.status_code == 200:
                 data = resp.json()
                 if data.get("status") == "ok":
-                    _log.info(f"QQ bot connected: {data.get('data', {}).get('nickname', 'unknown')}")
+                    _log.info(
+                        f"QQ bot connected: {data.get('data', {}).get('nickname', 'unknown')}"
+                    )
         except Exception as e:
             _log.warning(f"QQ bot connection check failed: {e}")
-        
+
         self._running = True
         self._event_queue = asyncio.Queue()
         asyncio.create_task(self._event_loop())
@@ -76,7 +79,7 @@ class QQAdapter(ChannelAdapter):
         """Send message via QQ."""
         try:
             chat_id = response.chat_id
-            
+
             if chat_id.startswith("group_"):
                 group_id = chat_id.replace("group_", "")
                 return await self._send_group_message(int(group_id), response.content)
@@ -91,21 +94,25 @@ class QQAdapter(ChannelAdapter):
 
     async def _send_private_message(self, user_id: int, content: str) -> bool:
         """Send private message."""
+        assert self._session is not None
         payload = {
             "user_id": user_id,
             "message": [{"type": "text", "data": {"text": content}}],
         }
         r = await self._session.post(f"{self.base_url}/send_private_msg", json=payload)
-        return r.json().get("status") == "ok"
+        data: Any = r.json()
+        return bool(data.get("status") == "ok")
 
     async def _send_group_message(self, group_id: int, content: str) -> bool:
         """Send group message."""
+        assert self._session is not None
         payload = {
             "group_id": group_id,
             "message": [{"type": "text", "data": {"text": content}}],
         }
         r = await self._session.post(f"{self.base_url}/send_group_msg", json=payload)
-        return r.json().get("status") == "ok"
+        data: Any = r.json()
+        return bool(data.get("status") == "ok")
 
     async def send_message_to_user(self, content: str, user_id: str) -> bool:
         """Send direct message to user."""
@@ -121,35 +128,42 @@ class QQAdapter(ChannelAdapter):
 
     async def health_check(self) -> bool:
         """Check QQ bot status."""
+        assert self._session is not None
         try:
             r = await self._session.get(f"{self.base_url}/get_login_info")
-            return r.json().get("status") == "ok"
+            data: Any = r.json()
+            return bool(data.get("status") == "ok")
         except Exception:
             return False
 
-    async def get_group_list(self) -> list[dict]:
+    async def get_group_list(self) -> list[dict[str, Any]]:
         """Get group list."""
+        assert self._session is not None
         r = await self._session.get(f"{self.base_url}/get_group_list")
-        data = r.json()
+        data: Any = r.json()
         return data.get("data", []) if data.get("status") == "ok" else []
 
-    async def get_friend_list(self) -> list[dict]:
+    async def get_friend_list(self) -> list[dict[str, Any]]:
         """Get friend list."""
+        assert self._session is not None
         r = await self._session.get(f"{self.base_url}/get_friend_list")
-        data = r.json()
+        data: Any = r.json()
         return data.get("data", []) if data.get("status") == "ok" else []
 
-    def parse_cq_code(self, message: str) -> list[dict]:
+    def parse_cq_code(self, message: str) -> list[dict[str, Any]]:
         """Parse CQ code to message segments."""
         import re
+
         segments = []
-        pattern = r'\[CQ:([^,\]]+)(?:,([^\]]+))?\]'
-        
+        pattern = r"\[CQ:([^,\]]+)(?:,([^\]]+))?\]"
+
         last_end = 0
         for match in re.finditer(pattern, message):
             if match.start() > last_end:
-                segments.append({"type": "text", "data": {"text": message[last_end:match.start()]}})
-            
+                segments.append(
+                    {"type": "text", "data": {"text": message[last_end : match.start()]}}
+                )
+
             cq_type = match.group(1)
             params = {}
             if match.group(2):
@@ -159,10 +173,10 @@ class QQAdapter(ChannelAdapter):
                         params[k] = v
             segments.append({"type": cq_type, "data": params})
             last_end = match.end()
-        
+
         if last_end < len(message):
             segments.append({"type": "text", "data": {"text": message[last_end:]}})
-        
+
         return segments
 
 
@@ -172,8 +186,10 @@ def create_qq_adapter(
     access_token: str = "",
 ) -> QQAdapter:
     """Factory for QQ adapter."""
-    return QQAdapter({
-        "host": host,
-        "port": port,
-        "access_token": access_token,
-    })
+    return QQAdapter(
+        {
+            "host": host,
+            "port": port,
+            "access_token": access_token,
+        }
+    )

@@ -8,15 +8,19 @@ import logging
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Any, Callable, TypeVar, Awaitable
-from functools import wraps
 from enum import Enum
+from functools import wraps
+
+from typing import Any, Callable, TypeVar, Awaitable, cast
+
+from .core.errors import MoREError
 
 logger = logging.getLogger(__name__)
 
 
 class CacheStrategy(Enum):
     """Cache strategies."""
+
     NO_CACHE = "no_cache"
     LRU = "lru"
     TTL = "ttl"
@@ -26,26 +30,31 @@ class CacheStrategy(Enum):
 @dataclass
 class CacheConfig:
     """Cache configuration."""
+
     max_size: int = 1000
     ttl_seconds: int = 3600
     strategy: CacheStrategy = CacheStrategy.LRU
 
+    def __post_init__(self) -> None:
+        if isinstance(self.strategy, str):
+            self.strategy = CacheStrategy(self.strategy)
+
 
 class RequestCache:
     """LRU Cache with TTL for LLM requests."""
-    
+
     def __init__(self, config: CacheConfig | None = None):
         self._config = config or CacheConfig()
         self._cache: OrderedDict[str, tuple[Any, float]] = OrderedDict()
         self._lock = asyncio.Lock()
         self._hits = 0
         self._misses = 0
-    
-    def _key(self, prompt: str, model: str, **kwargs) -> str:
+
+    def _key(self, prompt: str, model: str, **kwargs: Any) -> str:
         raw = f"{model}:{prompt}:{sorted(kwargs.items())}"
         return hashlib.sha256(raw.encode()).hexdigest()[:32]
-    
-    async def get(self, prompt: str, model: str, **kwargs) -> Any | None:
+
+    async def get(self, prompt: str, model: str, **kwargs: Any) -> Any | None:
         key = self._key(prompt, model, **kwargs)
         async with self._lock:
             if key in self._cache:
@@ -58,24 +67,24 @@ class RequestCache:
                     del self._cache[key]
             self._misses += 1
             return None
-    
+
     async def set(self, prompt: str, model: str, value: Any, ttl: int | None = None) -> None:
         key = self._key(prompt, model)
         ttl = ttl or self._config.ttl_seconds
-        
+
         async with self._lock:
             if key in self._cache:
                 self._cache.move_to_end(key)
             elif len(self._cache) >= self._config.max_size:
                 self._cache.popitem(last=False)
-            
+
             self._cache[key] = (value, time.time() + ttl)
-    
+
     async def clear(self) -> None:
         async with self._lock:
             self._cache.clear()
-    
-    def stats(self) -> dict:
+
+    def stats(self) -> dict[str, Any]:
         total = self._hits + self._misses
         return {
             "hits": self._hits,
@@ -94,12 +103,13 @@ def with_retry(
     max_delay: float = 30.0,
     exponential_base: float = 2.0,
     retry_on: Callable[[Exception], bool] | None = None,
-):
+) -> Callable[[Callable[..., Awaitable[T]]], Callable[..., Awaitable[T]]]:
     """Decorator for retry logic with exponential backoff."""
+
     def decorator(func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
         @wraps(func)
-        async def wrapper(*args, **kwargs) -> T:
-            last_exception = None
+        async def wrapper(*args: Any, **kwargs: Any) -> T:
+            last_exception: Exception | None = None
             for attempt in range(max_retries):
                 try:
                     return await func(*args, **kwargs)
@@ -108,29 +118,39 @@ def with_retry(
                     if retry_on and not retry_on(e):
                         raise
                     if attempt < max_retries - 1:
-                        delay = min(base_delay * (exponential_base ** attempt), max_delay)
+                        delay = min(base_delay * (exponential_base**attempt), max_delay)
                         await asyncio.sleep(delay)
-            raise last_exception
+            if last_exception is not None:
+                raise last_exception
+            raise RuntimeError("Unexpected: no exception captured")
+
         return wrapper
+
     return decorator
 
 
-def with_timeout(timeout_s: float, default: Any = None):
+def with_timeout(
+    timeout_s: float, default: Any = None
+) -> Callable[[Callable[..., Awaitable[T]]], Callable[..., Awaitable[T]]]:
     """Decorator for timeout handling."""
+
     def decorator(func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
         @wraps(func)
-        async def wrapper(*args, **kwargs) -> T:
+        async def wrapper(*args: Any, **kwargs: Any) -> T:
             try:
                 return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout_s)
             except asyncio.TimeoutError:
-                return default
+                return cast(T, default)
+
         return wrapper
+
     return decorator
 
 
 @dataclass
 class CircuitState:
     """Circuit breaker state."""
+
     failures: int = 0
     last_failure_time: float = 0
     is_open: bool = False
@@ -138,7 +158,7 @@ class CircuitState:
 
 class CircuitBreaker:
     """Circuit breaker for fault tolerance."""
-    
+
     def __init__(
         self,
         failure_threshold: int = 5,
@@ -151,8 +171,8 @@ class CircuitBreaker:
         self._state = CircuitState()
         self._half_open_calls = 0
         self._lock = asyncio.Lock()
-    
-    async def call(self, func: Callable[..., Awaitable[T]], *args, **kwargs) -> T:
+
+    async def call(self, func: Callable[..., Awaitable[T]], *args: Any, **kwargs: Any) -> T:
         async with self._lock:
             if self._state.is_open:
                 if time.time() - self._state.last_failure_time > self._recovery_timeout:
@@ -160,8 +180,8 @@ class CircuitBreaker:
                     self._state.is_open = False
                     self._half_open_calls = 1
                 else:
-                    raise RuntimeError("Circuit breaker is OPEN")
-        
+                    raise MoREError("Circuit breaker is OPEN")
+
         try:
             result = await func(*args, **kwargs)
             async with self._lock:
@@ -171,7 +191,7 @@ class CircuitBreaker:
             async with self._lock:
                 self._on_failure()
             raise
-    
+
     def _on_success(self) -> None:
         self._state.failures = 0
         if self._half_open_calls > 0:
@@ -179,7 +199,7 @@ class CircuitBreaker:
             if self._half_open_calls >= self._half_open_max_calls:
                 self._state.is_open = False
                 self._half_open_calls = 0
-    
+
     def _on_failure(self) -> None:
         self._state.failures += 1
         self._state.last_failure_time = time.time()
@@ -190,7 +210,7 @@ class CircuitBreaker:
         elif self._state.failures >= self._failure_threshold:
             self._state.is_open = True
             self._half_open_calls = 0
-    
+
     @property
     def state(self) -> str:
         if self._state.is_open:
@@ -202,24 +222,24 @@ class CircuitBreaker:
 
 class ConnectionPool:
     """Simple connection pool for HTTP clients."""
-    
+
     def __init__(self, max_connections: int = 10, max_keepalive: int = 20):
         self._semaphore = asyncio.Semaphore(max_connections)
         self._max_keepalive = max_keepalive
         self._active = 0
         self._waiting = 0
-    
-    async def __aenter__(self):
+
+    async def __aenter__(self) -> ConnectionPool:
         await self._semaphore.acquire()
         self._active += 1
         return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self._active -= 1
         self._semaphore.release()
-    
+
     @property
-    def stats(self) -> dict:
+    def stats(self) -> dict[str, Any]:
         return {
             "active": self._active,
             "waiting": self._waiting,
@@ -229,26 +249,26 @@ class ConnectionPool:
 
 class RateLimiter:
     """Token bucket rate limiter."""
-    
+
     def __init__(self, rate: float, burst: int = 1):
         self._rate = rate
         self._burst = burst
-        self._tokens = burst
+        self._tokens: float = float(burst)
         self._last_update = time.time()
         self._lock = asyncio.Lock()
-    
+
     async def acquire(self, tokens: int = 1) -> bool:
         async with self._lock:
             now = time.time()
             elapsed = now - self._last_update
-            self._tokens = min(self._burst, self._tokens + elapsed * self._rate)
+            self._tokens = float(min(self._burst, self._tokens + elapsed * self._rate))
             self._last_update = now
-            
+
             if self._tokens >= tokens:
                 self._tokens -= tokens
                 return True
             return False
-    
+
     async def wait_for_token(self, tokens: int = 1) -> None:
         while not await self.acquire(tokens):
             await asyncio.sleep(0.1)

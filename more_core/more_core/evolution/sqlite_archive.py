@@ -52,9 +52,15 @@ class SQLiteEvolutionArchive(EvolutionArchive):
         ).fetchall()
         for r in rows:
             agent = EvolvedAgent(
-                id=r[0], parent_id=r[1], generation=r[2], branch=r[3],
-                code=r[4], performance=r[5], description=r[6],
-                created_at=r[7], verified=bool(r[8]),
+                id=r[0],
+                parent_id=r[1],
+                generation=r[2],
+                branch=r[3],
+                code=r[4],
+                performance=r[5],
+                description=r[6],
+                created_at=r[7],
+                verified=bool(r[8]),
             )
             self._agents[agent.id] = agent
             self._by_branch.setdefault(agent.branch, []).append(agent.id)
@@ -66,9 +72,15 @@ class SQLiteEvolutionArchive(EvolutionArchive):
             "(id, parent_id, generation, branch, code, performance, description, created_at, verified) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
-                agent.id, agent.parent_id, agent.generation, agent.branch,
-                agent.code, agent.performance, agent.description,
-                agent.created_at, int(agent.verified),
+                agent.id,
+                agent.parent_id,
+                agent.generation,
+                agent.branch,
+                agent.code,
+                agent.performance,
+                agent.description,
+                agent.created_at,
+                int(agent.verified),
             ),
         )
         self._conn.commit()

@@ -21,7 +21,7 @@ __all__ = [
     "Response",
     "ChannelManager",
     "TelegramAdapter",
-    "DiscordAdapter", 
+    "DiscordAdapter",
     "MessageFormatter",
     "WeChatAdapter",
     "create_wechat_adapter",

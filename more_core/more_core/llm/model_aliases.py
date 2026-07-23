@@ -14,6 +14,7 @@ from typing import Any
 @dataclass
 class ModelAlias:
     """A model alias mapping."""
+
     alias: str
     provider: str
     model: str
@@ -30,61 +31,111 @@ FREE_MODELS: list[ModelAlias] = [
         provider="openrouter",
         model="qwen/qwen3-coder:free",
         description="Qwen3 Coder (free) — code generation",
-        free=True, context_length=32768, capabilities=["code", "chat"],
+        free=True,
+        context_length=32768,
+        capabilities=["code", "chat"],
     ),
     ModelAlias(
         alias="free-large",
         provider="openrouter",
         model="openrouter/free-large",
         description="Best available free large model",
-        free=True, context_length=128000, capabilities=["chat", "reasoning"],
+        free=True,
+        context_length=128000,
+        capabilities=["chat", "reasoning"],
     ),
     ModelAlias(
         alias="free-llama",
         provider="openrouter",
         model="meta-llama/llama-3.3-70b-instruct:free",
         description="Llama 3.3 70B Instruct (free)",
-        free=True, context_length=131072, capabilities=["chat", "code", "tools"],
+        free=True,
+        context_length=131072,
+        capabilities=["chat", "code", "tools"],
     ),
     ModelAlias(
         alias="free-glm",
         provider="openrouter",
         model="thudm/glm-4.5-air:free",
         description="GLM 4.5 Air (free) — multilingual",
-        free=True, context_length=32768, capabilities=["chat", "multilingual"],
+        free=True,
+        context_length=32768,
+        capabilities=["chat", "multilingual"],
     ),
     ModelAlias(
         alias="free-gpt",
         provider="openrouter",
         model="openrouter/gpt-oss-120b:free",
         description="GPT-OSS 120B (free) — large general",
-        free=True, context_length=65536, capabilities=["chat", "reasoning"],
+        free=True,
+        context_length=65536,
+        capabilities=["chat", "reasoning"],
     ),
 ]
 
 # Standard model aliases
 STANDARD_ALIASES: list[ModelAlias] = [
     # Fast models
-    ModelAlias(alias="fast", provider="groq", model="llama-3.3-70b-versatile",
-              description="Fastest inference (Groq)", context_length=131072),
-    ModelAlias(alias="fast-small", provider="groq", model="llama-3.1-8b-instant",
-              description="Fast small model (Groq)", context_length=131072),
+    ModelAlias(
+        alias="fast",
+        provider="groq",
+        model="llama-3.3-70b-versatile",
+        description="Fastest inference (Groq)",
+        context_length=131072,
+    ),
+    ModelAlias(
+        alias="fast-small",
+        provider="groq",
+        model="llama-3.1-8b-instant",
+        description="Fast small model (Groq)",
+        context_length=131072,
+    ),
     # Reasoning models
-    ModelAlias(alias="reasoning", provider="openai", model="o4-mini",
-              description="Best reasoning (OpenAI o4-mini)", capabilities=["reasoning"]),
-    ModelAlias(alias="deep-think", provider="deepseek", model="deepseek-reasoner",
-              description="DeepSeek Reasoner (R1)", capabilities=["reasoning"]),
+    ModelAlias(
+        alias="reasoning",
+        provider="openai",
+        model="o4-mini",
+        description="Best reasoning (OpenAI o4-mini)",
+        capabilities=["reasoning"],
+    ),
+    ModelAlias(
+        alias="deep-think",
+        provider="deepseek",
+        model="deepseek-reasoner",
+        description="DeepSeek Reasoner (R1)",
+        capabilities=["reasoning"],
+    ),
     # Coding models
-    ModelAlias(alias="coder", provider="anthropic", model="claude-sonnet-4-20250514",
-              description="Best coding model", capabilities=["code", "tools"]),
-    ModelAlias(alias="coder-local", provider="lmstudio", model="gemma-4-coder",
-              description="Local coding model", capabilities=["code"]),
+    ModelAlias(
+        alias="coder",
+        provider="anthropic",
+        model="claude-sonnet-4-20250514",
+        description="Best coding model",
+        capabilities=["code", "tools"],
+    ),
+    ModelAlias(
+        alias="coder-local",
+        provider="lmstudio",
+        model="gemma-4-coder",
+        description="Local coding model",
+        capabilities=["code"],
+    ),
     # Large context
-    ModelAlias(alias="long-context", provider="google", model="gemini-2.0-flash",
-              description="1M context (Gemini)", context_length=1000000),
+    ModelAlias(
+        alias="long-context",
+        provider="google",
+        model="gemini-2.0-flash",
+        description="1M context (Gemini)",
+        context_length=1000000,
+    ),
     # Multilingual
-    ModelAlias(alias="multilingual", provider="openai", model="gpt-4o",
-              description="Best multilingual", capabilities=["multilingual", "vision"]),
+    ModelAlias(
+        alias="multilingual",
+        provider="openai",
+        model="gpt-4o",
+        description="Best multilingual",
+        capabilities=["multilingual", "vision"],
+    ),
 ]
 
 

@@ -19,6 +19,7 @@ _log = logging.getLogger(__name__)
 @dataclass
 class FilterRule:
     """A rule for detecting and redacting sensitive content."""
+
     name: str
     pattern: re.Pattern[str]
     replacement: str = "[REDACTED]"
@@ -79,7 +80,9 @@ _DEFAULT_RULES = [
     ),
     FilterRule(
         name="private_key",
-        pattern=re.compile(r"-----BEGIN\s+(RSA\s+)?PRIVATE KEY-----[\s\S]*?-----END\s+(RSA\s+)?PRIVATE KEY-----"),
+        pattern=re.compile(
+            r"-----BEGIN\s+(RSA\s+)?PRIVATE KEY-----[\s\S]*?-----END\s+(RSA\s+)?PRIVATE KEY-----"
+        ),
         replacement="[PRIVATE_KEY_REDACTED]",
     ),
 ]
@@ -134,10 +137,12 @@ class OutputFilter:
                 continue
             matches = rule.pattern.findall(text)
             if matches:
-                findings.append({
-                    "rule": rule.name,
-                    "count": len(matches),
-                })
+                findings.append(
+                    {
+                        "rule": rule.name,
+                        "count": len(matches),
+                    }
+                )
         return findings
 
     def stats(self) -> dict[str, Any]:

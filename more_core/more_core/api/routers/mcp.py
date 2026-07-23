@@ -8,14 +8,14 @@ Exposes MCP client operations as REST endpoints:
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Depends
 
 from ...version import __version__
 from ...runtime.orchestrator import MoRECore
-from ...mcp.client import MCPClient, MCPClientError, ClientCapabilities
+from ...mcp.client import MCPClient, MCPClientError
+from ...mcp.protocol import ClientCapabilities
 from ...mcp.transport import ProcessTransport
 
 
@@ -66,13 +66,13 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
             return {"status": "error", "error": str(e)}
 
     @router.post("/mcp/tools/{server_name}/{tool_name}", dependencies=[Depends(require_api_key)])
-    async def call_tool(server_name: str, tool_name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def call_tool(
+        server_name: str, tool_name: str, arguments: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Call a tool on a connected MCP server."""
         client: MCPClient = core.mcp_client
         try:
-            result = await client.call_tool_from_server(
-                server_name, tool_name, arguments or {}
-            )
+            result = await client.call_tool_from_server(server_name, tool_name, arguments or {})
             return {
                 "status": "success",
                 "server": server_name,

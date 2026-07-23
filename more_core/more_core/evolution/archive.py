@@ -63,8 +63,9 @@ class EvolutionArchive:
             self._agents[agent.id] = agent
 
     def stats(self) -> dict[str, object]:
+        best_agent = self.best()
         return {
             "total_agents": len(self._agents),
             "branches": {b: len(v) for b, v in self._by_branch.items()},
-            "best_score": self.best().performance if self._agents else 0.0,
+            "best_score": best_agent.performance if best_agent else 0.0,
         }

@@ -10,6 +10,7 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 
 @dataclass(slots=True)
@@ -24,10 +25,10 @@ class AuditRecord:
 
 class AuditLogger:
     """Thread-safe JSONL audit logger for AOW compliance."""
-    
+
     def __init__(self, path: str | Path) -> None:
         """Initialize audit logger.
-        
+
         Args:
             path: Path to the audit log file
         """
@@ -37,7 +38,7 @@ class AuditLogger:
 
     def write(self, record: AuditRecord) -> None:
         """Write a single audit record to the log file.
-        
+
         Args:
             record: AuditRecord to write
         """
@@ -47,13 +48,13 @@ class AuditLogger:
 
     def log(self, actor: str, action: str, entity: str, **payload: object) -> AuditRecord:
         """Log an audit event.
-        
+
         Args:
             actor: Who performed the action (user, system, agent)
             action: What was done (create, update, delete, execute)
             entity: What was affected (task, file, config)
             **payload: Additional context data
-            
+
         Returns:
             The created AuditRecord
         """
@@ -61,18 +62,17 @@ class AuditLogger:
         self.write(record)
         return record
 
-    def read_recent(self, limit: int = 50) -> list[dict]:
+    def read_recent(self, limit: int = 50) -> list[dict[str, Any]]:
         """Read the most recent audit records from the JSONL file.
 
         Uses reverse-chunked reading to avoid loading the entire file
         into memory — safe for multi-GB audit logs.
         """
-        records: list[dict] = []
+        records: list[dict[str, Any]] = []
         try:
             if not self._path.exists():
                 return records
             with self._lock, self._path.open("rb") as fh:
-                # Read the last ~8KB per expected record (generous for JSONL)
                 chunk_size = max(8192, limit * 256)
                 fh.seek(0, io.SEEK_END)
                 file_size = fh.tell()
@@ -87,10 +87,8 @@ class AuditLogger:
                     fh.seek(remaining)
                     chunk = fh.read(read_size)
                     buf = bytearray(chunk) + buf
-                    # Split on newlines, keep the last (incomplete) line in buf
                     raw = buf.decode("utf-8", errors="replace")
                     lines = raw.split(os.linesep)
-                    # First line might be partial — prepend it to next chunk
                     buf = bytearray(lines[0].encode("utf-8", errors="replace"))
                     for line in reversed(lines[1:]):
                         line = line.strip()
@@ -101,7 +99,6 @@ class AuditLogger:
                                 continue
                             if len(records) >= limit:
                                 break
-                # Process the final leftover line
                 leftover = buf.decode("utf-8", errors="replace").strip()
                 if leftover and len(records) < limit:
                     try:
@@ -110,5 +107,4 @@ class AuditLogger:
                         pass
         except Exception:
             pass
-        # Records are already in reverse-chronological order
         return records[:limit]

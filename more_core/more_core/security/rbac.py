@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 _log = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class Permission(str, Enum):
     """
 
     @classmethod
-    def _missing_(cls, value):
+    def _missing_(cls, value: object) -> Permission | None:
         if isinstance(value, str):
             obj = str.__new__(cls, value)
             obj._name_ = value
@@ -120,13 +120,22 @@ ROLE_OPERATOR = Role(
     name="operator",
     description="Operational access",
     permissions={
-        Permission.TASK_EXECUTE, Permission.TASK_VIEW, Permission.TASK_DELETE,
-        Permission.HAND_ACTIVATE, Permission.HAND_DEACTIVATE,
-        Permission.HAND_RUN, Permission.HAND_VIEW,
-        Permission.LLM_UPDATE, Permission.LLM_VIEW,
-        Permission.TOOL_FILE_READ, Permission.TOOL_PYTHON,
-        Permission.MEMORY_READ, Permission.MEMORY_WRITE,
-        Permission.EVOLUTION_READ, Permission.EVOLUTION_WRITE, Permission.EVOLUTION_EXECUTE,
+        Permission.TASK_EXECUTE,
+        Permission.TASK_VIEW,
+        Permission.TASK_DELETE,
+        Permission.HAND_ACTIVATE,
+        Permission.HAND_DEACTIVATE,
+        Permission.HAND_RUN,
+        Permission.HAND_VIEW,
+        Permission.LLM_UPDATE,
+        Permission.LLM_VIEW,
+        Permission.TOOL_FILE_READ,
+        Permission.TOOL_PYTHON,
+        Permission.MEMORY_READ,
+        Permission.MEMORY_WRITE,
+        Permission.EVOLUTION_READ,
+        Permission.EVOLUTION_WRITE,
+        Permission.EVOLUTION_EXECUTE,
         Permission.GOV_VIEW,
         Permission.CHANNEL_VIEW,
     },
@@ -136,9 +145,12 @@ ROLE_VIEWER = Role(
     name="viewer",
     description="Read-only access",
     permissions={
-        Permission.TASK_VIEW, Permission.HAND_VIEW,
-        Permission.LLM_VIEW, Permission.GOV_VIEW,
-        Permission.CHANNEL_VIEW, Permission.MEMORY_READ,
+        Permission.TASK_VIEW,
+        Permission.HAND_VIEW,
+        Permission.LLM_VIEW,
+        Permission.GOV_VIEW,
+        Permission.CHANNEL_VIEW,
+        Permission.MEMORY_READ,
         Permission.EVOLUTION_READ,
     },
 )
@@ -147,9 +159,12 @@ ROLE_AGENT = Role(
     name="agent",
     description="AI agent role (limited tool access)",
     permissions={
-        Permission.TASK_EXECUTE, Permission.TASK_VIEW,
-        Permission.HAND_VIEW, Permission.LLM_VIEW,
-        Permission.TOOL_FILE_READ, Permission.TOOL_PYTHON,
+        Permission.TASK_EXECUTE,
+        Permission.TASK_VIEW,
+        Permission.HAND_VIEW,
+        Permission.LLM_VIEW,
+        Permission.TOOL_FILE_READ,
+        Permission.TOOL_PYTHON,
         Permission.MEMORY_READ,
     },
 )
@@ -158,14 +173,27 @@ ROLE_DEVELOPER = Role(
     name="developer",
     description="Development access",
     permissions={
-        Permission.TASK_EXECUTE, Permission.TASK_VIEW, Permission.TASK_DELETE,
-        Permission.HAND_VIEW, Permission.HAND_ACTIVATE, Permission.HAND_DEACTIVATE,
-        Permission.LLM_UPDATE, Permission.LLM_VIEW, Permission.LLM_VIEW_KEYS,
-        Permission.TOOL_FILE_READ, Permission.TOOL_FILE_WRITE,
-        Permission.TOOL_PYTHON, Permission.TOOL_SHELL,
-        Permission.MEMORY_READ, Permission.MEMORY_WRITE, Permission.MEMORY_DELETE,
-        Permission.EVOLUTION_READ, Permission.EVOLUTION_WRITE, Permission.EVOLUTION_EXECUTE,
-        Permission.GOV_VIEW, Permission.CHANNEL_VIEW,
+        Permission.TASK_EXECUTE,
+        Permission.TASK_VIEW,
+        Permission.TASK_DELETE,
+        Permission.HAND_VIEW,
+        Permission.HAND_ACTIVATE,
+        Permission.HAND_DEACTIVATE,
+        Permission.LLM_UPDATE,
+        Permission.LLM_VIEW,
+        Permission.LLM_VIEW_KEYS,
+        Permission.TOOL_FILE_READ,
+        Permission.TOOL_FILE_WRITE,
+        Permission.TOOL_PYTHON,
+        Permission.TOOL_SHELL,
+        Permission.MEMORY_READ,
+        Permission.MEMORY_WRITE,
+        Permission.MEMORY_DELETE,
+        Permission.EVOLUTION_READ,
+        Permission.EVOLUTION_WRITE,
+        Permission.EVOLUTION_EXECUTE,
+        Permission.GOV_VIEW,
+        Permission.CHANNEL_VIEW,
     },
 )
 
@@ -196,9 +224,7 @@ class UnifiedRBAC:
 
     # -- permission registry (plugin extensibility) -------------------------
 
-    def register_permission(
-        self, name: str, perm: Permission | None = None
-    ) -> Permission:
+    def register_permission(self, name: str, perm: Permission | None = None) -> Permission:
         """Register a dynamic permission for plugins.
 
         If ``perm`` is given it is stored under *name*; otherwise a new
@@ -258,9 +284,7 @@ class UnifiedRBAC:
 
     def check_raise(self, user_id: str, permission: Permission) -> None:
         if not self.check(user_id, permission):
-            raise PermissionError(
-                f"user {user_id} lacks permission {permission.value}"
-            )
+            raise PermissionError(f"user {user_id} lacks permission {permission.value}")
 
     def get_user_permissions(self, user_id: str) -> set[Permission]:
         result: set[Permission] = set()
@@ -280,8 +304,11 @@ class UnifiedRBAC:
 
     def list_roles(self) -> list[dict[str, Any]]:
         return [
-            {"name": r.name, "description": r.description,
-             "permissions": [p.value for p in r.permissions]}
+            {
+                "name": r.name,
+                "description": r.description,
+                "permissions": [p.value for p in r.permissions],
+            }
             for r in self._roles.values()
         ]
 
@@ -296,7 +323,8 @@ class UnifiedRBAC:
 
 # ---- FastAPI dependency helper ----
 
-def require_permission(permission: Permission):
+
+def require_permission(permission: Permission) -> Callable[[str], Awaitable[None]]:
     """Return a FastAPI dependency callable that checks *permission*.
 
     Usage::
@@ -315,7 +343,10 @@ def require_permission(permission: Permission):
 
 # ---- tool handler decorator ----
 
-def requires_permission(permission: Permission):
+
+def requires_permission(
+    permission: Permission,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorator for tool handlers that need RBAC checks.
 
     Usage::
@@ -327,14 +358,16 @@ def requires_permission(permission: Permission):
     so the caller (L0 execution) must inject it before dispatch.
     """
 
-    def decorator(handler):
-        async def wrapper(params: dict) -> Any:
+    def decorator(handler: Callable[..., Any]) -> Callable[..., Any]:
+        async def wrapper(params: dict[str, Any]) -> Any:
             user_id = params.pop("_user_id", "anonymous")
             rbac = get_rbac()
             if rbac is not None:
                 rbac.check_raise(user_id, permission)
             return await handler(params)
+
         return wrapper
+
     return decorator
 
 
@@ -345,7 +378,7 @@ from warnings import warn as _warn  # noqa: E402
 _RBACManager_deprecated: bool = False
 
 
-class RBACManager(UnifiedRBAC):  # type: ignore[misc]
+class RBACManager(UnifiedRBAC):
     """Deprecated alias for :class:`UnifiedRBAC`.
 
     Retained for backward compatibility; scheduled for removal in v0.7.0.
@@ -353,10 +386,14 @@ class RBACManager(UnifiedRBAC):  # type: ignore[misc]
 
     _legacy_enabled: bool = False
 
-    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         global _RBACManager_deprecated
         if not _RBACManager_deprecated:
-            _warn("RBACManager is deprecated; use UnifiedRBAC instead", DeprecationWarning, stacklevel=2)
+            _warn(
+                "RBACManager is deprecated; use UnifiedRBAC instead",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             _RBACManager_deprecated = True
         super().__init__(*args, **kwargs)
 
@@ -367,7 +404,7 @@ class RBACManager(UnifiedRBAC):  # type: ignore[misc]
         self._legacy_enabled = False
 
     @property
-    def enabled(self) -> bool:  # type: ignore[override]
+    def enabled(self) -> bool:
         return self._legacy_enabled or bool(self._admin_users)
 
     def check_permission(self, user_id: str, permission: Permission) -> bool:

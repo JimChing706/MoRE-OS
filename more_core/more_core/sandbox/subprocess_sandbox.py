@@ -70,7 +70,9 @@ class SubprocessSandbox:
             proc.kill()
             await proc.wait()
             return SandboxResult(
-                stdout="", stderr="sandbox timeout", exit_code=-1,
+                stdout="",
+                stderr="sandbox timeout",
+                exit_code=-1,
                 duration_ms=(asyncio.get_running_loop().time() - start) * 1000,
                 timed_out=True,
             )

@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from more_core.core.errors import MoREError
 from more_core.core.types import TaskRequest, TaskStatus, TaskType
 from more_core.optimization import RateLimiter, CircuitBreaker, RequestCache, CacheConfig
 
@@ -63,7 +64,7 @@ async def test_circuit_breaker_opens_after_threshold():
 
     assert cb.state == "OPEN"
 
-    with pytest.raises(RuntimeError, match="Circuit breaker is OPEN"):
+    with pytest.raises(MoREError, match="Circuit breaker is OPEN"):
         await cb.call(fail)
 
 
@@ -89,36 +90,36 @@ async def test_circuit_breaker_recovers():
 # --- Request Cache Tests ---
 
 
-def test_cache_stores_and_retrieves():
+async def test_cache_stores_and_retrieves():
     cache = RequestCache(CacheConfig(max_size=10, ttl_seconds=60))
-    cache.set("hello", "model-a", {"answer": 42})
-    assert cache.get("hello", "model-a") == {"answer": 42}
+    await cache.set("hello", "model-a", {"answer": 42})
+    assert await cache.get("hello", "model-a") == {"answer": 42}
 
 
-def test_cache_respects_ttl():
+async def test_cache_respects_ttl():
     import time
 
     cache = RequestCache(CacheConfig(max_size=10, ttl_seconds=0))
-    cache.set("hello", "model-a", "result", ttl=0)
+    await cache.set("hello", "model-a", "result", ttl=0)
     time.sleep(0.01)
-    assert cache.get("hello", "model-a") is None
+    assert await cache.get("hello", "model-a") is None
 
 
-def test_cache_evicts_lru():
+async def test_cache_evicts_lru():
     cache = RequestCache(CacheConfig(max_size=2, ttl_seconds=60))
-    cache.set("a", "m", 1)
-    cache.set("b", "m", 2)
-    cache.set("c", "m", 3)  # should evict 'a'
-    assert cache.get("a", "m") is None
-    assert cache.get("b", "m") == 2
-    assert cache.get("c", "m") == 3
+    await cache.set("a", "m", 1)
+    await cache.set("b", "m", 2)
+    await cache.set("c", "m", 3)  # should evict 'a'
+    assert await cache.get("a", "m") is None
+    assert await cache.get("b", "m") == 2
+    assert await cache.get("c", "m") == 3
 
 
-def test_cache_stats():
+async def test_cache_stats():
     cache = RequestCache(CacheConfig(max_size=10, ttl_seconds=60))
-    cache.set("x", "m", "val")
-    cache.get("x", "m")  # hit
-    cache.get("y", "m")  # miss
+    await cache.set("x", "m", "val")
+    await cache.get("x", "m")  # hit
+    await cache.get("y", "m")  # miss
     stats = cache.stats()
     assert stats["hits"] == 1
     assert stats["misses"] == 1
@@ -220,7 +221,7 @@ def test_complexity_bonus_capped():
     from more_core.layers.l4_cognition import _estimate_complexity_bonus
 
     heavy = "integrate distributed concurrent optimize architecture security refactor"
-    assert _estimate_complexity_bonus(heavy) == 3  # capped at 3
+    assert _estimate_complexity_bonus(heavy) == 4  # capped at 4
 
 
 # --- Correlation Context ---

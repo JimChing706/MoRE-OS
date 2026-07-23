@@ -27,14 +27,14 @@ from .registry import ToolRegistry, ResourceRegistry, PromptRegistry
 
 __all__ = [
     "MCPMessage",
-    "MCPRequest", 
+    "MCPRequest",
     "MCPResponse",
     "MCPNotification",
     "JSONRPCError",
     "ErrorCode",
     "MCPMethod",
     "Tool",
-    "Resource", 
+    "Resource",
     "Prompt",
     "ServerCapabilities",
     "ClientCapabilities",

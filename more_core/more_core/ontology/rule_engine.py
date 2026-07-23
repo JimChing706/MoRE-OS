@@ -31,6 +31,7 @@ class RulePriority(int, Enum):
 @dataclass(slots=True)
 class Fact:
     """A single assertion in working memory."""
+
     kind: str
     data: dict[str, Any] = field(default_factory=dict)
     source: str = "system"
@@ -39,6 +40,7 @@ class Fact:
 @dataclass(slots=True)
 class RuleAction:
     """Result of a rule firing."""
+
     type: str  # "assert" | "retract" | "modify" | "halt" | "annotate"
     payload: dict[str, Any] = field(default_factory=dict)
 
@@ -46,6 +48,7 @@ class RuleAction:
 @dataclass(slots=True)
 class Rule:
     """Production rule: when *all* conditions match → execute actions."""
+
     name: str
     conditions: list[Callable[[list[Fact]], bool]]
     actions: list[Callable[[list[Fact], dict[str, Any]], list[RuleAction]]]
@@ -140,6 +143,7 @@ class RuleEngine:
 
 # ---- built-in governance rules ------------------------------------------
 
+
 def _cond_long_query(facts: list[Fact]) -> bool:
     for f in facts:
         if f.kind == "request" and semantic_length(f.data.get("query", "")) > 10000:
@@ -161,9 +165,12 @@ def _cond_self_improvement_without_gate(facts: list[Fact]) -> bool:
 
 def _act_block_ungated_evolution(facts: list[Fact], ctx: dict[str, Any]) -> list[RuleAction]:
     return [
-        RuleAction(type="violation", payload={
-            "message": "self-improvement requested but evolution feature gate is off",
-        }),
+        RuleAction(
+            type="violation",
+            payload={
+                "message": "self-improvement requested but evolution feature gate is off",
+            },
+        ),
     ]
 
 
@@ -177,16 +184,26 @@ def _cond_dangerous_code(facts: list[Fact]) -> bool:
 
 def _act_flag_dangerous(facts: list[Fact], ctx: dict[str, Any]) -> list[RuleAction]:
     return [
-        RuleAction(type="annotate", payload={"safety_warning": "potentially dangerous code detected"}),
-        RuleAction(type="violation", payload={"message": "generated code uses dangerous primitives"}),
+        RuleAction(
+            type="annotate", payload={"safety_warning": "potentially dangerous code detected"}
+        ),
+        RuleAction(
+            type="violation", payload={"message": "generated code uses dangerous primitives"}
+        ),
     ]
 
 
 # ---- code-review specific rules ----------------------------------------
 
 _REVIEW_DIMENSIONS = [
-    "security", "performance", "maintainability", "correctness",
-    "style", "architecture", "testability", "documentation",
+    "security",
+    "performance",
+    "maintainability",
+    "correctness",
+    "style",
+    "architecture",
+    "testability",
+    "documentation",
 ]
 
 
@@ -199,16 +216,28 @@ def _cond_code_review_task(facts: list[Fact]) -> bool:
 
 def _act_code_review_annotate(facts: list[Fact], ctx: dict[str, Any]) -> list[RuleAction]:
     return [
-        RuleAction(type="annotate", payload={
-            "review_dimensions": _REVIEW_DIMENSIONS,
-            "review_required": True,
-            "structured_output": True,
-            "checklist": [
-                {"dim": "security", "items": ["SQL注入检测", "XSS漏洞", "硬编码密钥", "权限校验"]},
-                {"dim": "performance", "items": ["循环复杂度", "内存分配", "I/O阻塞", "缓存策略"]},
-                {"dim": "maintainability", "items": ["函数长度", "模块耦合度", "命名规范", "注释覆盖"]},
-            ],
-        }),
+        RuleAction(
+            type="annotate",
+            payload={
+                "review_dimensions": _REVIEW_DIMENSIONS,
+                "review_required": True,
+                "structured_output": True,
+                "checklist": [
+                    {
+                        "dim": "security",
+                        "items": ["SQL注入检测", "XSS漏洞", "硬编码密钥", "权限校验"],
+                    },
+                    {
+                        "dim": "performance",
+                        "items": ["循环复杂度", "内存分配", "I/O阻塞", "缓存策略"],
+                    },
+                    {
+                        "dim": "maintainability",
+                        "items": ["函数长度", "模块耦合度", "命名规范", "注释覆盖"],
+                    },
+                ],
+            },
+        ),
     ]
 
 
@@ -231,15 +260,22 @@ def _cond_architecture_design_task(facts: list[Fact]) -> bool:
 
 def _act_architecture_design_annotate(facts: list[Fact], ctx: dict[str, Any]) -> list[RuleAction]:
     return [
-        RuleAction(type="annotate", payload={
-            "architecture_checklist": _ARCHITECTURE_CHECKLIST,
-            "design_required": True,
-            "structured_output": True,
-            "artifacts_expected": [
-                "系统架构图(文字描述)", "服务拆分方案", "API网关设计",
-                "数据流图", "部署拓扑", "容错策略",
-            ],
-        }),
+        RuleAction(
+            type="annotate",
+            payload={
+                "architecture_checklist": _ARCHITECTURE_CHECKLIST,
+                "design_required": True,
+                "structured_output": True,
+                "artifacts_expected": [
+                    "系统架构图(文字描述)",
+                    "服务拆分方案",
+                    "API网关设计",
+                    "数据流图",
+                    "部署拓扑",
+                    "容错策略",
+                ],
+            },
+        ),
     ]
 
 

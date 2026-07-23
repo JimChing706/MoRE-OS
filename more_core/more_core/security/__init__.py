@@ -31,7 +31,7 @@ from .rbac import (
     requires_permission,
     set_rbac_instance,
 )
-from .taint import TaintTracker, TaintLabel, TaintContext
+from .taint import TaintTracker, TaintLabel
 from .signing import RequestSigner
 from .output_filter import OutputFilter
 

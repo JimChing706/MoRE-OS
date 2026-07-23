@@ -52,8 +52,7 @@ class OllamaProvider:
             r = await client.post(f"{self._base}/api/generate", json=payload)
         except httpx.ConnectError:
             raise LLMError(
-                f"ollama connection failed at {self._base} "
-                f"(is Ollama running? try: ollama serve)"
+                f"ollama connection failed at {self._base} (is Ollama running? try: ollama serve)"
             )
         except httpx.ReadTimeout:
             raise LLMError(

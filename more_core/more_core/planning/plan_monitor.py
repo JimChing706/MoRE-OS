@@ -14,7 +14,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Awaitable
+from typing import Any, Awaitable, Callable
 
 from .coordinator import ExecutionPlan, PlanStep, PlanStatus, StepPriority
 
@@ -23,6 +23,7 @@ _log = logging.getLogger(__name__)
 
 class AdaptiveAction(Enum):
     """Actions the monitor can take in response to observations."""
+
     NONE = "none"
     REALLOCATE_BUDGET = "reallocate_budget"
     SKIP_LOW_PRIORITY = "skip_low_priority"
@@ -35,6 +36,7 @@ class AdaptiveAction(Enum):
 @dataclass
 class MonitoringEvent:
     """A single monitoring observation with timestamp."""
+
     timestamp: float = field(default_factory=time.time)
     event_type: str = ""
     plan_id: str = ""
@@ -49,6 +51,7 @@ class MonitoringEvent:
 @dataclass
 class PlanHealthReport:
     """Health assessment of a running plan."""
+
     plan_id: str
     status: str
     progress_pct: float
@@ -73,18 +76,20 @@ class PlanMonitor:
     """
 
     # Thresholds
-    BUDGET_OVERRUN_THRESHOLD = 1.3   # 130% of predicted = warning
-    FAILURE_STREAK_LIMIT = 2         # Consecutive failures before intervention
-    CONFIDENCE_FLOOR = 0.4           # Below this → pause for review
-    BURN_RATE_CEILING = 200.0        # tokens per 1% progress threshold
+    BUDGET_OVERRUN_THRESHOLD = 1.3  # 130% of predicted = warning
+    FAILURE_STREAK_LIMIT = 2  # Consecutive failures before intervention
+    CONFIDENCE_FLOOR = 0.4  # Below this → pause for review
+    BURN_RATE_CEILING = 200.0  # tokens per 1% progress threshold
 
     def __init__(self) -> None:
         self._events: list[MonitoringEvent] = []
         self._confidence_history: deque[float] = deque(maxlen=500)
-        self._on_action_callbacks: list[Callable[[AdaptiveAction, ExecutionPlan, dict], Awaitable[None]]] = []
+        self._on_action_callbacks: list[
+            Callable[[AdaptiveAction, ExecutionPlan, dict[str, Any]], Awaitable[None]]
+        ] = []
 
     def register_callback(
-        self, callback: Callable[[AdaptiveAction, ExecutionPlan, dict], Awaitable[None]]
+        self, callback: Callable[[AdaptiveAction, ExecutionPlan, dict[str, Any]], Awaitable[None]]
     ) -> None:
         """Register a callback for when the monitor takes an adaptive action."""
         self._on_action_callbacks.append(callback)
@@ -107,10 +112,19 @@ class PlanMonitor:
         burn_rate = self._calculate_burn_rate(plan)
         if burn_rate > self.BURN_RATE_CEILING and plan.progress_pct < 70:
             actions.append(AdaptiveAction.REALLOCATE_BUDGET)
-            self._record_event(plan, step, "budget_overrun", burn_rate, self.BURN_RATE_CEILING, AdaptiveAction.REALLOCATE_BUDGET)
+            self._record_event(
+                plan,
+                step,
+                "budget_overrun",
+                burn_rate,
+                self.BURN_RATE_CEILING,
+                AdaptiveAction.REALLOCATE_BUDGET,
+            )
             _log.warning(
                 "Plan %s: burn rate %.1f tokens/pct exceeds ceiling %.1f",
-                plan.id, burn_rate, self.BURN_RATE_CEILING,
+                plan.id,
+                burn_rate,
+                self.BURN_RATE_CEILING,
             )
 
         # --- Failure pattern detection ---
@@ -122,10 +136,24 @@ class PlanMonitor:
             )
             if critical_failed:
                 actions.append(AdaptiveAction.ABORT_PLAN)
-                self._record_event(plan, step, "critical_failure_streak", consecutive_failures, self.FAILURE_STREAK_LIMIT, AdaptiveAction.ABORT_PLAN)
+                self._record_event(
+                    plan,
+                    step,
+                    "critical_failure_streak",
+                    consecutive_failures,
+                    self.FAILURE_STREAK_LIMIT,
+                    AdaptiveAction.ABORT_PLAN,
+                )
             else:
                 actions.append(AdaptiveAction.SKIP_LOW_PRIORITY)
-                self._record_event(plan, step, "failure_streak", consecutive_failures, self.FAILURE_STREAK_LIMIT, AdaptiveAction.SKIP_LOW_PRIORITY)
+                self._record_event(
+                    plan,
+                    step,
+                    "failure_streak",
+                    consecutive_failures,
+                    self.FAILURE_STREAK_LIMIT,
+                    AdaptiveAction.SKIP_LOW_PRIORITY,
+                )
 
         # --- Confidence drift detection ---
         if len(self._confidence_history) >= 3:
@@ -133,15 +161,31 @@ class PlanMonitor:
             recent_avg = sum(recent) / 3
             if recent_avg < self.CONFIDENCE_FLOOR:
                 actions.append(AdaptiveAction.PAUSE_PLAN)
-                self._record_event(plan, step, "confidence_drop", recent_avg, self.CONFIDENCE_FLOOR, AdaptiveAction.PAUSE_PLAN)
-                _log.warning("Plan %s: confidence dropped to %.2f, recommending pause", plan.id, recent_avg)
+                self._record_event(
+                    plan,
+                    step,
+                    "confidence_drop",
+                    recent_avg,
+                    self.CONFIDENCE_FLOOR,
+                    AdaptiveAction.PAUSE_PLAN,
+                )
+                _log.warning(
+                    "Plan %s: confidence dropped to %.2f, recommending pause", plan.id, recent_avg
+                )
 
         # --- Over-budget projection ---
         if plan.progress_pct > 20:
             projected = self._project_total_tokens(plan)
             if projected > plan.max_total_tokens * self.BUDGET_OVERRUN_THRESHOLD:
                 actions.append(AdaptiveAction.REDUCE_MAX_TOKENS)
-                self._record_event(plan, step, "projected_overrun", projected, plan.max_total_tokens, AdaptiveAction.REDUCE_MAX_TOKENS)
+                self._record_event(
+                    plan,
+                    step,
+                    "projected_overrun",
+                    projected,
+                    plan.max_total_tokens,
+                    AdaptiveAction.REDUCE_MAX_TOKENS,
+                )
 
         return actions
 
@@ -230,7 +274,8 @@ class PlanMonitor:
                 "actual_tokens": s.actual_tokens,
                 "efficiency": (
                     round(s.actual_tokens / s.estimated_tokens, 2)
-                    if s.estimated_tokens > 0 and s.actual_tokens > 0 else None
+                    if s.estimated_tokens > 0 and s.actual_tokens > 0
+                    else None
                 ),
             }
             for s in plan.steps
@@ -302,12 +347,14 @@ class PlanMonitor:
         threshold: float,
         action: AdaptiveAction,
     ) -> None:
-        self._events.append(MonitoringEvent(
-            event_type=event_type,
-            plan_id=plan.id,
-            step_id=step.id,
-            metric=event_type,
-            value=value,
-            threshold=threshold,
-            action_taken=action,
-        ))
+        self._events.append(
+            MonitoringEvent(
+                event_type=event_type,
+                plan_id=plan.id,
+                step_id=step.id,
+                metric=event_type,
+                value=value,
+                threshold=threshold,
+                action_taken=action,
+            )
+        )

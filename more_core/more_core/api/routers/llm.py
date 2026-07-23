@@ -14,27 +14,35 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["LLM"])
 
     @router.get("/llm/health")
-    async def llm_health() -> dict[str, bool]:
+    async def llm_health() -> Any:
         return await core.llm.health()
 
     @router.get("/llm/state")
     async def llm_state() -> dict[str, Any]:
         from ...llm.state_manager import get_llm_state_manager
+
         mgr = get_llm_state_manager()
         return mgr.to_dict()
 
     @router.get("/llm/state/current")
     async def llm_current_state() -> dict[str, Any]:
         from ...llm.state_manager import get_llm_state_manager
+
         mgr = get_llm_state_manager()
         state = mgr.get_state()
         result = {
-            "provider": state.provider, "model": state.model,
-            "temperature": state.temperature, "max_tokens": state.max_tokens,
-            "top_p": state.top_p, "frequency_penalty": state.frequency_penalty,
-            "presence_penalty": state.presence_penalty, "timeout_s": state.timeout_s,
-            "retry_count": state.retry_count, "fallback_enabled": state.fallback_enabled,
-            "cache_enabled": state.cache_enabled, "streaming_enabled": state.streaming_enabled,
+            "provider": state.provider,
+            "model": state.model,
+            "temperature": state.temperature,
+            "max_tokens": state.max_tokens,
+            "top_p": state.top_p,
+            "frequency_penalty": state.frequency_penalty,
+            "presence_penalty": state.presence_penalty,
+            "timeout_s": state.timeout_s,
+            "retry_count": state.retry_count,
+            "fallback_enabled": state.fallback_enabled,
+            "cache_enabled": state.cache_enabled,
+            "streaming_enabled": state.streaming_enabled,
         }
         if state.provider == "lmstudio":
             result["lmstudio"] = {
@@ -46,25 +54,45 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
             }
         return result
 
-    @router.post("/llm/state/update", dependencies=[Depends(require_api_key), Depends(require_permission(Permission.LLM_UPDATE))])
+    @router.post(
+        "/llm/state/update",
+        dependencies=[Depends(require_api_key), Depends(require_permission(Permission.LLM_UPDATE))],
+    )
     async def llm_update_state(params: dict[str, Any]) -> dict[str, Any]:
         from ...llm.state_manager import get_llm_state_manager
+
         mgr = get_llm_state_manager()
         allowed_keys = [
-            "provider", "model", "temperature", "max_tokens",
-            "top_p", "frequency_penalty", "presence_penalty",
-            "timeout_s", "retry_count", "fallback_enabled",
-            "cache_enabled", "streaming_enabled",
-            "lmstudio_endpoint", "lmstudio_context_length",
-            "lmstudio_gpu_layers", "lmstudio_threads", "lmstudio_vram_fraction",
+            "provider",
+            "model",
+            "temperature",
+            "max_tokens",
+            "top_p",
+            "frequency_penalty",
+            "presence_penalty",
+            "timeout_s",
+            "retry_count",
+            "fallback_enabled",
+            "cache_enabled",
+            "streaming_enabled",
+            "lmstudio_endpoint",
+            "lmstudio_context_length",
+            "lmstudio_gpu_layers",
+            "lmstudio_threads",
+            "lmstudio_vram_fraction",
         ]
         updates = {k: v for k, v in params.items() if k in allowed_keys}
         _validators: dict[str, tuple[type, float | None, float | None]] = {
-            "temperature": (float, 0.0, 2.0), "max_tokens": (int, 1, 131072),
-            "top_p": (float, 0.0, 1.0), "frequency_penalty": (float, -2.0, 2.0),
-            "presence_penalty": (float, -2.0, 2.0), "timeout_s": (int, 1, 600),
-            "retry_count": (int, 0, 10), "lmstudio_context_length": (int, 256, 1048576),
-            "lmstudio_gpu_layers": (int, -1, 256), "lmstudio_threads": (int, 0, 256),
+            "temperature": (float, 0.0, 2.0),
+            "max_tokens": (int, 1, 131072),
+            "top_p": (float, 0.0, 1.0),
+            "frequency_penalty": (float, -2.0, 2.0),
+            "presence_penalty": (float, -2.0, 2.0),
+            "timeout_s": (int, 1, 600),
+            "retry_count": (int, 0, 10),
+            "lmstudio_context_length": (int, 256, 1048576),
+            "lmstudio_gpu_layers": (int, -1, 256),
+            "lmstudio_threads": (int, 0, 256),
             "lmstudio_vram_fraction": (float, 0.0, 1.0),
         }
         errors = []
@@ -89,9 +117,13 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         new_state = mgr.update_state(**updates)
         return {"success": True, "updated": updates, "current_state": new_state.__dict__}
 
-    @router.post("/llm/state/reset", dependencies=[Depends(require_api_key), Depends(require_permission(Permission.LLM_UPDATE))])
+    @router.post(
+        "/llm/state/reset",
+        dependencies=[Depends(require_api_key), Depends(require_permission(Permission.LLM_UPDATE))],
+    )
     async def llm_reset_state() -> dict[str, Any]:
         from ...llm.state_manager import get_llm_state_manager
+
         mgr = get_llm_state_manager()
         state = mgr.reset_state()
         return {"success": True, "reset_to": state.__dict__}
@@ -99,28 +131,33 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     @router.get("/llm/usage")
     async def llm_usage() -> dict[str, Any]:
         from ...llm.state_manager import get_llm_state_manager
+
         mgr = get_llm_state_manager()
         usage = mgr.get_usage()
         return {
-            "total_requests": usage.total_requests, "total_tokens": usage.total_tokens,
-            "total_cost": usage.total_cost, "provider_usage": usage.provider_usage,
+            "total_requests": usage.total_requests,
+            "total_tokens": usage.total_tokens,
+            "total_cost": usage.total_cost,
+            "provider_usage": usage.provider_usage,
             "avg_latency_ms": usage.avg_latency_ms,
         }
 
     @router.get("/llm/providers")
     async def llm_providers() -> dict[str, Any]:
         from ...llm.state_manager import get_llm_state_manager
+
         mgr = get_llm_state_manager()
         return {"providers": mgr.get_providers_info()}
 
     @router.get("/llm/history")
     async def llm_history(limit: int = 10) -> dict[str, Any]:
         from ...llm.state_manager import get_llm_state_manager
+
         mgr = get_llm_state_manager()
         return {"history": mgr.get_history(limit)}
 
     @router.get("/llm/reasoning")
-    async def reasoning_status() -> dict[str, Any]:
+    async def reasoning_status() -> Any:
         return core.reasoning_router.stats()
 
     @router.post("/llm/reasoning/config", dependencies=[Depends(require_api_key)])
@@ -130,7 +167,12 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
 
     @router.get("/llm/reasoning/check")
     async def reasoning_check(model: str) -> dict[str, Any]:
-        from ...llm.reasoning import is_reasoning_model, supports_budget_tokens, get_reasoning_params
+        from ...llm.reasoning import (
+            is_reasoning_model,
+            supports_budget_tokens,
+            get_reasoning_params,
+        )
+
         return {
             "model": model,
             "is_reasoning": is_reasoning_model(model),
@@ -139,7 +181,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         }
 
     @router.get("/llm/aliases")
-    async def model_aliases(free_only: bool = False) -> list[dict[str, Any]]:
+    async def model_aliases(free_only: bool = False) -> Any:
         return core.model_aliases.to_api_dict(free_only)
 
     @router.get("/llm/aliases/resolve/{alias}")
@@ -148,18 +190,24 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         if result is None:
             raise HTTPException(status_code=404, detail=f"Unknown alias: {alias}")
         return {
-            "alias": result.alias, "provider": result.provider,
-            "model": result.model, "description": result.description, "free": result.free,
+            "alias": result.alias,
+            "provider": result.provider,
+            "model": result.model,
+            "description": result.description,
+            "free": result.free,
         }
 
     # -- Dynamic Model Routing ----------------------------------------------
 
     @router.get("/llm/routing")
-    async def routing_config() -> dict[str, Any]:
+    async def routing_config() -> Any:
         """Full routing configuration: bindings, chains, aliases, reasoning stats."""
         return core.task_model_router.get_routing_config()
 
-    @router.post("/llm/routing", dependencies=[Depends(require_api_key), Depends(require_permission(Permission.LLM_UPDATE))])
+    @router.post(
+        "/llm/routing",
+        dependencies=[Depends(require_api_key), Depends(require_permission(Permission.LLM_UPDATE))],
+    )
     async def routing_update(payload: dict[str, Any]) -> dict[str, Any]:
         """Update a task-type binding or fallback chain.
 
@@ -172,6 +220,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         chain_name = payload.get("chain")
         if task_type_str:
             from ...core.types import TaskType
+
             try:
                 tt = TaskType(task_type_str)
             except ValueError:
@@ -181,7 +230,12 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
             if not provider or not model:
                 raise HTTPException(status_code=422, detail="provider and model required")
             core.task_model_router.update_task_binding(tt, provider, model)
-            return {"success": True, "task_type": task_type_str, "provider": provider, "model": model}
+            return {
+                "success": True,
+                "task_type": task_type_str,
+                "provider": provider,
+                "model": model,
+            }
         elif chain_name:
             pairs = payload.get("pairs", [])
             if not isinstance(pairs, list) or not pairs:
@@ -191,7 +245,10 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         else:
             raise HTTPException(status_code=422, detail="task_type or chain required")
 
-    @router.delete("/llm/routing/chain/{name}", dependencies=[Depends(require_api_key), Depends(require_permission(Permission.LLM_UPDATE))])
+    @router.delete(
+        "/llm/routing/chain/{name}",
+        dependencies=[Depends(require_api_key), Depends(require_permission(Permission.LLM_UPDATE))],
+    )
     async def routing_delete_chain(name: str) -> dict[str, Any]:
         """Remove a custom fallback chain."""
         core.task_model_router.remove_custom_fallback_chain(name)

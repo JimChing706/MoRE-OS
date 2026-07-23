@@ -2,16 +2,15 @@
 
 import asyncio
 import pytest
-import time
 
 from more_core.workflows.engine import (
     WorkflowEngine, WorkflowDefinition, WorkflowStep,
     WorkflowRun, WorkflowStatus, StepStatus, StepType,
 )
 from more_core.deploy.manager import (
-    DeploymentManager, Deployment, DeploymentStatus, DeploymentType,
+    DeploymentManager, DeploymentStatus, DeploymentType,
 )
-from more_core.runtime.sessions import SessionManager, UserSession
+from more_core.runtime.sessions import SessionManager
 
 
 # -- Workflow Engine -------------------------------------------------------

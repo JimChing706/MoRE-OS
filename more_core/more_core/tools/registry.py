@@ -78,11 +78,24 @@ class ToolRegistry:
             for t in self._tools.values()
         ]
 
-    async def invoke(self, name: str, params: dict[str, Any], user_id: str = "anonymous") -> ToolResult:
-        params["_user_id"] = user_id  # inject for RBAC decorator
+    async def invoke(
+        self, name: str, params: dict[str, Any], user_id: str = "anonymous"
+    ) -> ToolResult:
         tool = self._tools.get(name)
         if tool is None:
             return ToolResult(tool=name, success=False, error=f"unknown tool: {name}")
+        # Explicit RBAC check at invoke level (defense in depth)
+        if tool.required_permission:
+            from ..security.rbac import get_rbac
+
+            rbac = get_rbac()
+            if rbac is not None and not rbac.check(user_id, tool.required_permission):
+                return ToolResult(
+                    tool=name,
+                    success=False,
+                    error=f"RBAC: user '{user_id}' lacks {tool.required_permission.value} for tool '{name}'",
+                )
+        params["_user_id"] = user_id  # inject for decorator-level RBAC
         start = time.perf_counter()
         try:
             result = await tool.handler(params)

@@ -59,17 +59,17 @@ def _hands_section(core: "MoRECore") -> dict[str, Any]:
     }
 
 
-def _skills_section(core: "MoRECore") -> dict[str, Any]:
+def _skills_section(core: "MoRECore") -> Any:
     return core.skill_manager.get_stats()
 
 
-def _workflows_section(core: "MoRECore") -> dict[str, Any]:
+def _workflows_section(core: "MoRECore") -> Any:
     if hasattr(core, "workflows"):
         return core.workflows.stats()
     return {"total_workflows": 0, "total_runs": 0, "active_runs": 0}
 
 
-def _deployments_section(core: "MoRECore") -> dict[str, Any]:
+def _deployments_section(core: "MoRECore") -> Any:
     if hasattr(core, "deployment_manager"):
         return core.deployment_manager.stats()
     return {"total": 0, "running": 0, "healthy": 0}
@@ -81,8 +81,13 @@ def _schedules_section(core: "MoRECore") -> dict[str, Any]:
         "total_jobs": len(jobs),
         "enabled": sum(1 for j in jobs if j.enabled),
         "jobs": [
-            {"job_id": j.job_id, "name": j.name, "schedule": j.schedule,
-             "enabled": j.enabled, "run_count": j.run_count}
+            {
+                "job_id": j.job_id,
+                "name": j.name,
+                "schedule": j.schedule,
+                "enabled": j.enabled,
+                "run_count": j.run_count,
+            }
             for j in jobs
         ],
     }
@@ -97,10 +102,12 @@ def _channels_section(core: "MoRECore") -> dict[str, Any]:
 
 
 def _llm_section(core: "MoRECore") -> dict[str, Any]:
-    aliases = getattr(core, 'model_aliases', None)
+    aliases = getattr(core, "model_aliases", None)
     return {
         "providers": core.llm.list_providers(),
-        "aliases": aliases.stats() if aliases else {"total_aliases": 0, "free_models": 0, "providers": []},
+        "aliases": aliases.stats()
+        if aliases
+        else {"total_aliases": 0, "free_models": 0, "providers": []},
         "reasoning": core.reasoning_router.stats()["config"],
     }
 
@@ -113,7 +120,7 @@ def _security_section(core: "MoRECore") -> dict[str, Any]:
     }
 
 
-def _sessions_section(core: "MoRECore") -> dict[str, Any]:
+def _sessions_section(core: "MoRECore") -> Any:
     if hasattr(core, "session_manager"):
         return core.session_manager.stats()
     return {"total_sessions": 0, "active_sessions": 0}

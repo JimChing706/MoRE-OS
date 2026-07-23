@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -23,7 +23,7 @@ class TelegramAdapter(ChannelAdapter):
         self._api_base = f"https://api.telegram.org/bot{self._token}"
         self._offset = 0
         self._running = False
-        self._poll_task: asyncio.Task | None = None
+        self._poll_task: asyncio.Task[Any] | None = None
 
     @property
     def platform_name(self) -> str:
@@ -57,13 +57,13 @@ class TelegramAdapter(ChannelAdapter):
             "parse_mode": "Markdown",
         }
         result = await self._call_api("sendMessage", payload)
-        return result.get("ok", False)
+        return bool(result.get("ok", False))
 
     async def health_check(self) -> bool:
         """Check if bot is alive."""
         try:
             result = await self._call_api("getMe")
-            return result.get("ok", False)
+            return bool(result.get("ok", False))
         except Exception:
             return False
 
@@ -102,12 +102,12 @@ class TelegramAdapter(ChannelAdapter):
         )
         await self._handle_message(message)
 
-    async def _call_api(self, method: str, params: dict | None = None) -> dict:
+    async def _call_api(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """Make a call to the Telegram Bot API."""
         url = f"{self._api_base}/{method}"
         async with httpx.AsyncClient(timeout=30) as client:
             r = await client.post(url, json=params or {})
-            return r.json()
+            return cast(dict[str, Any], r.json())
 
 
 def create_telegram_adapter(bot_token: str) -> TelegramAdapter:

@@ -597,11 +597,11 @@ export class MoreV3Engine {
       if (this.useRealAPI) {
         try {
           // Fetch core state + evolution + security + memory in parallel
-          const [systemRes, evolutionRes, incidentsRes, auditRes] = await Promise.all([
+          const [systemRes, evolutionRes, incidentsRes] = await Promise.all([
             fetch(`${this.apiBaseUrl}/api/v1/system/state`),
             fetch(`${this.apiBaseUrl}/api/v1/evolution/archive`),
             fetch(`${this.apiBaseUrl}/api/v1/incidents`),
-            fetch(`${this.apiBaseUrl}/api/v1/security/audit?limit=20`),
+            fetch(`${this.apiBaseUrl}/api/v1/security/audit?limit=20`).catch(() => null),
           ]);
 
           data = getDashboardData();

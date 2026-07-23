@@ -54,11 +54,23 @@ def temp_dir(tmp_path):
 
 
 class _FakeLLMProvider:
-    """In-memory LLM provider returning a fixed response for tests."""
+    """In-memory LLM provider returning a fixed response for tests.
+
+    Supports optional error injection and latency simulation.
+    """
 
     name = "fake"
 
+    def __init__(self, inject_errors: bool = False, latency_ms: float = 0):
+        self._inject_errors = inject_errors
+        self._latency_ms = latency_ms
+
     async def generate(self, request):
+        if self._inject_errors:
+            raise ConnectionError("Simulated LLM failure")
+        if self._latency_ms > 0:
+            import asyncio
+            await asyncio.sleep(self._latency_ms / 1000)
         from more_core.llm.provider import LLMResponse
         return LLMResponse(
             content="fake-reply",
@@ -69,10 +81,15 @@ class _FakeLLMProvider:
         )
 
     async def stream(self, request):
+        if self._inject_errors:
+            raise ConnectionError("Simulated stream failure")
+        if self._latency_ms > 0:
+            import asyncio
+            await asyncio.sleep(self._latency_ms / 1000)
         yield "fake-reply"
 
     async def health(self):
-        return True
+        return not self._inject_errors
 
 
 @pytest.fixture

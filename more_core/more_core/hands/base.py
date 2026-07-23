@@ -19,6 +19,7 @@ _log = logging.getLogger(__name__)
 
 class HandStatus(Enum):
     """Lifecycle status of a Hand."""
+
     INACTIVE = "inactive"
     ACTIVATING = "activating"
     ACTIVE = "active"
@@ -30,6 +31,7 @@ class HandStatus(Enum):
 @dataclass
 class HandManifest:
     """Declarative manifest for a Hand (analogous to HAND.toml)."""
+
     id: str
     name: str
     description: str
@@ -54,11 +56,16 @@ class HandManifest:
     dashboard_metrics: list[str] = field(default_factory=list)
     # Configuration schema
     config_schema: dict[str, Any] = field(default_factory=dict)
+    # ── v3.0 SOUL personality profile (optional) ─────────────────────
+    # When set, Meta-Orchestrator weights personality matching alongside
+    # capability matching when routing tasks to Experts.
+    soul_profile: Any | None = None  # SoulProfile from v3.soul_profile
 
 
 @dataclass
 class HandResult:
     """Result of a Hand execution cycle."""
+
     hand_id: str
     success: bool
     output: Any = None

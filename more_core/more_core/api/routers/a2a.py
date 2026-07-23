@@ -11,16 +11,18 @@ from typing import Any
 from fastapi import APIRouter, Depends, Request
 
 from ...runtime.orchestrator import MoRECore
+from ...security.rbac import Permission, require_permission
 
 
 def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
     router = APIRouter(prefix="/a2a", tags=["A2A"])
 
     deps = [Depends(require_api_key)] if require_api_key else []
+    write_deps = deps + [Depends(require_permission(Permission.TASK_EXECUTE))]
 
-    @router.post("/", dependencies=deps)
-    @router.post("", dependencies=deps)
-    async def a2a_endpoint(request: Request) -> dict[str, Any]:
+    @router.post("/", dependencies=write_deps)
+    @router.post("", dependencies=write_deps)
+    async def a2a_endpoint(request: Request) -> Any:
         """A2A JSON-RPC endpoint — receives tasks from other agents."""
         body = await request.json()
         srv = core.a2a_server

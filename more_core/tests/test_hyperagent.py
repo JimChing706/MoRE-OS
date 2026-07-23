@@ -1,6 +1,5 @@
 """Test HyperAgent self-modification capabilities."""
 
-import asyncio
 import pytest
 
 from more_core.metacognition import HyperAgent, VersionControl
@@ -8,7 +7,7 @@ from more_core.metacognition.hyperagent import (
     ProposalStatus,
     SandboxValidator,
 )
-from more_core.governance.audit import AuditLogger, AuditRecord
+from more_core.governance.audit import AuditLogger
 
 
 @pytest.fixture
@@ -72,7 +71,7 @@ class TestSandboxValidator:
         code = "import os\nos.system('rm -rf /')"
         valid, msg = await sandbox_validator.validate(code)
         assert valid is False
-        assert "Disallowed import" in msg
+        assert "blocked keyword" in msg
 
     @pytest.mark.asyncio
     async def test_reject_syntax_error(self, sandbox_validator):
@@ -86,7 +85,7 @@ class TestHyperAgent:
     @pytest.mark.asyncio
     async def test_proposal_status_transitions(self, hyperagent):
         from more_core.layers.base import LayerContext
-        from more_core.core.types import TaskRequest, TaskType, ReasoningStep
+        from more_core.core.types import TaskRequest, TaskType
         from unittest.mock import MagicMock, AsyncMock
 
         mock_core = MagicMock()

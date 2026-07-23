@@ -16,7 +16,7 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
 
     @router.get("/health", dependencies=deps)
     async def health() -> dict[str, Any]:
-        return {
+        result: dict[str, Any] = {
             "status": "healthy",
             "version": core.settings.version,
             "gates": {
@@ -26,6 +26,15 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
             },
             "llm_providers": core.llm.list_providers(),
         }
+        # ── v3.0 Meta-Orchestrator status ──────────────────────────────
+        if hasattr(core, "meta_orchestrator") and core.meta_orchestrator is not None:
+            result["v3"] = {
+                "enabled": True,
+                "meta_orchestrator": core.meta_orchestrator.get_routing_config(),
+            }
+        else:
+            result["v3"] = {"enabled": False}
+        return result
 
     @router.get("/system/state", dependencies=deps)
     async def system_state() -> dict[str, Any]:
@@ -45,9 +54,15 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
             "memory": {
                 "stats": core.memory.stats(),
                 "entries": [
-                    {"id": e.id, "type": e.kind.value, "content": e.content,
-                     "tags": e.tags, "score": e.score, "timestamp": e.created_at,
-                     "access_count": e.access_count}
+                    {
+                        "id": e.id,
+                        "type": e.kind.value,
+                        "content": e.content,
+                        "tags": e.tags,
+                        "score": e.score,
+                        "timestamp": e.created_at,
+                        "access_count": e.access_count,
+                    }
                     for e in core.memory.list()
                 ],
             },

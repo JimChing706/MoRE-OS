@@ -1,7 +1,6 @@
 """Tests for the plugin SDK."""
 
 import json
-import pytest
 
 from more_core.plugins.sdk import PluginBase, generate_plugin_manifest, scaffold_plugin
 

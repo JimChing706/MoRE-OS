@@ -30,9 +30,7 @@ async def _run_once(task_type: str, query: str) -> None:
     core = MoRECore.from_env()
     await core.start()
     try:
-        result = await core.execute(
-            TaskRequest(type=TaskType(task_type.lower()), query=query)
-        )
+        result = await core.execute(TaskRequest(type=TaskType(task_type.lower()), query=query))
         print(json.dumps(result.model_dump(), indent=2, ensure_ascii=False))
     finally:
         await core.stop()
@@ -45,6 +43,7 @@ def _mcp_serve() -> None:
 
 async def _mcp_serve_stdio() -> None:
     from .runtime.orchestrator import MoRECore
+
     core = MoRECore.from_env()
     await core.start()
     try:
@@ -59,7 +58,10 @@ async def _chat_interactive(task_type: str = "nlp_task") -> None:
     from .core.types import TaskRequest, TaskType
     from .runtime.orchestrator import MoRECore
 
-    BLUE = "\033[34m"; GREEN = "\033[32m"; CYAN = "\033[36m"; RESET = "\033[0m"
+    BLUE = "\033[34m"
+    GREEN = "\033[32m"
+    CYAN = "\033[36m"
+    RESET = "\033[0m"
 
     print(f"{BLUE}╔══════════════════════════════════════════╗{RESET}")
     print(f"{BLUE}║  MoRE OS — Interactive Chat (type /quit){RESET}")
@@ -108,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
     p_serve.add_argument("--host", default="0.0.0.0")
     p_serve.add_argument("--port", type=int, default=8001)
 
-    p_mcp = sub.add_parser("mcp-serve", help="Start MCP server on stdio (for Codex/Claude integration).")
+    sub.add_parser("mcp-serve", help="Start MCP server on stdio (for Codex/Claude integration).")
 
     p_run = sub.add_parser("run", help="Execute a single task and print the result.")
     p_run.add_argument("--type", default="nlp_task")

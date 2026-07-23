@@ -32,14 +32,15 @@ class PlanStatus(Enum):
 
 class StepPriority(Enum):
     CRITICAL = "critical"  # Must succeed for plan to succeed
-    HIGH = "high"          # Important but plan can continue with degradation
-    NORMAL = "normal"      # Standard priority
-    LOW = "low"            # Optional / best-effort
+    HIGH = "high"  # Important but plan can continue with degradation
+    NORMAL = "normal"  # Standard priority
+    LOW = "low"  # Optional / best-effort
 
 
 @dataclass
 class PlanStep:
     """A single step in an execution plan."""
+
     id: str
     description: str
     priority: StepPriority = StepPriority.NORMAL
@@ -62,6 +63,7 @@ class PlanStep:
 @dataclass
 class ExecutionPlan:
     """A rigorous execution plan with goals, constraints, and checkpoints."""
+
     id: str = field(default_factory=lambda: f"plan_{uuid.uuid4().hex[:12]}")
     goal: str = ""
     steps: list[PlanStep] = field(default_factory=list)
@@ -94,7 +96,9 @@ class ExecutionPlan:
 
     @property
     def is_over_budget(self) -> bool:
-        return self.tokens_used > self.max_total_tokens or self.duration_used_ms > self.max_duration_ms
+        return (
+            self.tokens_used > self.max_total_tokens or self.duration_used_ms > self.max_duration_ms
+        )
 
     def to_summary(self) -> dict[str, Any]:
         return {
@@ -137,19 +141,21 @@ class PlanCoordinator:
         for i, desc in enumerate(subtasks):
             step_id = f"step_{i:03d}"
             # First step has no dependencies; subsequent depend on prior
-            deps = [f"step_{i-1:03d}"] if i > 0 else []
+            deps = [f"step_{i - 1:03d}"] if i > 0 else []
             # Estimate tokens based on difficulty and position
             est_tokens = min(4096, 512 * (1 + difficulty // 3))
             priority = StepPriority.CRITICAL if i == 0 else StepPriority.NORMAL
 
-            steps.append(PlanStep(
-                id=step_id,
-                description=desc,
-                priority=priority,
-                depends_on=deps,
-                estimated_tokens=est_tokens,
-                estimated_duration_ms=est_tokens * 5.0,  # ~5ms per token rough estimate
-            ))
+            steps.append(
+                PlanStep(
+                    id=step_id,
+                    description=desc,
+                    priority=priority,
+                    depends_on=deps,
+                    estimated_tokens=est_tokens,
+                    estimated_duration_ms=est_tokens * 5.0,  # ~5ms per token rough estimate
+                )
+            )
 
         plan = ExecutionPlan(
             goal=goal,
@@ -219,10 +225,7 @@ class PlanCoordinator:
         waves: list[list[PlanStep]] = []
 
         while remaining:
-            wave = [
-                s for s in remaining
-                if all(d in completed for d in s.depends_on)
-            ]
+            wave = [s for s in remaining if all(d in completed for d in s.depends_on)]
             if not wave:
                 # Deadlock — remaining steps have unmet deps
                 _log.warning("Plan %s: deadlock, %d steps unreachable", plan.id, len(remaining))
@@ -261,16 +264,23 @@ class PlanCoordinator:
         plan.duration_used_ms += duration_ms
 
         if plan.is_over_budget:
-            _log.warning("Plan %s exceeded budget: tokens=%d/%d", plan.id, plan.tokens_used, plan.max_total_tokens)
+            _log.warning(
+                "Plan %s exceeded budget: tokens=%d/%d",
+                plan.id,
+                plan.tokens_used,
+                plan.max_total_tokens,
+            )
 
     def checkpoint(self, plan: ExecutionPlan) -> None:
         """Create a checkpoint for potential rollback."""
-        plan.checkpoints.append({
-            "timestamp": time.time(),
-            "progress_pct": plan.progress_pct,
-            "tokens_used": plan.tokens_used,
-            "completed_steps": [s.id for s in plan.steps if s.status == PlanStatus.COMPLETED],
-        })
+        plan.checkpoints.append(
+            {
+                "timestamp": time.time(),
+                "progress_pct": plan.progress_pct,
+                "tokens_used": plan.tokens_used,
+                "completed_steps": [s.id for s in plan.steps if s.status == PlanStatus.COMPLETED],
+            }
+        )
 
     def get_plan(self, plan_id: str) -> ExecutionPlan | None:
         return self._plans.get(plan_id)

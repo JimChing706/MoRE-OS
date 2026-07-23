@@ -1,0 +1,170 @@
+"""SQLite-backed persistent task store.
+
+Drop-in replacement for the module-level ``_task_store`` dict in
+``api/routers/tasks.py``.  Keeps the same data shape so callers need
+minimal change.
+
+Usage::
+
+    store = SQLiteTaskStore("data/tasks.db")
+    store.create_task("task-1", {"title": "Hello", "status": "pending"})
+    task = store.get_task("task-1")
+"""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+from pathlib import Path
+from typing import Any
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS tasks (
+    task_id      TEXT PRIMARY KEY,
+    type         TEXT NOT NULL DEFAULT 'nlp_task',
+    plugin_type  TEXT,
+    query        TEXT NOT NULL DEFAULT '',
+    context      TEXT NOT NULL DEFAULT '{}',
+    title        TEXT NOT NULL DEFAULT '',
+    description  TEXT NOT NULL DEFAULT '',
+    status       TEXT NOT NULL DEFAULT 'pending',
+    progress     INTEGER NOT NULL DEFAULT 0,
+    result       TEXT,
+    error        TEXT,
+    created_at   TEXT NOT NULL,
+    started_at   TEXT,
+    completed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at);
+"""
+
+
+class SQLiteTaskStore:
+    """Persistent task store backed by SQLite.
+
+    Mirrors the in-memory dict interface used by ``api/routers/tasks.py``.
+    """
+
+    def __init__(self, db_path: str | Path) -> None:
+        self._db_path = Path(db_path)
+        self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+        self._conn.row_factory = sqlite3.Row
+        self._conn.executescript(_SCHEMA)
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
+
+    # ------------------------------------------------------------------
+    # Public API (mirrors dict interface)
+    # ------------------------------------------------------------------
+
+    def create_task(self, task_id: str, info: dict[str, Any]) -> None:
+        """Insert a new task record."""
+        context_json = json.dumps(info.get("context", {}))
+        self._conn.execute(
+            """INSERT OR REPLACE INTO tasks
+               (task_id, type, plugin_type, query, context, title,
+                description, status, progress, result, error,
+                created_at, started_at, completed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                task_id,
+                info.get("type", "nlp_task"),
+                info.get("plugin_type"),
+                info.get("query", info.get("description", info.get("title", ""))),
+                context_json,
+                info.get("title", ""),
+                info.get("description", ""),
+                info.get("status", "pending"),
+                info.get("progress", 0),
+                info.get("result"),
+                info.get("error"),
+                info.get("created_at", ""),
+                info.get("started_at"),
+                info.get("completed_at"),
+            ),
+        )
+        self._conn.commit()
+
+    def get_task(self, task_id: str) -> dict[str, Any] | None:
+        """Retrieve a single task by id, or None."""
+        row = self._conn.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+        if row is None:
+            return None
+        return self._row_to_dict(row)
+
+    def update_task(self, task_id: str, updates: dict[str, Any]) -> None:
+        """Update fields of an existing task."""
+        existing = self.get_task(task_id)
+        if existing is None:
+            return
+        merged = {**existing, **updates}
+        if "context" in updates and isinstance(updates["context"], dict):
+            merged["context"] = json.dumps(updates["context"])
+        elif isinstance(merged.get("context"), dict):
+            merged["context"] = json.dumps(merged["context"])
+        self._conn.execute(
+            """UPDATE tasks SET
+                 type=?, plugin_type=?, query=?, context=?, title=?,
+                 description=?, status=?, progress=?, result=?, error=?,
+                 created_at=?, started_at=?, completed_at=?
+               WHERE task_id=?""",
+            (
+                merged.get("type", "nlp_task"),
+                merged.get("plugin_type"),
+                merged.get("query", ""),
+                merged.get("context", "{}"),
+                merged.get("title", ""),
+                merged.get("description", ""),
+                merged.get("status", "pending"),
+                merged.get("progress", 0),
+                merged.get("result"),
+                merged.get("error"),
+                merged.get("created_at", ""),
+                merged.get("started_at"),
+                merged.get("completed_at"),
+                task_id,
+            ),
+        )
+        self._conn.commit()
+
+    def list_tasks(self, status: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
+        """List tasks, optionally filtered by status."""
+        if status:
+            rows = self._conn.execute(
+                "SELECT * FROM tasks WHERE status = ? ORDER BY created_at DESC LIMIT ?",
+                (status, limit),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [self._row_to_dict(r) for r in rows]
+
+    def delete_task(self, task_id: str) -> bool:
+        """Delete a task. Returns True if a row was removed."""
+        cur = self._conn.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def close(self) -> None:
+        """Close the database connection."""
+        self._conn.close()
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
+        d = dict(row)
+        # Deserialize JSON context
+        raw = d.get("context", "{}")
+        if isinstance(raw, str):
+            try:
+                d["context"] = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                d["context"] = {}
+        return d

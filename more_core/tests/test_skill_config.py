@@ -1,6 +1,5 @@
 """Tests for skill config injection and secret redaction."""
 
-import os
 from more_core.skills.config_injection import (
     ConfigVar, ConfigSchema, is_secret_name,
     resolve_config, redact_secrets, inject_config_into_prompt,

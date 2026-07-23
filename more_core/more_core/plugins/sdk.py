@@ -112,8 +112,8 @@ from more_core.plugins.sdk import PluginBase, PluginContext
 
 class Plugin(PluginBase):
     NAME = "{name}"
-    VERSION = "{kwargs.get('version', '0.1.0')}"
-    DESCRIPTION = "{kwargs.get('description', '')}"
+    VERSION = "{kwargs.get("version", "0.1.0")}"
+    DESCRIPTION = "{kwargs.get("description", "")}"
 
     async def activate(self, ctx: PluginContext) -> None:
         await super().activate(ctx)

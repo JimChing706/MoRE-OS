@@ -1,0 +1,26 @@
+version: "3.9"
+
+services:
+  more-os:
+    build: .
+    container_name: more-os-api
+    ports:
+      - "8011:8011"
+    environment:
+      - MORE_LMSTUDIO_ENDPOINT=http://host.docker.internal:1234/v1
+      - MORE_OLLAMA_ENDPOINT=http://host.docker.internal:11434
+      - MORE_LLM_FALLBACK_CHAIN=lmstudio,ollama
+      - MORE_ENABLE_SYMBOLIC=1
+      - MORE_ENABLE_EVOLUTION=0
+      - MORE_ENABLE_METACOGNITION=0
+      - MORE_MEMORY_DB=/data/memory.db
+      - MORE_EVOLUTION_DB=/data/evolution.db
+      - MORE_AUDIT_LOG=/data/audit.jsonl
+    volumes:
+      - more-os-data:/data
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  more-os-data:

@@ -31,7 +31,7 @@ class MockProvider(LLMProvider):
             latency_ms=latency_ms,
         )
 
-    async def stream(self, request: LLMRequest) -> AsyncIterator[str]:
+    async def stream(self, request: LLMRequest) -> AsyncIterator[str]:  # type: ignore[override, misc]
         content = self._generate_response(request)
         for chunk in content.split(" "):
             yield chunk + " "
@@ -41,15 +41,15 @@ class MockProvider(LLMProvider):
 
     def _generate_response(self, request: LLMRequest) -> str:
         prompt = request.prompt.lower()
-        
+
         # Code improvement patterns
         if any(kw in prompt for kw in ["improve", "iterate", "add type", "error handling"]):
             return self._generate_improved_code(request.prompt)
-        
+
         # Code generation patterns
         if any(kw in prompt for kw in ["generate", "create", "write", "implement"]):
             return self._generate_code(request.prompt)
-        
+
         # Default response
         return self._default_response(request.prompt)
 

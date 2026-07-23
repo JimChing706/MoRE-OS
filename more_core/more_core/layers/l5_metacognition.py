@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import logging
 
+from typing import Any
+
 from ..core.errors import MoREError
-from ..core.types import LayerId
+from ..core.types import LayerId, TaskType
 from ..incident_response import get_incident_manager
 from ..planning.coordinator import PlanStatus
 from .base import Layer, LayerContext, LayerResult
@@ -27,9 +29,9 @@ class MetacognitionLayer(Layer):
 
     async def process(self, ctx: LayerContext) -> LayerResult:
         incident_mgr = get_incident_manager()
-        
+
         actor = ctx.request.context.get("actor", "anonymous")
-        
+
         if incident_mgr.is_actor_blocked(actor):
             _log.warning("Blocked actor %s attempted L5 metacognition access", actor)
             await incident_mgr.handle_unauthorized_access(
@@ -61,7 +63,7 @@ class MetacognitionLayer(Layer):
         enable_self_mod = (
             ctx.core.settings.enable_metacognition and ctx.request.allow_self_improvement
         )
-        
+
         if enable_self_mod:
             result = await ctx.core.metacognition.maybe_self_modify(ctx, calibration)
             if result and result.get("modified"):
@@ -71,10 +73,24 @@ class MetacognitionLayer(Layer):
         if plan_health:
             description += f", plan_health={plan_health.get('status', 'unknown')}"
             # ABORT must interrupt the running pipeline, not just set plan status.
-            if plan_health.get("modifications", {}).get("aborted"):
+            # Exception: code generation tasks should NOT be aborted mid-stream;
+            # the generated code is already partially complete and may still be
+            # useful even if the plan budget is exceeded.
+            is_code = ctx.request.type in (
+                TaskType.CODE_GENERATION,
+                TaskType.CODE_DEBUGGING,
+                TaskType.CODE_TESTING,
+                TaskType.CODE_REVIEW,
+            )
+            if plan_health.get("modifications", {}).get("aborted") and not is_code:
                 raise MoREError(
                     f"Plan aborted by L5 metacognition monitor: "
                     f"{plan_health.get('status', 'unknown')}"
+                )
+            elif plan_health.get("modifications", {}).get("aborted"):
+                _log.warning(
+                    "Plan abort suppressed for code task %s (budget exceeded but code preserved)",
+                    ctx.request.id,
                 )
 
         return LayerResult(
@@ -88,7 +104,7 @@ class MetacognitionLayer(Layer):
             confidence=alignment,
         )
 
-    async def _monitor_plan(self, ctx: LayerContext, confidence: float) -> dict:
+    async def _monitor_plan(self, ctx: LayerContext, confidence: float) -> dict[str, Any]:
         """Monitor active plan execution and apply adaptive interventions.
 
         Returns a health summary dict for downstream consumption.
@@ -107,8 +123,7 @@ class MetacognitionLayer(Layer):
 
         # Find the most recently completed step
         completed_steps = [
-            s for s in active_plan.steps
-            if s.status in (PlanStatus.COMPLETED, PlanStatus.FAILED)
+            s for s in active_plan.steps if s.status in (PlanStatus.COMPLETED, PlanStatus.FAILED)
         ]
         if not completed_steps:
             return {"status": "plan_pending", "plan_id": active_plan.id}

@@ -35,7 +35,10 @@ class EvolutionLayer(Layer):
 
         dgm = ctx.core.evolution
         snapshot = await dgm.snapshot()
-        variant = await dgm.propose_variant(snapshot, ctx.request)
+        if ctx.core.settings.enable_evolution_llm_variants:
+            variant = await dgm.propose_variant_llm(snapshot, ctx.request)
+        else:
+            variant = await dgm.propose_variant(snapshot, ctx.request)
         ctx.scratch["evolution_variant"] = variant
 
         report = await dgm.evaluate_variant(variant)
@@ -45,7 +48,9 @@ class EvolutionLayer(Layer):
             await incident_mgr.handle_dgm_variant_rejected(
                 variant_id=variant.id,
                 reason=report.reason if report else "verification failed",
-                verification_output={"score": report.score, "pass_rate": report.pass_rate} if report else None,
+                verification_output={"score": report.score, "pass_rate": report.pass_rate}
+                if report
+                else None,
             )
             _log.error(
                 "L2 SECURITY INCIDENT: Unverified variant %s quarantined",
@@ -59,14 +64,18 @@ class EvolutionLayer(Layer):
             "quarantined": not variant.verified,
         }
         if report is not None:
-            out.update({
-                "score": report.score,
-                "pass_rate": report.pass_rate,
-                "benchmark": report.benchmark_name,
-            })
+            out.update(
+                {
+                    "score": report.score,
+                    "pass_rate": report.pass_rate,
+                    "benchmark": report.benchmark_name,
+                }
+            )
             _log.info(
                 "L2 evolution: variant=%s verified=%s score=%.3f",
-                variant.id, variant.verified, report.score,
+                variant.id,
+                variant.verified,
+                report.score,
             )
 
         return LayerResult(

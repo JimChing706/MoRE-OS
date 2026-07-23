@@ -62,7 +62,14 @@ class CoderHand(Hand):
             description="Autonomous coding agent that writes, reviews, tests, and improves code",
             version="1.0.0",
             category="development",
-            tools=["python_exec", "shell_exec", "file_read", "file_write", "run_tests", "lint_file"],
+            tools=[
+                "python_exec",
+                "shell_exec",
+                "file_read",
+                "file_write",
+                "run_tests",
+                "lint_file",
+            ],
             system_prompt=(
                 "You are an autonomous coding agent. Your workflow:\n"
                 "1. Read task requirements from context\n"

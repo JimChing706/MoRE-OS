@@ -8,6 +8,7 @@ import threading
 from dataclasses import dataclass, field
 from collections import defaultdict
 from contextlib import contextmanager
+from typing import Iterator
 
 logger = logging.getLogger(__name__)
 
@@ -15,15 +16,17 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MetricPoint:
     """Single metric data point."""
+
     name: str
     value: float
     timestamp: float
     tags: dict[str, str] = field(default_factory=dict)
 
 
-@dataclass 
+@dataclass
 class PerformanceSnapshot:
     """Snapshot of system performance."""
+
     timestamp: float
     layer_durations: dict[str, float]
     total_requests: int
@@ -50,7 +53,7 @@ class MetricsCollector:
 
     def record_request(self, duration_ms: float, success: bool) -> None:
         """Record a request completion.
-        
+
         Args:
             duration_ms: Request duration in milliseconds
             success: Whether request succeeded
@@ -67,7 +70,7 @@ class MetricsCollector:
 
     def record_layer(self, layer: str, duration_ms: float) -> None:
         """Record layer execution duration.
-        
+
         Args:
             layer: Layer identifier (L0, L1, etc.)
             duration_ms: Execution duration in milliseconds
@@ -79,11 +82,11 @@ class MetricsCollector:
 
     def get_percentile(self, values: list[float], percentile: float) -> float:
         """Calculate percentile value from a list.
-        
+
         Args:
             values: List of numeric values
             percentile: Percentile to calculate (0-100)
-            
+
         Returns:
             Value at the specified percentile
         """
@@ -98,7 +101,7 @@ class MetricsCollector:
             durations = self._request_durations
             avg_duration = sum(durations) / len(durations) if durations else 0
             p95 = self.get_percentile(durations, 95)
-            
+
             layer_stats = {}
             for layer, vals in self._layer_durations.items():
                 layer_stats[layer] = sum(vals) / len(vals) if vals else 0
@@ -114,6 +117,31 @@ class MetricsCollector:
                 cache_hit_rate=cache_hit_rate,
                 memory_usage_mb=memory_mb,
             )
+
+    def prometheus_metrics(self) -> str:
+        """Return Prometheus text-format metrics."""
+        lines = [
+            "# HELP more_os_requests_total Total requests processed",
+            "# TYPE more_os_requests_total counter",
+            f"more_os_requests_total {self._request_count}",
+            "# HELP more_os_errors_total Total errors",
+            "# TYPE more_os_errors_total counter",
+            f"more_os_errors_total {self._failure_count}",
+            "# HELP more_os_latency_ms Request latency distribution",
+            "# TYPE more_os_latency_ms histogram",
+        ]
+        with self._lock:
+            for bucket in [10, 50, 100, 500, 1000, 5000]:
+                count = sum(1 for d in self._request_durations if d <= bucket)
+                lines.append(f'more_os_latency_ms_bucket{{le="{bucket}"}} {count}')
+            lines.append(f'more_os_latency_ms_bucket{{le="+Inf"}} {len(self._request_durations)}')
+        lines.append("# HELP more_os_layer_durations_ms Layer average duration")
+        lines.append("# TYPE more_os_layer_durations_ms gauge")
+        with self._lock:
+            for layer, vals in self._layer_durations.items():
+                avg = sum(vals) / len(vals) if vals else 0
+                lines.append(f'more_os_layer_durations_ms{{layer="{layer}"}} {avg:.1f}')
+        return "\n".join(lines) + "\n"
 
     def reset(self) -> None:
         with self._lock:
@@ -133,11 +161,16 @@ class Timer:
         self._label = label
         self._start = 0.0
 
-    def __enter__(self):
+    def __enter__(self) -> Timer:
         self._start = time.perf_counter()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object | None,
+    ) -> None:
         duration_ms = (time.perf_counter() - self._start) * 1000
         self._collector.record_layer(self._label, duration_ms)
 
@@ -150,7 +183,7 @@ def get_collector() -> MetricsCollector:
 
 
 @contextmanager
-def timer(label: str):
+def timer(label: str) -> Iterator[Timer]:
     """Global timer context manager."""
     with Timer(_global_collector, label) as t:
         yield t

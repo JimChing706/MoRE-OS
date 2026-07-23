@@ -20,6 +20,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
 
 from ..core.errors import SandboxError
 from .subprocess_sandbox import SandboxResult, SubprocessSandbox
@@ -70,6 +71,7 @@ class LinuxSandbox(SubprocessSandbox):
             return await super().run(argv, cwd=cwd, env=env, stdin=stdin)
 
         import shlex
+
         if isinstance(argv, str):
             argv = shlex.split(argv)
 
@@ -107,7 +109,8 @@ class LinuxSandbox(SubprocessSandbox):
             proc.kill()
             await proc.wait()
             return SandboxResult(
-                stdout="", stderr="sandbox timeout (linux hardened)",
+                stdout="",
+                stderr="sandbox timeout (linux hardened)",
                 exit_code=-1,
                 duration_ms=(asyncio.get_running_loop().time() - start) * 1000,
                 timed_out=True,
@@ -129,6 +132,7 @@ class LinuxSandbox(SubprocessSandbox):
     async def _setup_cgroup(self) -> Path:
         """Create an ephemeral cgroup v2 directory with resource limits."""
         import uuid
+
         cg_name = f"sbx_{uuid.uuid4().hex[:8]}"
         cg_dir = self._cgroup_root / cg_name
         try:
@@ -163,7 +167,7 @@ class LinuxSandbox(SubprocessSandbox):
 def create_sandbox(
     timeout_s: int = 20,
     memory_mb: int = 512,
-    **kwargs,
+    **kwargs: Any,
 ) -> SubprocessSandbox:
     """Factory: returns :class:`LinuxSandbox` on Linux, else base sandbox."""
     if is_linux():

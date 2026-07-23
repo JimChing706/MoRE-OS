@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Awaitable
 
+from ..core.errors import WorkflowError
+
 _log = logging.getLogger(__name__)
 
 
@@ -54,6 +56,7 @@ class WorkflowStatus(Enum):
 @dataclass
 class WorkflowStep:
     """A single step in a workflow."""
+
     id: str
     name: str
     type: StepType
@@ -81,6 +84,7 @@ class WorkflowStep:
 @dataclass
 class WorkflowDefinition:
     """Declarative workflow definition."""
+
     id: str
     name: str
     description: str = ""
@@ -101,6 +105,7 @@ class WorkflowDefinition:
 @dataclass
 class WorkflowRun:
     """A single execution of a workflow."""
+
     run_id: str
     workflow_id: str
     workflow_name: str
@@ -140,9 +145,13 @@ class WorkflowRun:
             "triggered_by": self.triggered_by,
             "steps": [
                 {
-                    "id": s.id, "name": s.name, "type": s.type.value,
-                    "status": s.status.value, "duration_ms": s.duration_ms,
-                    "error": s.error, "attempts": s.attempts,
+                    "id": s.id,
+                    "name": s.name,
+                    "type": s.type.value,
+                    "status": s.status.value,
+                    "duration_ms": s.duration_ms,
+                    "error": s.error,
+                    "attempts": s.attempts,
                 }
                 for s in self.steps
             ],
@@ -152,13 +161,33 @@ class WorkflowRun:
 StepExecutor = Callable[[WorkflowStep, dict[str, Any]], Awaitable[Any]]
 
 
-_ALLOWED_AST_NODE_TYPES = frozenset({
-    ast.Expression, ast.Compare, ast.Name, ast.Attribute, ast.Constant,
-    ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
-    ast.And, ast.Or, ast.UnaryOp, ast.Not, ast.BoolOp,
-    ast.Subscript, ast.Index, ast.Load,
-    ast.List, ast.Tuple, ast.Dict, ast.Set,
-})
+_ALLOWED_AST_NODE_TYPES = frozenset(
+    {
+        ast.Expression,
+        ast.Compare,
+        ast.Name,
+        ast.Attribute,
+        ast.Constant,
+        ast.Eq,
+        ast.NotEq,
+        ast.Lt,
+        ast.LtE,
+        ast.Gt,
+        ast.GtE,
+        ast.And,
+        ast.Or,
+        ast.UnaryOp,
+        ast.Not,
+        ast.BoolOp,
+        ast.Subscript,
+        ast.Index,
+        ast.Load,
+        ast.List,
+        ast.Tuple,
+        ast.Dict,
+        ast.Set,
+    }
+)
 
 
 def _safe_eval_condition(condition: str, context: dict[str, Any]) -> bool:
@@ -173,11 +202,11 @@ def _safe_eval_condition(condition: str, context: dict[str, Any]) -> bool:
     try:
         tree = ast.parse(condition.strip(), mode="eval")
     except SyntaxError as exc:
-        raise ValueError(f"Invalid condition syntax: {exc}") from exc
+        raise WorkflowError(f"Invalid condition syntax: {exc}") from exc
 
     for node in ast.walk(tree):
         if type(node) not in _ALLOWED_AST_NODE_TYPES:
-            raise ValueError(
+            raise WorkflowError(
                 f"Disallowed operation in condition: {type(node).__name__}. "
                 f"Only comparisons, boolean ops, and attribute access are allowed."
             )
@@ -222,11 +251,12 @@ class WorkflowEngine:
         """Start a new workflow run."""
         defn = self._definitions.get(workflow_id)
         if defn is None:
-            raise KeyError(f"Unknown workflow: {workflow_id}")
+            raise WorkflowError(f"Unknown workflow: {workflow_id}")
 
         run_id = f"run_{uuid.uuid4().hex[:12]}"
         # Deep-copy steps so each run has independent state
         import copy
+
         steps = [copy.deepcopy(s) for s in defn.steps]
 
         run = WorkflowRun(
@@ -279,9 +309,13 @@ class WorkflowEngine:
     def list_workflows(self) -> list[dict[str, Any]]:
         return [
             {
-                "id": d.id, "name": d.name, "description": d.description,
-                "version": d.version, "steps": len(d.steps),
-                "schedule": d.schedule, "tags": d.tags,
+                "id": d.id,
+                "name": d.name,
+                "description": d.description,
+                "version": d.version,
+                "steps": len(d.steps),
+                "schedule": d.schedule,
+                "tags": d.tags,
             }
             for d in self._definitions.values()
         ]
@@ -332,9 +366,9 @@ class WorkflowEngine:
 
                 # Find ready steps (all deps completed)
                 ready = [
-                    s for s in run.steps
-                    if s.status == StepStatus.PENDING
-                    and all(d in completed for d in s.depends_on)
+                    s
+                    for s in run.steps
+                    if s.status == StepStatus.PENDING and all(d in completed for d in s.depends_on)
                 ]
                 if not ready:
                     # Check if all done
@@ -342,17 +376,14 @@ class WorkflowEngine:
                     if not pending:
                         break
                     # Deadlock or waiting
-                    failed = [s for s in run.steps if s.status == StepStatus.FAILED]
-                    if failed:
+                    blocked = [s for s in run.steps if s.status == StepStatus.FAILED]
+                    if blocked:
                         break
                     await asyncio.sleep(0.1)
                     continue
 
                 # Execute ready steps in parallel
-                tasks = [
-                    asyncio.create_task(self._execute_step(s, run))
-                    for s in ready
-                ]
+                tasks = [asyncio.create_task(self._execute_step(s, run)) for s in ready]
                 await asyncio.gather(*tasks, return_exceptions=True)
 
                 for s in ready:
@@ -433,12 +464,14 @@ class WorkflowEngine:
                 step.error = str(exc)
                 step.finished_at = time.time()
                 if attempt < max_attempts - 1:
-                    _log.warning("Step %s attempt %d failed, retrying: %s", step.id, attempt + 1, exc)
+                    _log.warning(
+                        "Step %s attempt %d failed, retrying: %s", step.id, attempt + 1, exc
+                    )
                     await asyncio.sleep(1)
 
     async def _notify(self, run: WorkflowRun) -> None:
         for listener in self._listeners:
             try:
                 await listener(run)
-            except Exception:
-                pass
+            except Exception as exc:
+                _log.warning("Workflow listener failed: %s", exc)

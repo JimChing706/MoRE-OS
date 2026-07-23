@@ -24,6 +24,7 @@ class RequirementType(Enum):
 @dataclass
 class RequirementItem:
     """Single requirement item parsed from markdown."""
+
     id: str
     title: str
     description: str = ""
@@ -42,6 +43,7 @@ class RequirementItem:
 @dataclass
 class RequirementsDocument:
     """Parsed requirements document."""
+
     title: str = ""
     description: str = ""
     version: str = "1.0.0"
@@ -56,7 +58,7 @@ class RequirementsDocument:
 class RequirementsParser:
     """Parse Markdown requirements documents into structured data."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._priority_keywords = {
             "high": ["高", "high", "重要", "critical", "must", "必须", "P0", "P1"],
             "medium": ["中", "medium", "普通", "should", "应该", "P2", "P3"],
@@ -115,7 +117,11 @@ class RequirementsParser:
                         doc.project = value
                     else:
                         doc.metadata[key] = value
-            elif re.match(r"^[-*]\s+\[[ xX]\]\s+", line) or re.match(r"^[-*]\s+\d+[\.\)]\s+", line) or re.match(r"^\s*▏\s+", line):
+            elif (
+                re.match(r"^[-*]\s+\[[ xX]\]\s+", line)
+                or re.match(r"^[-*]\s+\d+[\.\)]\s+", line)
+                or re.match(r"^\s*▏\s+", line)
+            ):
                 if current_item:
                     doc.items.append(current_item)
 
@@ -163,12 +169,16 @@ class RequirementsParser:
                         in_acceptance_criteria = False
                         in_dependencies = False
 
-                elif in_acceptance_criteria and (line.startswith("-") or line.startswith("*") or line.startswith("+")):
+                elif in_acceptance_criteria and (
+                    line.startswith("-") or line.startswith("*") or line.startswith("+")
+                ):
                     criteria = line.lstrip("-*+ ").strip()
                     if criteria and not criteria.startswith("["):
                         current_item.acceptance_criteria.append(criteria)
 
-                elif in_dependencies and (line.startswith("-") or line.startswith("*") or line.startswith("+")):
+                elif in_dependencies and (
+                    line.startswith("-") or line.startswith("*") or line.startswith("+")
+                ):
                     dep = line.lstrip("-*+ ").strip()
                     if dep:
                         current_item.dependencies.append(dep)
@@ -182,18 +192,28 @@ class RequirementsParser:
                     else:
                         current_item.description += " " + line
 
-                priority_match = re.search(r"(优先级|priority)[:\s]+(高|中|低|high|medium|low|P\d)", line, re.IGNORECASE)
+                priority_match = re.search(
+                    r"(优先级|priority)[:\s]+(高|中|低|high|medium|low|P\d)", line, re.IGNORECASE
+                )
                 if priority_match:
                     current_item.priority = self._detect_priority(priority_match.group(2))
 
-                hours_match = re.search(r"(预计|estimated|时间|工时)[:\s]+(\d+\.?\d*)\s*(小时|h|hours)?", line, re.IGNORECASE)
+                hours_match = re.search(
+                    r"(预计|estimated|时间|工时)[:\s]+(\d+\.?\d*)\s*(小时|h|hours)?",
+                    line,
+                    re.IGNORECASE,
+                )
                 if hours_match:
                     try:
                         current_item.estimated_hours = float(hours_match.group(2))
                     except ValueError:
                         pass
 
-                status_match = re.search(r"(状态|status)[:\s]+(完成|进行中|待处理|done|in progress|pending)", line, re.IGNORECASE)
+                status_match = re.search(
+                    r"(状态|status)[:\s]+(完成|进行中|待处理|done|in progress|pending)",
+                    line,
+                    re.IGNORECASE,
+                )
                 if status_match:
                     current_item.status = self._detect_status(status_match.group(2))
 
@@ -201,7 +221,9 @@ class RequirementsParser:
                 if assignee_match:
                     current_item.assignee = assignee_match.group(2)
 
-                points_match = re.search(r"(故事点|story points|points)[:\s]+(\d+)", line, re.IGNORECASE)
+                points_match = re.search(
+                    r"(故事点|story points|points)[:\s]+(\d+)", line, re.IGNORECASE
+                )
                 if points_match:
                     try:
                         current_item.story_points = int(points_match.group(2))
@@ -266,7 +288,7 @@ class RequirementsParser:
                     "document_project": doc.project,
                     "requirement_id": item.id,
                     "created_at": doc.created_at,
-                }
+                },
             }
             tasks.append(task)
         return tasks

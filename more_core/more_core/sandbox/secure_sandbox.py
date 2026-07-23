@@ -43,9 +43,38 @@ class SandboxConfig:
     allow_network: bool = False
     allow_filesystem: bool = True
     allowed_paths: list[str] = field(default_factory=lambda: ["/tmp"])
-    blocked_commands: list[str] = field(default_factory=lambda: [
-        "rm", "dd", "mkfs", "shutdown", "reboot", "kill", "pkill", "sudo",
-    ])
+    blocked_commands: list[str] = field(
+        default_factory=lambda: [
+            "rm",
+            "dd",
+            "mkfs",
+            "shutdown",
+            "reboot",
+            "kill",
+            "pkill",
+            "sudo",
+        ]
+    )
+    blocked_patterns: list[str] = field(
+        default_factory=lambda: [
+            r"\brm\s+-rf\b",
+            r"\bpython3?\s+-c\s+",
+            r"\bbash\s+-c\s+",
+        ]
+    )
+    blocked_python_keywords: list[str] = field(
+        default_factory=lambda: [
+            "os.system",
+            "subprocess.run",
+            "subprocess.Popen",
+            "shutil.rmtree",
+            "os.remove",
+            "pathlib.Path.unlink",
+            "__import__('os')",
+            "exec(",
+            "eval(",
+        ]
+    )
     security_level: SecurityLevel = SecurityLevel.BASIC
     audit_enabled: bool = True
     audit_max_entries: int = 1000
@@ -82,17 +111,26 @@ class SecureSandbox:
         if not self._config.audit_enabled:
             return
         entry = AuditEntry(
-            timestamp=time.time(), action=action, resource=resource,
-            allowed=allowed, reason=reason, metadata=meta,
+            timestamp=time.time(),
+            action=action,
+            resource=resource,
+            allowed=allowed,
+            reason=reason,
+            metadata=meta,
         )
         self._audit_log.append(entry)
         if len(self._audit_log) > self._config.audit_max_entries:
-            self._audit_log = self._audit_log[-(self._config.audit_max_entries // 2):]
+            self._audit_log = self._audit_log[-(self._config.audit_max_entries // 2) :]
 
     def get_audit_log(self, limit: int = 100) -> list[dict[str, Any]]:
         return [
-            {"timestamp": e.timestamp, "action": e.action, "resource": e.resource,
-             "allowed": e.allowed, "reason": e.reason}
+            {
+                "timestamp": e.timestamp,
+                "action": e.action,
+                "resource": e.resource,
+                "allowed": e.allowed,
+                "reason": e.reason,
+            }
             for e in self._audit_log[-limit:]
         ]
 
@@ -108,11 +146,36 @@ class SecureSandbox:
         for blocked in self._config.blocked_commands:
             if cmd_name == blocked or cmd_base == blocked:
                 return False, f"command '{blocked}' is blocked"
+        import re
+
+        for pattern in self._config.blocked_patterns:
+            if re.search(pattern, full_cmd):
+                return False, f"command matches blocked pattern: {pattern}"
         if self._config.security_level == SecurityLevel.STRICT:
             restricted = {"python", "python3", "node", "bash", "sh", "zsh"}
             if cmd_name in restricted and self._process_count >= self._config.max_processes:
                 return False, f"max processes ({self._config.max_processes}) reached"
         return True, ""
+
+    def _check_python_code(self, code: str) -> list[str]:
+        """Static scan Python code for dangerous calls.
+
+        Delegates to the unified :class:`SandboxPolicy` singleton; falls back
+        to ``SandboxConfig.blocked_python_keywords`` when the policy is
+        unavailable (e.g. during early bootstrap).
+        """
+        try:
+            from .policy import default_policy
+
+            return default_policy().scan_python(code)
+        except Exception:
+            pass
+        # Legacy fallback for bootstrap ordering edge-cases
+        violations: list[str] = []
+        for kw in self._config.blocked_python_keywords:
+            if kw in code:
+                violations.append(f"blocked keyword: {kw}")
+        return violations
 
     def _check_output(self, output: str) -> str:
         max_sz = self._config.max_output_size
@@ -166,6 +229,18 @@ class SecureSandbox:
             self._process_count = max(0, self._process_count - 1)
 
     async def run_python(self, code: str) -> SandboxResult:
+        # Phase 1: static code analysis
+        if self._config.security_level != SecurityLevel.NONE:
+            violations = self._check_python_code(code)
+            if violations:
+                reason = "; ".join(violations)
+                self._audit("run_python", "", False, reason)
+                return SandboxResult(
+                    stdout="",
+                    stderr=f"Blocked: {reason}",
+                    exit_code=-1,
+                    duration_ms=0.0,
+                )
         allowed, reason = self._check_command("python3")
         if not allowed:
             self._audit("run_python", "", False, reason)
@@ -213,5 +288,6 @@ def create_secure_sandbox(
         config = SandboxConfig(security_level=SecurityLevel(security_level), **kwargs)
     if inner is None:
         from .linux_sandbox import create_sandbox
+
         inner = create_sandbox(timeout_s=config.timeout_s, memory_mb=config.memory_mb)
     return SecureSandbox(inner, config)

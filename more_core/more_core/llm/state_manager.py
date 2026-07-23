@@ -14,6 +14,7 @@ _log = logging.getLogger(__name__)
 @dataclass
 class LLMCallState:
     """Current state of LLM call parameters."""
+
     provider: str = "lmstudio"
     model: str = "local-model"
     temperature: float = 0.7
@@ -36,6 +37,7 @@ class LLMCallState:
 @dataclass
 class LLMUsageStats:
     """LLM usage statistics."""
+
     total_requests: int = 0
     total_tokens: int = 0
     total_cost: float = 0.0
@@ -46,19 +48,21 @@ class LLMUsageStats:
 
 class LLMStateManager:
     """Manages LLM call state with dynamic adjustment capability."""
-    
-    _instance = None
+
+    _instance: LLMStateManager | None = None
+    _initialized: bool = False
     _lock = threading.Lock()
-    
-    def __new__(cls):
+
+    def __new__(cls) -> LLMStateManager:
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._initialized = False
+                    instance = super().__new__(cls)
+                    instance._initialized = False
+                    cls._instance = instance
         return cls._instance
-    
-    def __init__(self):
+
+    def __init__(self) -> None:
         if self._initialized:
             return
         self._initialized = True
@@ -68,35 +72,37 @@ class LLMStateManager:
         self._history: list[dict[str, Any]] = []
         self._max_history = 100
         self._callbacks: list[Callable[..., Any]] = []
-    
+
     def get_state(self) -> LLMCallState:
         return self._state
-    
+
     def get_usage(self) -> LLMUsageStats:
         return self._usage
-    
-    def update_state(self, **kwargs) -> LLMCallState:
+
+    def update_state(self, **kwargs: Any) -> LLMCallState:
         with self._lock:
             for key, value in kwargs.items():
                 if hasattr(self._state, key):
                     setattr(self._state, key, value)
-            
-            self._history.append({
-                "timestamp": time.time(),
-                "changes": kwargs,
-                "state": self._state.__dict__.copy(),
-            })
+
+            self._history.append(
+                {
+                    "timestamp": time.time(),
+                    "changes": kwargs,
+                    "state": self._state.__dict__.copy(),
+                }
+            )
             if len(self._history) > self._max_history:
                 self._history.pop(0)
-            
+
             for callback in self._callbacks:
                 try:
                     callback(self._state)
                 except Exception:
                     _log.exception("LLM state change callback failed")
-            
+
             return self._state
-    
+
     def reset_state(self) -> LLMCallState:
         with self._lock:
             self._state = LLMCallState(
@@ -106,10 +112,10 @@ class LLMStateManager:
                 max_tokens=self._default_state.max_tokens,
             )
             return self._state
-    
+
     def register_callback(self, callback: Callable[..., Any]) -> None:
         self._callbacks.append(callback)
-    
+
     def record_usage(
         self,
         provider: str,
@@ -121,19 +127,17 @@ class LLMStateManager:
         self._usage.total_tokens += tokens
         self._usage.total_cost += cost
         self._usage.last_request_time = time.time()
-        
+
         if provider not in self._usage.provider_usage:
             self._usage.provider_usage[provider] = 0
         self._usage.provider_usage[provider] += tokens
-        
+
         total = self._usage.total_requests
-        self._usage.avg_latency_ms = (
-            (self._usage.avg_latency_ms * (total - 1) + latency_ms) / total
-        )
-    
-    def get_history(self, limit: int = 10) -> list[dict]:
+        self._usage.avg_latency_ms = (self._usage.avg_latency_ms * (total - 1) + latency_ms) / total
+
+    def get_history(self, limit: int = 10) -> list[dict[str, Any]]:
         return self._history[-limit:]
-    
+
     def get_providers_info(self) -> list[dict[str, Any]]:
         return [
             {
@@ -189,7 +193,7 @@ class LLMStateManager:
                 "description": "Anthropic Claude - 高质量对话",
             },
         ]
-    
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "current_state": self._state.__dict__,

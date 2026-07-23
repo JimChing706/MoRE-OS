@@ -20,6 +20,7 @@ _log = logging.getLogger(__name__)
 @dataclass
 class SignedRequest:
     """A request with HMAC signature."""
+
     payload: bytes
     signature: str
     timestamp: float
@@ -88,6 +89,7 @@ class RequestSigner:
             (signature, timestamp, nonce)
         """
         import json
+
         payload = json.dumps(data, sort_keys=True, separators=(",", ":")).encode()
         signed = self.sign(payload)
         return signed.signature, signed.timestamp, signed.nonce

@@ -18,6 +18,7 @@ _log = logging.getLogger(__name__)
 @dataclass
 class UserSession:
     """An active user session."""
+
     session_id: str
     user_id: str
     user_name: str = ""
@@ -124,10 +125,7 @@ class SessionManager:
 
     def cleanup_expired(self) -> int:
         """Remove expired sessions."""
-        expired = [
-            sid for sid, s in self._sessions.items()
-            if s.idle_s > self._timeout_s
-        ]
+        expired = [sid for sid, s in self._sessions.items() if s.idle_s > self._timeout_s]
         for sid in expired:
             self._sessions.pop(sid, None)
         return len(expired)

@@ -25,3 +25,15 @@ class GovernanceError(MoREError):
 
 class RoutingError(MoREError):
     """Layer router cannot resolve a target layer for the request."""
+
+
+class CouncilError(MoREError):
+    """Multi-role cognitive council errors."""
+
+
+class MCPError(MoREError):
+    """MCP protocol client/server errors."""
+
+
+class WorkflowError(MoREError):
+    """Workflow engine errors."""
