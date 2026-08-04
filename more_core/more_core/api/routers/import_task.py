@@ -21,7 +21,7 @@ from .tasks import _task_store
 
 
 def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
-    router = APIRouter(prefix="/api/v1")
+    router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_api_key)])
 
     parser = ImportTaskParser()
     generator = ImportTaskGenerator()

@@ -12,8 +12,7 @@ from dataclasses import dataclass
 os.environ["MORE_ENABLE_METACOGNITION"] = "1"
 
 from more_core import MoRECore, TaskRequest, TaskType
-from more_core.metacognition import HyperAgent, VersionControl
-from more_core.governance import GovernanceWorkflow, AuditLogger
+from more_core.governance import GovernanceWorkflow
 
 
 @dataclass

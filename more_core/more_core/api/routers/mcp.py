@@ -20,7 +20,7 @@ from ...mcp.transport import ProcessTransport
 
 
 def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
-    router = APIRouter(prefix="/api/v1", tags=["MCP"])
+    router = APIRouter(prefix="/api/v1", tags=["MCP"], dependencies=[Depends(require_api_key)])
 
     @router.get("/mcp/servers")
     async def list_servers() -> dict[str, Any]:
@@ -54,6 +54,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                 write_callback=_write,
                 client_capabilities=ClientCapabilities(),
                 client_info={"name": "QNMing MoRE OS", "version": __version__},
+                transport=transport,
             )
             tools = await session.list_tools()
             return {
@@ -103,7 +104,10 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     async def disconnect_server(server_name: str) -> dict[str, Any]:
         """Disconnect from an MCP server."""
         client: MCPClient = core.mcp_client
-        client.disconnect(server_name)
+        try:
+            await client.disconnect(server_name)
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
         return {"status": "disconnected", "server": server_name}
 
     return router

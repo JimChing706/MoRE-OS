@@ -12,7 +12,10 @@ from __future__ import annotations
 
 import logging
 import re
+import sqlite3
+import threading
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -65,40 +68,47 @@ class ProjectOutput(BaseModel):
 # ---------------------------------------------------------------------------
 
 _output_store: dict[str, dict[str, Any]] = {}
-_DB_PATH = "data/outputs.db"
+_DB_PATH = str(Path(__file__).resolve().parents[3] / "data" / "outputs.db")
+
+_db_lock = threading.Lock()
+_db_conn: sqlite3.Connection | None = None
+
+
+def _get_conn() -> sqlite3.Connection:
+    """Return the shared module-level connection (WAL, thread-safe via lock)."""
+    global _db_conn
+    if _db_conn is None:
+        db_dir = Path(_DB_PATH).parent
+        db_dir.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(_DB_PATH, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS outputs (
+                id TEXT PRIMARY KEY,
+                data JSON NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+        _db_conn = conn
+    return _db_conn
 
 
 def _init_db() -> None:
     """Create outputs table if it doesn't exist."""
-    import sqlite3
-    import os
-
-    db_dir = os.path.dirname(_DB_PATH)
-    if db_dir:
-        os.makedirs(db_dir, exist_ok=True)
-    conn = sqlite3.connect(_DB_PATH)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS outputs (
-            id TEXT PRIMARY KEY,
-            data JSON NOT NULL,
-            created_at TEXT NOT NULL
-        )
-    """)
-    conn.commit()
-    conn.close()
+    with _db_lock:
+        _get_conn().commit()
 
 
 def _load_from_db() -> None:
     """Load existing outputs from SQLite into in-memory store on startup."""
-    import sqlite3
     import json
 
     try:
-        conn = sqlite3.connect(_DB_PATH)
+        conn = _get_conn()
         rows = conn.execute("SELECT id, data FROM outputs ORDER BY created_at DESC").fetchall()
         for row_id, row_data in rows:
             _output_store[row_id] = json.loads(row_data)
-        conn.close()
         _log.info("Loaded %d outputs from %s", len(rows), _DB_PATH)
     except Exception as exc:
         _log.warning("Could not load outputs from DB: %s", exc)
@@ -106,21 +116,20 @@ def _load_from_db() -> None:
 
 def _save_to_db(output_id: str, data: dict[str, Any]) -> None:
     """Persist a single output to SQLite (upsert)."""
-    import sqlite3
     import json
 
     try:
         # Convert Pydantic models and other non-serializable objects to dicts
         serializable = _to_json_safe(data)
-        conn = sqlite3.connect(_DB_PATH)
-        conn.execute(
-            "INSERT OR REPLACE INTO outputs (id, data, created_at) VALUES (?, ?, ?)",
-            (output_id, json.dumps(serializable, ensure_ascii=False), data.get("created_at", "")),
-        )
-        conn.commit()
-        conn.close()
+        with _db_lock:
+            conn = _get_conn()
+            conn.execute(
+                "INSERT OR REPLACE INTO outputs (id, data, created_at) VALUES (?, ?, ?)",
+                (output_id, json.dumps(serializable, ensure_ascii=False), data.get("created_at", "")),
+            )
+            conn.commit()
     except Exception as exc:
-        _log.warning("Failed to persist output %s: %s", output_id, exc)
+        _log.error("Failed to persist output %s: %s", output_id, exc)
 
 
 def _to_json_safe(obj: Any) -> Any:
@@ -138,15 +147,13 @@ def _to_json_safe(obj: Any) -> Any:
 
 def _delete_from_db(output_id: str) -> None:
     """Remove an output from SQLite."""
-    import sqlite3
-
     try:
-        conn = sqlite3.connect(_DB_PATH)
-        conn.execute("DELETE FROM outputs WHERE id = ?", (output_id,))
-        conn.commit()
-        conn.close()
+        with _db_lock:
+            conn = _get_conn()
+            conn.execute("DELETE FROM outputs WHERE id = ?", (output_id,))
+            conn.commit()
     except Exception as exc:
-        _log.warning("Failed to delete output %s: %s", output_id, exc)
+        _log.error("Failed to delete output %s: %s", output_id, exc)
 
 
 # Init on module load
@@ -246,7 +253,11 @@ def _auto_create_output(task_result: dict[str, Any]) -> ProjectOutput | None:
 
 
 def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
-    router = APIRouter(prefix="/api/v1", tags=["Project Outputs"])
+    router = APIRouter(
+        prefix="/api/v1",
+        tags=["Project Outputs"],
+        dependencies=[Depends(require_api_key)],
+    )
 
     @router.get("/projects/outputs")
     async def list_outputs(limit: int = 50) -> dict[str, Any]:

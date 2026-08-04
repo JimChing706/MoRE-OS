@@ -38,9 +38,9 @@ class Plugin(PluginBase):
 
         self._agent = MinesweeperAgent(use_llm=use_llm, llm_model=llm_model)
 
-        # 2. Register decision tools
-        from .tools import register_tools
-        register_tools(ctx.core.tools)
+        # 2. Register decision tools (tracked → auto-unregistered on deactivate)
+        from .tools import TOOLS
+        self.register_tools(TOOLS)
 
         # 3. Subscribe to game events
         self._unsub_started = ctx.event_bus.subscribe("task.started", self._on_task_started)

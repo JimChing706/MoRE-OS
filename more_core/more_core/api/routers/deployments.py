@@ -10,7 +10,7 @@ from ...runtime.orchestrator import MoRECore
 
 
 def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
-    router = APIRouter(prefix="/api/v1")
+    router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_api_key)])
 
     @router.get("/deployments")
     async def list_deployments(

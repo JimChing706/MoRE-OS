@@ -9,8 +9,8 @@
         serve serve-app build build-app test lint format typecheck \
         check clean check-env setup-hooks docker-build docker-up docker-down
 
-PYTHON  ?= .venv/bin/python
-PIP     ?= .venv/bin/pip
+PYTHON  ?= $(CURDIR)/.venv/bin/python
+PIP     ?= $(CURDIR)/.venv/bin/pip
 API_PORT ?= 8011
 APP_PORT ?= 3003
 

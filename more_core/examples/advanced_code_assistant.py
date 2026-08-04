@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import ast
 import json
-from pathlib import Path
 from typing import Dict, List, Any, Optional
 
 from more_core.plugins.sdk import PluginBase, PluginContext
@@ -354,8 +353,7 @@ class CodeAssistantPlugin(PluginBase):
                 )
             
             content = read_result.output
-            lines = content.split('\n')
-            
+
             if refactor_type == "rename":
                 # Simple rename: replace all occurrences
                 if not new_value:
@@ -654,7 +652,7 @@ class CodeAssistantPlugin(PluginBase):
         path = event.data.get("path") if event.data else None
         if path and path in self._code_index:
             del self._code_index[path]
-            self.core.logger.debug(f"Invalidated index for {path}");
+            self.core.logger.debug(f"Invalidated index for {path}")
 
 
 # Legacy function for backward compatibility

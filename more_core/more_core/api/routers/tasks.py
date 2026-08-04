@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field as _Field
 
 from ...security.rbac import Permission, require_permission
-from ...core.types import TaskRequest, TaskType
+from ...core.types import TaskRequest, TaskStatus, TaskType
 from ...persistence.task_store import SQLiteTaskStore
 from ...runtime.orchestrator import MoRECore
 
@@ -65,21 +65,22 @@ async def _execute_task_background(task_id: str, task_info: dict[str, Any], core
         result = await core.execute(req)
 
         # Auto-create output from successful task result
-        from .outputs import _auto_create_output
+        if result.status == TaskStatus.SUCCESS:
+            from .outputs import _auto_create_output
 
-        _auto_create_output(
-            {
-                "task_id": task_id,
-                "output": result.output,
-                "type": req.type.value,
-                "metadata": {
-                    "task_type": req.type.value,
-                    "task_label": req.type.value,
-                },
-                "reasoning_chain": [],
-                "performance": {},
-            }
-        )
+            _auto_create_output(
+                {
+                    "task_id": task_id,
+                    "output": result.output,
+                    "type": req.type.value,
+                    "metadata": {
+                        "task_type": req.type.value,
+                        "task_label": req.type.value,
+                    },
+                    "reasoning_chain": [],
+                    "performance": {},
+                }
+            )
 
         _task_store.update_task(
             task_id,
@@ -102,7 +103,7 @@ async def _execute_task_background(task_id: str, task_info: dict[str, Any], core
 
 
 def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
-    router = APIRouter(prefix="/api/v1", tags=["Tasks"])
+    router = APIRouter(prefix="/api/v1", tags=["Tasks"], dependencies=[Depends(require_api_key)])
 
     @router.post(
         "/tasks/execute",
@@ -128,23 +129,24 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         result = await core.execute(req)
 
         # Auto-create output from successful task result
-        from .outputs import _auto_create_output
+        if result.status == TaskStatus.SUCCESS:
+            from .outputs import _auto_create_output
 
-        _auto_create_output(
-            {
-                "task_id": result.task_id if hasattr(result, "task_id") else "task_auto",
-                "output": result.output,
-                "type": payload.type.value,
-                "metadata": {
-                    "task_type": payload.type.value,
-                    "task_label": payload.query[:50],
-                },
-                "reasoning_chain": result.reasoning_chain
-                if hasattr(result, "reasoning_chain")
-                else [],
-                "performance": result.performance if hasattr(result, "performance") else {},
-            }
-        )
+            _auto_create_output(
+                {
+                    "task_id": result.task_id if hasattr(result, "task_id") else "task_auto",
+                    "output": result.output,
+                    "type": payload.type.value,
+                    "metadata": {
+                        "task_type": payload.type.value,
+                        "task_label": payload.query[:50],
+                    },
+                    "reasoning_chain": result.reasoning_chain
+                    if hasattr(result, "reasoning_chain")
+                    else [],
+                    "performance": result.performance if hasattr(result, "performance") else {},
+                }
+            )
 
         return result.model_dump()
 

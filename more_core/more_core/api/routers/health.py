@@ -57,13 +57,13 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
                     {
                         "id": e.id,
                         "type": e.kind.value,
-                        "content": e.content,
+                        "content": e.content[:200],
                         "tags": e.tags,
                         "score": e.score,
                         "timestamp": e.created_at,
                         "access_count": e.access_count,
                     }
-                    for e in core.memory.list()
+                    for e in core.memory.list(limit=50)
                 ],
             },
             "active_plugins": [md.name for md in core.plugins.active()],

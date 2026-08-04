@@ -8,6 +8,7 @@ Endpoints are organised into modular routers under ``api/routers/``.
 
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 from collections.abc import AsyncIterator
@@ -44,6 +45,7 @@ from .routers import (
     create_mcp_router,
     create_a2a_router,
     create_import_task_router,
+    create_deliberate_router,
 )
 
 _log = logging.getLogger(__name__)
@@ -58,12 +60,18 @@ async def _require_api_key(
         return
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing Bearer token")
-    if authorization[7:] != expected:
+    if not hmac.compare_digest(authorization[7:], expected):
         raise HTTPException(status_code=403, detail="Invalid API key")
 
 
 def create_app(core: MoRECore | None = None) -> FastAPI:
     core = core or MoRECore.from_env()
+
+    if not os.getenv("MORE_API_KEY", ""):
+        _log.warning(
+            "MORE_API_KEY is not set — API is running UNAUTHENTICATED. "
+            "Set MORE_API_KEY to enable Bearer-token auth."
+        )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -141,5 +149,6 @@ Include `Authorization: Bearer <key>` header for protected endpoints.
     app.include_router(create_mcp_router(core, _require_api_key))
     app.include_router(create_a2a_router(core, _require_api_key))
     app.include_router(create_import_task_router(core, _require_api_key))
+    app.include_router(create_deliberate_router(core, _require_api_key))
 
     return app
