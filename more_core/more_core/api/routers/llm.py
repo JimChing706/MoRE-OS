@@ -11,7 +11,7 @@ from ...runtime.orchestrator import MoRECore
 
 
 def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
-    router = APIRouter(prefix="/api/v1", tags=["LLM"])
+    router = APIRouter(prefix="/api/v1", tags=["LLM"], dependencies=[Depends(require_api_key)])
 
     @router.get("/llm/health")
     async def llm_health() -> Any:

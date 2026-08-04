@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import AsyncIterator
 
 import httpx
@@ -11,7 +12,12 @@ from ..provider import LLMRequest, LLMResponse
 
 
 class DeepSeekProvider:
-    """DeepSeek API provider - supports DeepSeek Chat and Coder models."""
+    """DeepSeek API provider - supports DeepSeek Chat and Coder models.
+
+    Uses a persistent httpx.AsyncClient (connection pool + keep-alive)
+    instead of creating a new client per request, avoiding a TLS handshake
+    and connection setup on every call.
+    """
 
     MODELS = {
         "deepseek-chat": "deepseek-chat",
@@ -36,12 +42,19 @@ class DeepSeekProvider:
         self._base = endpoint.rstrip("/")
         self.model = model
         self._timeout = timeout
+        self._client: httpx.AsyncClient | None = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Return the persistent client, creating it lazily."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(self._timeout),
+                headers={"Authorization": f"Bearer {self._api_key}"},
+                limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+            )
+        return self._client
 
     async def generate(self, request: LLMRequest) -> LLMResponse:
-        headers = {
-            "Authorization": f"Bearer {self._api_key}",
-            "Content-Type": "application/json",
-        }
         payload = {
             "model": self.model,
             "messages": self._build_messages(request),
@@ -51,20 +64,18 @@ class DeepSeekProvider:
         }
         if request.enable_thinking:
             payload["thinking"] = {"type": "enabled"}
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
-            try:
-                r = await client.post(
-                    f"{self._base}/v1/chat/completions",
-                    json=payload,
-                    headers=headers,
-                )
-            except httpx.ConnectError as e:
-                raise LLMError(f"deepseek connection failed: {e}")
-            except httpx.ReadTimeout:
-                raise LLMError(f"deepseek read timeout after {self._timeout}s")
-            if r.status_code >= 400:
-                raise LLMError(f"deepseek {r.status_code}: {r.text}")
-            data = r.json()
+        try:
+            r = await self._get_client().post(
+                f"{self._base}/v1/chat/completions",
+                json=payload,
+            )
+        except httpx.ConnectError as e:
+            raise LLMError(f"deepseek connection failed: {e}")
+        except httpx.ReadTimeout:
+            raise LLMError(f"deepseek read timeout after {self._timeout}s")
+        if r.status_code >= 400:
+            raise LLMError(f"deepseek {r.status_code}: {r.text}")
+        data = r.json()
         msg = data["choices"][0]["message"]
         return LLMResponse(
             content=msg["content"],
@@ -76,10 +87,6 @@ class DeepSeekProvider:
         )
 
     async def stream(self, request: LLMRequest) -> AsyncIterator[str]:
-        headers = {
-            "Authorization": f"Bearer {self._api_key}",
-            "Content-Type": "application/json",
-        }
         payload = {
             "model": self.model,
             "messages": self._build_messages(request),
@@ -87,40 +94,41 @@ class DeepSeekProvider:
             "max_tokens": request.max_tokens or 4096,
             "stream": True,
         }
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
-            async with client.stream(
-                "POST",
-                f"{self._base}/v1/chat/completions",
-                json=payload,
-                headers=headers,
-            ) as r:
-                if r.status_code >= 400:
-                    raise LLMError(f"deepseek {r.status_code}")
-                async for line in r.aiter_lines():
-                    if not line or line == "data: [DONE]":
+        async with self._get_client().stream(
+            "POST",
+            f"{self._base}/v1/chat/completions",
+            json=payload,
+        ) as r:
+            if r.status_code >= 400:
+                raise LLMError(f"deepseek {r.status_code}")
+            async for line in r.aiter_lines():
+                if not line or line == "data: [DONE]":
+                    continue
+                if line.startswith("data: "):
+                    data = line[6:]
+                    try:
+                        obj = json.loads(data)
+                        chunk = obj["choices"][0].get("delta", {}).get("content")
+                        if chunk:
+                            yield chunk
+                    except Exception:
                         continue
-                    if line.startswith("data: "):
-                        data = line[6:]
-                        try:
-                            import json
-
-                            obj = json.loads(data)
-                            chunk = obj["choices"][0].get("delta", {}).get("content")
-                            if chunk:
-                                yield chunk
-                        except Exception:
-                            continue
 
     async def health(self) -> bool:
         try:
-            async with httpx.AsyncClient(timeout=5) as client:
-                r = await client.get(
-                    f"{self._base}/v1/models",
-                    headers={"Authorization": f"Bearer {self._api_key}"},
-                )
-                return r.status_code == 200
+            r = await self._get_client().get(
+                f"{self._base}/v1/models",
+                timeout=5,
+            )
+            return r.status_code == 200
         except Exception:
             return False
+
+    async def close(self) -> None:
+        """Close the persistent client."""
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
 
     def _build_messages(self, request: LLMRequest) -> list[dict[str, str]]:
         messages = []

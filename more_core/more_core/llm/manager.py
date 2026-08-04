@@ -21,17 +21,52 @@ from .providers.mock import MockProvider
 
 
 _CACHE_MAX = 256
+# Wall-clock budget for the whole serial fallback chain (all providers tried).
+# Guards against the pathological case: N providers × 5 retries × 120s timeout
+# with no total bound, which previously could stall a task for ~750s+.
+_FALLBACK_DEADLINE_S = 90.0
+# LLM response cache TTL: stale responses must not be reused indefinitely.
+_CACHE_TTL_S = 300.0
+# Per-provider health-check wall-clock bound.  A hanging endpoint must not
+# consume the whole fallback deadline (or the provider timeout of 120s)
+# — the fallback total deadline only starts ticking afterwards.
+_HEALTH_CHECK_TIMEOUT_S = 5.0
+# Failure-count TTL: repeated transient failures must not disable a provider
+# forever.  After this window without a new failure the count is forgotten.
+_FAILURE_TTL_S = 60.0
 
-_logger = logging.getLogger("more_core.llm_manager")
+_logger = logging.getLogger(__name__)
 
 
-class _LRU(OrderedDict[str, LLMResponse]):
+class _LRU:
+    """True LRU with TTL.  Reads refresh recency; expired entries are purged."""
+
+    def __init__(self) -> None:
+        self._data: OrderedDict[str, tuple[float, LLMResponse]] = OrderedDict()
+
     def put(self, key: str, value: LLMResponse) -> None:
-        if key in self:
-            self.move_to_end(key)
-        self[key] = value
-        if len(self) > _CACHE_MAX:
-            self.popitem(last=False)
+        if key in self._data:
+            self._data.move_to_end(key)
+        self._data[key] = (time.monotonic(), value)
+        if len(self._data) > _CACHE_MAX:
+            self._data.popitem(last=False)
+
+    def get(self, key: str, default: LLMResponse | None = None) -> LLMResponse | None:
+        item = self._data.get(key)
+        if item is None:
+            return default
+        ts, value = item
+        if time.monotonic() - ts > _CACHE_TTL_S:
+            del self._data[key]
+            return default
+        self._data.move_to_end(key)
+        return value
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._data
 
 
 def _build_provider(cfg: LLMProviderConfig) -> LLMProvider:
@@ -136,7 +171,7 @@ class LLMManager:
         self._fallback = fallback_chain or list(self._providers)
         self._cache = _LRU()
         self._cache_lock = asyncio.Lock()
-        self._failure_counts: dict[str, int] = {}
+        self._failure_counts: dict[str, tuple[int, float]] = {}
         self._state_manager = state_manager
         # Health check cache: provider -> (is_healthy, timestamp)
         self._health_cache: dict[str, tuple[bool, float]] = {}
@@ -150,7 +185,9 @@ class LLMManager:
             if now - ts < self._health_cache_ttl:
                 return healthy
         try:
-            healthy = await self._providers[name].health()
+            healthy = await asyncio.wait_for(
+                self._providers[name].health(), timeout=_HEALTH_CHECK_TIMEOUT_S
+            )
         except Exception:
             healthy = False
         self._health_cache[name] = (healthy, now)
@@ -186,7 +223,7 @@ class LLMManager:
         raw = (
             f"{provider}|{model or ''}|{req.system or ''}|{req.prompt}|{req.temperature}"
             f"|{req.max_tokens}|{','.join(req.stop)}|{sorted(req.extra.items())}"
-            f"|{req.model_override or ''}"
+            f"|{req.model_override or ''}|{req.enable_thinking}"
         )
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
@@ -201,24 +238,37 @@ class LLMManager:
                 stop=list(request.stop),
                 extra=dict(request.extra),
                 model_override=model,
+                enable_thinking=request.enable_thinking,
             )
         return request
 
     def _should_skip(self, provider: str, model: str | None, threshold: int = 3) -> bool:
-        """Check if provider/model should be skipped due to failures."""
+        """Check if provider/model should be skipped due to failures.
+
+        Stale failures (older than ``_FAILURE_TTL_S``) are forgotten so a
+        transient outage cannot disable a provider for the process lifetime.
+        """
         key = f"{provider}:{model or 'default'}"
-        return self._failure_counts.get(key, 0) >= threshold
+        item = self._failure_counts.get(key)
+        if item is None:
+            return False
+        count, ts = item
+        if time.monotonic() - ts > _FAILURE_TTL_S:
+            del self._failure_counts[key]
+            return False
+        return count >= threshold
 
     def _record_failure(self, provider: str, model: str | None) -> None:
         """Record a failure for a provider/model pair."""
         key = f"{provider}:{model or 'default'}"
-        self._failure_counts[key] = self._failure_counts.get(key, 0) + 1
-        _logger.warning(f"Failure recorded for {key}: {self._failure_counts[key]}")
+        count = self._failure_counts.get(key, (0, 0.0))[0] + 1
+        self._failure_counts[key] = (count, time.monotonic())
+        _logger.warning(f"Failure recorded for {key}: {count}")
 
     def _record_success(self, provider: str, model: str | None) -> None:
         """Record a success, reset failure count."""
         key = f"{provider}:{model or 'default'}"
-        self._failure_counts[key] = 0
+        self._failure_counts.pop(key, None)
 
     async def generate(
         self,
@@ -249,6 +299,7 @@ class LLMManager:
 
         chain = [provider] if provider else list(self._fallback)
         last_exc: Exception | None = None
+        deadline = time.monotonic() + _FALLBACK_DEADLINE_S
 
         for name in chain:
             if name not in self._providers:
@@ -264,8 +315,8 @@ class LLMManager:
             key = self._cache_key(request, name, request.model_override)
             if use_cache:
                 async with self._cache_lock:
-                    if key in self._cache:
-                        cached = self._cache[key]
+                    cached = self._cache.get(key)
+                    if cached is not None:
                         return LLMResponse(
                             content=cached.content,
                             provider=cached.provider,
@@ -275,9 +326,17 @@ class LLMManager:
                             latency_ms=0.0,
                             cached=True,
                         )
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                _logger.error("Fallback chain total timeout exceeded (%ss)", _FALLBACK_DEADLINE_S)
+                raise LLMError(
+                    f"fallback chain total timeout exceeded after {_FALLBACK_DEADLINE_S}s"
+                ) from last_exc
             try:
                 start = time.perf_counter()
-                resp = await self._providers[name].generate(request)
+                resp = await asyncio.wait_for(
+                    self._providers[name].generate(request), timeout=remaining
+                )
                 resp.latency_ms = (time.perf_counter() - start) * 1000
                 self._record_success(name, request.model_override)
                 if use_cache:
@@ -311,6 +370,7 @@ class LLMManager:
             LLMError: When all pairs in chain fail
         """
         last_exc: Exception | None = None
+        deadline = time.monotonic() + _FALLBACK_DEADLINE_S
 
         for pair in chain:
             if pair.provider not in self._providers:
@@ -327,8 +387,8 @@ class LLMManager:
 
             if use_cache:
                 async with self._cache_lock:
-                    if key in self._cache:
-                        cached = self._cache[key]
+                    cached = self._cache.get(key)
+                    if cached is not None:
                         return LLMResponse(
                             content=cached.content,
                             provider=cached.provider,
@@ -339,9 +399,17 @@ class LLMManager:
                             cached=True,
                         )
 
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                _logger.error("Fallback chain total timeout exceeded (%ss)", _FALLBACK_DEADLINE_S)
+                raise LLMError(
+                    f"fallback chain total timeout exceeded after {_FALLBACK_DEADLINE_S}s"
+                ) from last_exc
             try:
                 start = time.perf_counter()
-                resp = await self._providers[pair.provider].generate(req)
+                resp = await asyncio.wait_for(
+                    self._providers[pair.provider].generate(req), timeout=remaining
+                )
                 resp.latency_ms = (time.perf_counter() - start) * 1000
                 self._record_success(pair.provider, pair.model)
                 if use_cache:
@@ -411,8 +479,8 @@ class LLMManager:
         if use_cache:
             async with self._cache_lock:
                 for pair, cache_key in valid:
-                    if cache_key in self._cache:
-                        cached = self._cache[cache_key]
+                    cached = self._cache.get(cache_key)
+                    if cached is not None:
                         _logger.debug(
                             "generate_parallel: cache hit %s/%s", pair.provider, pair.model
                         )
@@ -466,9 +534,11 @@ class LLMManager:
                         pair.model,
                         resp.latency_ms,
                     )
-                    # Cancel remaining tasks
+                    # Cancel remaining tasks; await them so no exception
+                    # is left unretrieved and no task is destroyed pending.
                     for t in pending:
                         t.cancel()
+                    await _aio.gather(*pending, return_exceptions=True)
                     return resp
                 except Exception as exc:
                     self._record_failure(pair.provider, pair.model)
@@ -489,7 +559,7 @@ class LLMManager:
                 try:
                     done2, pending = await _aio.wait(
                         pending,
-                        timeout=_aio.get_running_loop().time() if False else timeout_s - 10,
+                        timeout=max(0.1, timeout_s - 10),
                         return_when=_aio.FIRST_COMPLETED,
                     )
                     for task in done2:
@@ -512,6 +582,7 @@ class LLMManager:
                             )
                             for t in pending:
                                 t.cancel()
+                            await _aio.gather(*pending, return_exceptions=True)
                             return resp
                         except Exception as exc:
                             self._record_failure(pair.provider, pair.model)
@@ -547,12 +618,26 @@ class LLMManager:
     ) -> AsyncIterator[str]:
         """Stream tokens from the best available provider with fallback."""
         chain = [provider] if provider else list(self._fallback)
+        deadline = time.monotonic() + _FALLBACK_DEADLINE_S
         for name in chain:
             if name not in self._providers or self._should_skip(name, model_override):
                 continue
             try:
-                async for token in await self._providers[name].stream(request):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise LLMError("stream fallback chain total timeout exceeded")
+                # wait_for around each anext() bounds idle reads; the
+                # shrinking `remaining` budget bounds the whole stream.
+                stream_iter = await self._providers[name].stream(request)
+                while True:
+                    try:
+                        token = await asyncio.wait_for(anext(stream_iter), timeout=remaining)
+                    except StopAsyncIteration:
+                        break
                     yield token
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise LLMError("stream fallback chain total timeout exceeded")
                 self._record_success(name, model_override)
                 return
             except Exception as exc:
@@ -567,7 +652,7 @@ class LLMManager:
 
     def get_failure_counts(self) -> dict[str, int]:
         """Get failure counts for monitoring."""
-        return dict(self._failure_counts)
+        return {k: count for k, (count, _) in self._failure_counts.items()}
 
     def reset_failure_counts(self) -> None:
         """Reset all failure counts (e.g., after system recovery)."""

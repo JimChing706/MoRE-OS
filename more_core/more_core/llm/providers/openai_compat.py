@@ -17,7 +17,7 @@ import httpx
 from ...core.errors import LLMError
 from ..provider import LLMRequest, LLMResponse
 
-_log = logging.getLogger("more_core.llm.openai_compat")
+_log = logging.getLogger(__name__)
 
 # Status codes that indicate a transient failure worth retrying.
 _RETRYABLE_STATUSES: set[int] = {429, 500, 502, 503, 504}

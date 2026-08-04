@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
+from unittest.mock import patch
+
 import pytest
 
 from more_core.core.errors import LLMError
+from more_core.core.types import TaskType
+from more_core.llm.dynamic_router import DynamicModelRouter
 from more_core.llm.manager import LLMManager, _LRU
 from more_core.llm.provider import LLMRequest, LLMResponse
 
@@ -149,9 +155,6 @@ def test_lru_evicts_oldest() -> None:
 # Dynamic Model Routing tests
 # ---------------------------------------------------------------------------
 
-from more_core.core.types import TaskType
-from more_core.llm.dynamic_router import DynamicModelRouter
-
 
 class _FakeLLMManagerForRouting:
     """Minimal LLMManager stub for DynamicModelRouter tests."""
@@ -252,3 +255,121 @@ def test_dynamic_router_get_routing_config():
     assert "reasoning" in config
     assert "providers" in config
     assert "ollama" in config["providers"]
+
+
+# ---------------------------------------------------------------------------
+# Health-check bounding / failure-count TTL / parallel-task hygiene
+# ---------------------------------------------------------------------------
+
+class _HangingHealthProvider:
+    def __init__(self, name: str = "hanging") -> None:
+        self.name = name
+        self.model = "hang-model"
+
+    async def generate(self, request: LLMRequest) -> LLMResponse:
+        return LLMResponse(content="ok", provider=self.name, model=self.model)
+
+    async def health(self) -> bool:
+        await asyncio.sleep(100)  # simulates an endpoint that hangs
+        return True
+
+
+@pytest.mark.asyncio
+async def test_health_check_is_time_bounded() -> None:
+    import time as _time
+
+    mgr = _manager_with_providers([_HangingHealthProvider()])
+    t0 = _time.monotonic()
+    healthy = await mgr._check_health_cached("hanging")
+    elapsed = _time.monotonic() - t0
+    assert healthy is False
+    assert elapsed < 10  # bounded well below the 100s hang
+
+
+@pytest.mark.asyncio
+async def test_failure_count_skips_then_decays_after_ttl() -> None:
+
+    mgr = _manager_with_providers([_GoodProvider("flaky")])
+    for _ in range(3):
+        mgr._record_failure("flaky", None)
+    assert mgr._should_skip("flaky", None)
+
+    future = time.monotonic() + 120
+    with patch("more_core.llm.manager.time.monotonic", return_value=future):
+        assert mgr._should_skip("flaky", None) is False
+
+
+@pytest.mark.asyncio
+async def test_failure_count_cleared_on_success() -> None:
+    class _RecoveringProvider:
+        def __init__(self) -> None:
+            self.name = "recover"
+            self.model = "m"
+            self.fail_times = 1
+
+        async def generate(self, request: LLMRequest) -> LLMResponse:
+            if self.fail_times > 0:
+                self.fail_times -= 1
+                raise LLMError("transient")
+            return LLMResponse(content="ok", provider=self.name, model=self.model)
+
+        async def health(self) -> bool:
+            return True
+
+    mgr = _manager_with_providers([_RecoveringProvider()])
+    with pytest.raises(LLMError):
+        await mgr.generate(LLMRequest(prompt="hi"), use_cache=False)
+    assert mgr.get_failure_counts()["recover:default"] == 1
+
+    resp = await mgr.generate(LLMRequest(prompt="hi"), use_cache=False)
+    assert resp.content == "ok"
+    assert "recover:default" not in mgr.get_failure_counts()
+
+
+class _CancellationBombProvider:
+    """Raises a non-cancellation error while being cancelled."""
+
+    def __init__(self, name: str = "bomb") -> None:
+        self.name = name
+        self.model = "bomb-model"
+
+    async def generate(self, request: LLMRequest) -> LLMResponse:
+        try:
+            await asyncio.sleep(10)
+        finally:
+            raise LLMError("cleanup failed during cancellation")
+
+    async def health(self) -> bool:
+        return True
+
+
+@pytest.mark.asyncio
+async def test_generate_parallel_retrieves_cancelled_task_exceptions() -> None:
+    from more_core.llm.manager import ProviderModelPair
+
+    captured: list[dict[str, object]] = []
+    loop = asyncio.get_running_loop()
+    old_handler = loop.get_exception_handler()
+    loop.set_exception_handler(lambda _loop, ctx: captured.append(ctx))
+    try:
+        fast = _GoodProvider("fast")
+        bomb = _CancellationBombProvider("bomb")
+        mgr = _manager_with_providers([fast, bomb])
+        resp = await mgr.generate_parallel(
+            LLMRequest(prompt="hi"),
+            candidates=[
+                ProviderModelPair("fast", "fast-model"),
+                ProviderModelPair("bomb", "bomb-model"),
+            ],
+            use_cache=False,
+            timeout_s=5,
+        )
+        assert resp.provider == "fast"
+        for _ in range(20):
+            await asyncio.sleep(0)
+            if captured:
+                break
+        messages = [str(c.get("message")) for c in captured]
+        assert not any("Task exception was never retrieved" in m for m in messages), messages
+    finally:
+        loop.set_exception_handler(old_handler)

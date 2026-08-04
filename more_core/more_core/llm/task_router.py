@@ -106,7 +106,7 @@ class TaskModelRouter:
     def __init__(self, llm_manager: "LLMManager") -> None:
         self._llm = llm_manager
         self._task_map = dict(TASK_MODEL_MAP)
-        self._logger = logging.getLogger("more_core.task_router")
+        self._logger = logging.getLogger(__name__)
         self._failure_count: dict[str, int] = {}
 
     def get_binding(self, task_type: TaskType) -> ModelBinding:
