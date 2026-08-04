@@ -99,21 +99,33 @@ ARCHITECTURE_DESIGN: L5 → L4 → L3 → L1 → L0
 
 | Module | Path | Role |
 |--------|------|------|
-| **Orchestrator** | `runtime/orchestrator.py` | Wires all subsystems, lifecycle |
-| **API Routers** | `api/routers/` (19 routers) | REST endpoints |
+| **Orchestrator** | `runtime/orchestrator.py` | Wires all subsystems, lifecycle, service registry |
+| **Bootstrap** | `runtime/bootstrap.py` | `init_capabilities` / `init_layers` / `init_services` factories |
+| **API Routers** | `api/routers/` (22 routers) | REST endpoints |
 | **LLM Manager** | `llm/manager.py` | Multi-provider + fallback + LRU cache |
 | **Layer Router** | `router/layer_router.py` | Difficulty-aware pipeline |
+| **Scene Router** | `router/scene_router.py` | Scene-aware task routing |
+| **Meta-Orchestrator** | `v3/meta_orchestrator.py` | v3.0 meta orchestration, guardrails, uncertainty |
+| **Council** | `council/` | Multi-agent deliberation |
 | **MCP** | `mcp/` | Model Context Protocol client/server |
 | **A2A** | `a2a/` | Agent-to-Agent protocol |
 | **Memory** | `memory/` | Persistent memory store |
 | **Hands** | `hands/` | Tool/action execution (registry, manager) |
-| **Plugins** | `plugins/` | 3 industry plugins (mahjong, minesweeper*) |
+| **Tools** | `tools/` | Tool registry + builtins |
+| **Skills** | `skills/` | Modular skills (web, code, config) |
+| **Plugins** | `plugins/` | Industry packs (mahjong, minesweeper*) |
 | **Channels** | `channels/` | Multi-channel I/O (reconnect, manager) |
 | **Sandbox** | `sandbox/` | Secure execution sandbox |
-| **Security** | `security/` | RBAC, taint tracking, output filter |
+| **Security** | `security/` | RBAC, taint tracking, output filter, SSRF guard |
 | **Evolution** | `evolution/` | Benchmark, DGM, archive |
 | **Governance** | `governance/` | Audit log, policy enforcer |
 | **Planning** | `planning/` | Token prediction, plan coordination |
+| **Workflows** | `workflows/` | Multi-step workflow engine |
+| **Deploy** | `deploy/` | Deployment lifecycle management |
+| **Sessions** | `runtime/sessions.py` | Session store/subscriptions |
+| **Optimization** | `optimization/` | Rate limiter, cache, circuit breaker |
+| **Metacognition** | `metacognition/` | L5 metacognition service |
+| **Ontology** | `ontology/` | Ontology constraint engine |
 
 ### Data Layer
 
@@ -150,8 +162,8 @@ ARCHITECTURE_DESIGN: L5 → L4 → L3 → L1 → L0
 | `MORE_DEEPSEEK_API_KEY` | — | Cloud API key |
 | `MORE_LLM_FALLBACK_CHAIN` | `lmstudio,ollama` | Provider failover order |
 | `MORE_ENABLE_SYMBOLIC` | `1` | Enable L3 symbolic reasoning |
-| `MORE_ENABLE_EVOLUTION` | `1` | Enable L2 self-improvement |
-| `MORE_ENABLE_METACOGNITION` | `1` | Enable L5 metacognition |
+| `MORE_ENABLE_EVOLUTION` | `0` | Enable L2 self-improvement |
+| `MORE_ENABLE_METACOGNITION` | `0` | Enable L5 metacognition |
 | `MORE_MEMORY_DB` | `data/memory.db` | Memory/SQLite path |
 | `MORE_EVOLUTION_DB` | `data/evolution.db` | Evolution/SQLite path |
 
@@ -199,7 +211,7 @@ Full template: `more_core/.env.template`
 
 ## Known Issues
 
-- 扫雷 GUI (8080) 端口被系统占用，不影响核心
+- 扫雷 GUI (8080) 由 API server 同一进程内挂载的 minesweeper 插件提供（`/api/v1/health` 返回 v0.1.0），非"被系统占用"；插件关闭顺序需反向依赖解析
 - LM Studio 大模型响应慢 (~30s)，生产用 Ollama 或 DeepSeek
 - `minesweeper_game` 依赖 `minesweeper_agent`，关闭顺序需反向依赖解析
 - CI 中 mypy 失败不阻断 (`mypy more_core/ || true`)

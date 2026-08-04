@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -18,11 +18,10 @@ export function SystemDashboard({ data }: SystemDashboardProps) {
   const { systemState, layerMetrics, evolutionStats } = data;
   const [prevThroughput, setPrevThroughput] = useState(systemState.throughput);
   const [throughputTrend, setThroughputTrend] = useState(0);
-
-  useEffect(() => {
+  if (systemState.throughput !== prevThroughput) {
     setThroughputTrend(systemState.throughput - prevThroughput);
     setPrevThroughput(systemState.throughput);
-  }, [systemState.throughput]);
+  }
 
   const statusColor = {
     running: 'bg-green-500',

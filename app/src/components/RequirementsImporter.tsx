@@ -211,7 +211,7 @@ export function RequirementsImporter() {
     // Build a real TaskRequest and call the backend via moreEngine
     // Inject related past task context for memory-augmented execution
     const memoryContext = getRelatedContext(query, task.type);
-    const contextPayload: Record<string, any> = {
+    const contextPayload: Record<string, unknown> = {
       source: 'requirements_importer',
       document_count: documents.length,
       documents: documents.map(d => ({ name: d.name, type: d.type })),
@@ -265,7 +265,7 @@ export function RequirementsImporter() {
 
     resetForm();
     setDocuments([]);
-  }, [taskInput, documents]);
+  }, [taskInput, documents, getRelatedContext, remember]);
 
   const handleBatchTasks = useCallback(async (requests: string[]) => {
     const now = Date.now();

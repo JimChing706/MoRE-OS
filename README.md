@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-brightgreen.svg)](https://python.org)
-[![Version](https://img.shields.io/badge/version-0.6.0--alpha-orange.svg)](more_core/more_core/version.py)
+[![Version](https://img.shields.io/badge/version-v0.9.9-orange.svg)](more_core/more_core/version.py)
 
 ---
 

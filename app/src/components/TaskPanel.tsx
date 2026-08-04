@@ -123,7 +123,7 @@ export function TaskPanel() {
 
     // Inject related past task context for memory-augmented execution
     const memoryContext = getRelatedContext(queryInput, preset.type);
-    const contextPayload: Record<string, any> = {
+    const contextPayload: Record<string, unknown> = {
       source: 'task_panel_preset',
       task_label: preset.label,
     };

@@ -1,14 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
-import { 
+import {
   FolderOpen, FileText, CheckCircle,
   Star, ChevronRight, File, Code, RotateCw, MessageSquare, Trash2
 } from 'lucide-react';
+
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8011';
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 interface ProjectOutputFile {
   path: string;
@@ -70,16 +76,7 @@ export function ProjectOutputReview() {
   const [modalMode, setModalMode] = useState<'view' | 'review' | 'iterate'>('view');
   const [iterating, setIterating] = useState(false);
 
-  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8011';
-
-  useEffect(() => {
-    // Check API health first
-    fetch(`${API_BASE}/api/v1/health`)
-      .then(r => { setApiOnline(r.ok); fetchOutputs(); })
-      .catch(() => { setApiOnline(false); setError('无法连接到服务器 (http://localhost:8011)'); setLoading(false); });
-  }, []);
-
-  const fetchOutputs = async () => {
+  const fetchOutputs = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
@@ -87,16 +84,24 @@ export function ProjectOutputReview() {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       setOutputs(data.outputs || []);
-    } catch (e: any) {
-      if (e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
+    } catch (e) {
+      const message = errorMessage(e);
+      if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
         setError('无法连接到服务器，请确保后端服务正在运行');
       } else {
-        setError('获取项目产出物失败: ' + e.message);
+        setError('获取项目产出物失败: ' + message);
       }
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // Check API health first
+    fetch(`${API_BASE}/api/v1/health`)
+      .then(r => { setApiOnline(r.ok); fetchOutputs(); })
+      .catch(() => { setApiOnline(false); setError('无法连接到服务器 (http://localhost:8011)'); setLoading(false); });
+  }, [fetchOutputs]);
 
   const filteredOutputs = outputs.filter(output => {
     if (activeView === 'all') return true;
@@ -127,8 +132,8 @@ export function ProjectOutputReview() {
       setSelectedOutput(null);
       setReviewData({ rating: 0, comments: '', approved: false, feedback: '' });
       fetchOutputs();
-    } catch (e: any) {
-      toast.error(`评审提交失败: ${e.message}`);
+    } catch (e) {
+      toast.error(`评审提交失败: ${errorMessage(e)}`);
     }
   };
 
@@ -151,8 +156,8 @@ export function ProjectOutputReview() {
       setSelectedOutput(null);
       setIterationData({ feedback: '', target_improvements: [] });
       fetchOutputs();
-    } catch (e: any) {
-      toast.error(`迭代失败: ${e.message}`);
+    } catch (e) {
+      toast.error(`迭代失败: ${errorMessage(e)}`);
     } finally {
       setIterating(false);
     }
@@ -171,8 +176,8 @@ export function ProjectOutputReview() {
         setSelectedOutput(null);
       }
       fetchOutputs();
-    } catch (e: any) {
-      toast.error(`删除失败: ${e.message}`);
+    } catch (e) {
+      toast.error(`删除失败: ${errorMessage(e)}`);
     }
   };
 
@@ -279,7 +284,7 @@ export function ProjectOutputReview() {
       </div>
 
       {/* 过滤标签 */}
-      <Tabs value={activeView} onValueChange={(v: string) => setActiveView(v as any)}>
+      <Tabs value={activeView} onValueChange={(v) => setActiveView(v as 'all' | 'code' | 'docs')}>
         <TabsList className="w-full grid grid-cols-3">
           <TabsTrigger value="all" className="text-xs">
             <FolderOpen className="w-3 h-3 mr-1" />

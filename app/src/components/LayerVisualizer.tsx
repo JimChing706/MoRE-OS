@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import type { LayerDefinition, LayerId, DashboardData } from '@/types/morev3';
 import { getLayerDefinitions } from '@/core/moreEngine';
 import { Activity, Brain, Cpu, GitBranch, Network, Shield, Zap, Server } from 'lucide-react';
@@ -22,16 +22,14 @@ interface LayerVisualizerProps {
 
 export function LayerVisualizer({ data, selectedLayer, onSelectLayer }: LayerVisualizerProps) {
   const [layers] = useState<LayerDefinition[]>(getLayerDefinitions());
-  const [animatedLayers, setAnimatedLayers] = useState<Set<LayerId>>(new Set());
-
-  useEffect(() => {
+  const animatedLayers = useMemo(() => {
+    const active = new Set<LayerId>();
     if (data) {
-      const active = new Set<LayerId>();
       data.recentTasks.forEach(task => {
         task.reasoningChain.forEach(step => active.add(step.layer));
       });
-      setAnimatedLayers(active);
     }
+    return active;
   }, [data]);
 
   const getMetricForLayer = (layerId: LayerId) => {

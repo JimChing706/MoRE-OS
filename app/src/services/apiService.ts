@@ -135,13 +135,14 @@ class APIService {
         }
 
         return response.json();
-      } catch (err: any) {
-        lastError = err;
+      } catch (err: unknown) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        lastError = error;
 
-        const isAbort = err.name === 'AbortError';
-        const isNetErr = err instanceof TypeError ||
-          err.message?.includes('Failed to fetch') ||
-          err.message?.includes('NetworkError');
+        const isAbort = error.name === 'AbortError';
+        const isNetErr = error instanceof TypeError ||
+          error.message?.includes('Failed to fetch') ||
+          error.message?.includes('NetworkError');
 
         if (isAbort || isNetErr) {
           if (attempt < retries) {
@@ -157,7 +158,7 @@ class APIService {
         }
 
         // 非网络错误不重试（如 4xx/5xx）
-        throw err instanceof ApiError ? err : new ApiError(err.message || String(err));
+        throw err instanceof ApiError ? err : new ApiError(error.message || String(error));
       }
     }
 
@@ -173,7 +174,7 @@ class APIService {
 
   async executeTaskStream(
     request: TaskRequest,
-    onChunk: (data: any) => void
+    onChunk: (data: unknown) => void
   ): Promise<void> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',

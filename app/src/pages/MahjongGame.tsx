@@ -84,18 +84,33 @@ export default function MahjongGame() {
       const data = await res.json();
       setRooms(data.rooms || []);
       setFetchError(null);
-    } catch (e) {
+    } catch {
       setFetchError('无法连接到游戏服务器');
     }
   }, []);
 
   useEffect(() => {
-    if (isLoggedIn) {
-      fetchRooms();
-      const interval = setInterval(fetchRooms, 3000);
-      return () => clearInterval(interval);
-    }
-  }, [isLoggedIn, fetchRooms]);
+    if (!isLoggedIn) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/mahjong/rooms`);
+        const data = await res.json();
+        if (!cancelled) {
+          setRooms(data.rooms || []);
+          setFetchError(null);
+        }
+      } catch {
+        if (!cancelled) setFetchError('无法连接到游戏服务器');
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isLoggedIn]);
 
   // Login
   const handleLogin = () => {
@@ -127,7 +142,7 @@ export default function MahjongGame() {
         joinRoom(data.room.id);
         fetchRooms();
       }
-    } catch (e) {
+    } catch {
       setFetchError('创建房间失败');
     }
   };
@@ -142,7 +157,7 @@ export default function MahjongGame() {
       });
       joinRoom(roomId);
       fetchRooms();
-    } catch (e) {
+    } catch {
       setFetchError('加入房间失败');
     }
   };
@@ -199,7 +214,9 @@ export default function MahjongGame() {
   const myPlayer = room?.players.find(p => p.id === playerId);
   const isHost = room?.host_id === playerId;
   const isMyTurn = myPlayer?.seat === room?.current_player_seat && room?.phase === 'playing';
-  const canCall = room?.phase === 'calling' && room?.players.some(p => p.id === playerId && String(p.seat) in (room as any).pending_call?.callers || {});
+  const canCall =
+    room?.phase === 'calling' &&
+    room.players.some(p => p.id === playerId && room.pending_call != null && String(p.seat) in room.pending_call.callers);
 
   if (!isLoggedIn) {
     return (

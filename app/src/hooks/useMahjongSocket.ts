@@ -35,15 +35,16 @@ export interface MahjongRoom {
   wall_remaining: number;
   dora_indicators: MahjongTile[];
   messages: Array<{ type: string; player: string; action: string; time: string }>;
+  pending_call?: { callers: Record<string, number> };
   is_player: boolean;
 }
 
 export interface MahjongMessage {
   action: string;
   room?: MahjongRoom;
-  message?: any;
+  message?: { type: string; player: string; action: string; time: string };
   tile?: MahjongTile;
-  result?: any;
+  result?: unknown;
   seat?: number;
   error?: string;
 }
@@ -58,6 +59,7 @@ export function useMahjongSocket(playerId: string, playerName: string) {
   const [lastAction, setLastAction] = useState<string>('');
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectRef = useRef<() => void>(() => {});
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
@@ -90,7 +92,8 @@ export function useMahjongSocket(playerId: string, playerName: string) {
         } else if (msg.action === 'call') {
           setLastAction('called');
         } else if (msg.action === 'chat' && msg.message) {
-          setMessages(prev => [...prev, msg.message].slice(-100));
+          const chatMsg = msg.message;
+          setMessages(prev => [...prev, chatMsg].slice(-100));
         } else if (msg.action === 'error') {
           setError(msg.error || 'Unknown error');
         }
@@ -103,13 +106,17 @@ export function useMahjongSocket(playerId: string, playerName: string) {
       setConnected(false);
       wsRef.current = null;
       // Reconnect after 2s
-      reconnectRef.current = setTimeout(() => connect(), 2000);
+      reconnectRef.current = setTimeout(() => connectRef.current(), 2000);
     };
 
     ws.onerror = () => {
       setError('WebSocket connection error');
     };
   }, [playerId, playerName]);
+
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   useEffect(() => {
     connect();
@@ -119,7 +126,7 @@ export function useMahjongSocket(playerId: string, playerName: string) {
     };
   }, [connect]);
 
-  const send = useCallback((action: string, data?: Record<string, any>) => {
+  const send = useCallback((action: string, data?: Record<string, unknown>) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ action, data: { ...data, player_id: playerId } }));
     }
@@ -150,7 +157,7 @@ export function useMahjongSocket(playerId: string, playerName: string) {
     send('draw');
   }, [send]);
 
-  const makeCall = useCallback((callType: string, tileData?: any) => {
+  const makeCall = useCallback((callType: string, tileData?: unknown) => {
     send('call', { call_type: callType, tile_data: tileData });
   }, [send]);
 

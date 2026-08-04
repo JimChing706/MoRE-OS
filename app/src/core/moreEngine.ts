@@ -11,6 +11,37 @@ import type {
   EvolvedAgent, EvolutionBranch, Mutation, TaskType, MemoryEntry,
 } from '@/types/morev3';
 
+interface ReasoningChainStepDto {
+  id: number;
+  layer: LayerId;
+  description: string;
+  duration_ms?: number;
+  duration?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  confidence?: number;
+  timestamp?: number;
+}
+
+interface MemoryEntryDto {
+  id: string;
+  type: string;
+  content: string;
+  timestamp: number;
+  access_count?: number;
+  score?: number;
+}
+
+interface IncidentDto {
+  id: string;
+  severity: SafetyEvent['severity'];
+  type: SafetyEvent['type'];
+  description: string;
+  layer?: LayerId;
+  timestamp?: string;
+  resolved: boolean;
+}
+
 // --- 六层架构定义 ---
 
 export const LAYER_DEFINITIONS: LayerDefinition[] = [
@@ -567,7 +598,7 @@ export class MoreV3Engine {
         layer: result.layer as LayerId,
         status: result.status as 'success' | 'partial' | 'failed',
         output: result.output || '',
-        reasoningChain: (result.reasoning_chain || []).map((step: any) => ({
+        reasoningChain: (result.reasoning_chain || []).map((step: ReasoningChainStepDto) => ({
           id: step.id,
           layer: step.layer as LayerId,
           description: step.description || '',
@@ -615,19 +646,19 @@ export class MoreV3Engine {
 
             // Memory entries from system state
             if (sys.memory?.entries) {
-              const entries = sys.memory.entries;
+              const entries = sys.memory.entries as MemoryEntryDto[];
               data.memorySystem = {
-                episodic: entries.filter((e: any) => e.type === 'episodic').map((e: any) => ({
+                episodic: entries.filter((e) => e.type === 'episodic').map((e) => ({
                   id: e.id, type: 'episodic' as const, content: e.content,
                   embedding: [], timestamp: e.timestamp, accessCount: e.access_count || 0,
                   relevance: e.score || 0.5,
                 })),
-                semantic: entries.filter((e: any) => e.type === 'semantic').map((e: any) => ({
+                semantic: entries.filter((e) => e.type === 'semantic').map((e) => ({
                   id: e.id, type: 'semantic' as const, content: e.content,
                   embedding: [], timestamp: e.timestamp, accessCount: e.access_count || 0,
                   relevance: e.score || 0.5,
                 })),
-                procedural: entries.filter((e: any) => e.type === 'procedural').map((e: any) => ({
+                procedural: entries.filter((e) => e.type === 'procedural').map((e) => ({
                   id: e.id, type: 'procedural' as const, content: e.content,
                   embedding: [], timestamp: e.timestamp, accessCount: e.access_count || 0,
                   relevance: e.score || 0.5,
@@ -652,7 +683,7 @@ export class MoreV3Engine {
           if (incidentsRes.ok) {
             const inc = await incidentsRes.json();
             if (inc.incidents?.length) {
-              data.safetyEvents = inc.incidents.map((i: any) => ({
+              data.safetyEvents = inc.incidents.map((i: IncidentDto) => ({
                 id: i.id, severity: i.severity, type: i.type,
                 description: i.description, layer: i.layer || 'L0',
                 timestamp: i.timestamp ? new Date(i.timestamp).getTime() : Date.now(),

@@ -24,6 +24,23 @@ const typeLabels: Record<SafetyEvent['type'], string> = {
   unauthorized_access: '未授权访问',
 };
 
+interface MockAuditLog {
+  id: string;
+  timestamp: number;
+  actor: string;
+  action: string;
+  entity: string;
+  payload: Record<string, unknown>;
+}
+
+const MOCK_NOW = Date.now();
+const MOCK_AUDIT_LOGS: MockAuditLog[] = [
+  { id: 'audit_001', timestamp: MOCK_NOW - 60000, actor: 'admin', action: 'execute', entity: 'task_abc123', payload: { layer: 'L3', status: 'success' } },
+  { id: 'audit_002', timestamp: MOCK_NOW - 120000, actor: 'system', action: 'evolve', entity: 'agent_xyz', payload: { branch: 'main', score: 0.85 } },
+  { id: 'audit_003', timestamp: MOCK_NOW - 180000, actor: 'operator', action: 'configure', entity: 'llm_config', payload: { provider: 'openai' } },
+  { id: 'audit_004', timestamp: MOCK_NOW - 300000, actor: 'system', action: 'block', entity: 'task_def456', payload: { reason: 'ontology_violation' } },
+];
+
 export function SafetyPanel({ data }: SafetyPanelProps) {
   const { safetyEvents, systemState } = data;
   const unresolved = safetyEvents.filter(e => !e.resolved);
@@ -157,12 +174,7 @@ export function SafetyPanel({ data }: SafetyPanelProps) {
 }
 
 function AuditLogPanel() {
-  const mockAuditLogs = [
-    { id: 'audit_001', timestamp: Date.now() - 60000, actor: 'admin', action: 'execute', entity: 'task_abc123', payload: { layer: 'L3', status: 'success' } },
-    { id: 'audit_002', timestamp: Date.now() - 120000, actor: 'system', action: 'evolve', entity: 'agent_xyz', payload: { branch: 'main', score: 0.85 } },
-    { id: 'audit_003', timestamp: Date.now() - 180000, actor: 'operator', action: 'configure', entity: 'llm_config', payload: { provider: 'openai' } },
-    { id: 'audit_004', timestamp: Date.now() - 300000, actor: 'system', action: 'block', entity: 'task_def456', payload: { reason: 'ontology_violation' } },
-  ];
+  const mockAuditLogs = MOCK_AUDIT_LOGS;
 
   return (
     <Card>
