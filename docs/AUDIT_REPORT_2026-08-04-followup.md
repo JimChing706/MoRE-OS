@@ -150,17 +150,22 @@ ESLint 修复覆盖：`no-explicit-any`（DTO 化 / `unknown`+收窄）、`react
 |----|:------:|------|------|------|
 | AUD-08 | P2 | 测试稳定性 | `test_audit_logger_concurrent_writes` 读文件前未 `flush()`，后台 writer 线程与磁盘读取存在竞态；常规 pytest 靠时序侥幸通过，**coverage 开销下必现失败** | ✅ 已修：断言前加 `logger.flush()`；修复后连跑 3 次 + 全量 --cov 均通过 |
 | AUD-09 | P3 | 审计自纠 | 上轮"routers 实际 22"是数了含 `__init__.py` 的**文件数**；`server.py` 实际 `app.include_router` 21 个（含 `deliberate.py`）。CLAUDE.md 的 21 本就正确 | ✅ 已修：CLAUDE.md 保持 21，两份报告均已注明 |
-| AUD-10 | P3 | 前端性能 | 构建 bundle 734.9 kB（gzip 208.4 kB），单 chunk 超 500 kB 阈值 | 建议：路由级 code-split + `manualChunks` |
-| AUD-11 | P3 | 工具链 | `make test-cov` 无 `--cov-fail-under` 门槛，覆盖率可测但**无门禁** | 建议：加 `--cov-fail-under=50` |
-| AUD-12 | P3 | 测试覆盖 | 前端 24 个测试全部集中在 `format.test.ts`，**0 个组件级测试** | 建议：为 hooks/组件补 Vitest + Testing Library 用例 |
+| AUD-10 | P3 | 前端性能 | 构建 bundle 734.9 kB（gzip 208.4 kB），单 chunk 超 500 kB 阈值 | ✅ 已修：路由级 `lazy()` 分包 + `manualChunks` 分组，最大 chunk 195.8 kB，build 零警告 |
+| AUD-11 | P3 | 工具链 | `make test-cov` 无 `--cov-fail-under` 门槛，覆盖率可测但**无门禁** | ✅ 已修：加 `--cov-fail-under=50`，门禁失效/生效均实测验证 |
+| AUD-12 | P3 | 测试覆盖 | 前端 24 个测试全部集中在 `format.test.ts`，**0 个组件级测试** | ✅ 已修：新增 button/badge/LanguageSwitcher 组件测试 12 用例，共 36 全绿 |
 
 ---
 
 ## 九、迭代建议（按优先级）
 
-1. **提交本轮 2 处修复**（AUD-08 测试 + AUD-04/09 文档纠错）→ 清空工作区
-2. **给 `make test-cov` 加 `--cov-fail-under` 门禁**（AUD-11）
-3. **前端 code-split + 组件测试**（AUD-10 / AUD-12）——建议下轮迭代专项处理
+1. **提交本轮 2 处修复**（AUD-08 测试 + AUD-04/09 文档纠错）→ 清空工作区 ✅（commit f4a1279）
+2. **给 `make test-cov` 加 `--cov-fail-under` 门禁**（AUD-11）✅ 已实施
+3. **前端 code-split + 组件测试**（AUD-10 / AUD-12）✅ 已实施
+
+> 补充（复审计当日追加）：AUD-10 / AUD-11 / AUD-12 三项 P3 建议已一并实施并验证——
+> - **AUD-10** `App.tsx` 路由级 `lazy()`+`Suspense` 分包；`vite.config.ts` `manualChunks` 精确分组（vendor-react/radix/i18n-icons，CJS 虚拟模块归入 vendor-react，弃用 catch-all 规避循环 chunk）。最大 chunk 734.9 kB → **195.8 kB**，build 零警告。
+> - **AUD-11** `make test-cov` 加 `--cov-fail-under=50`（实测 64.97%）；`--cov-fail-under=99` 验证确实失败 (exit 1)，门禁生效。
+> - **AUD-12** 新增组件测试 3 文件 12 用例（button 6 + badge 4 + LanguageSwitcher 2），前端测试 24 → **36 全绿**。
 
 ---
 

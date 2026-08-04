@@ -105,9 +105,9 @@ build-app: ## Build frontend for production
 test: ## Run Python test suite
 	@cd more_core && $(PYTHON) -m pytest tests/ -v --tb=short
 
-test-cov: ## Run tests with coverage
+test-cov: ## Run tests with coverage (enforced gate)
 	@cd more_core && $(PYTHON) -m pytest tests/ -v --tb=short \
-		--cov=more_core --cov-report=term-missing
+		--cov=more_core --cov-report=term-missing --cov-fail-under=50
 
 test-app: ## Run frontend tests
 	@cd app && npm test

@@ -1,12 +1,16 @@
+import { lazy, Suspense } from 'react'
 import { Routes, Route } from 'react-router'
-import Home from './pages/Home'
-import MahjongGame from './pages/MahjongGame'
+
+const Home = lazy(() => import('./pages/Home'))
+const MahjongGame = lazy(() => import('./pages/MahjongGame'))
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/mahjong" element={<MahjongGame />} />
-    </Routes>
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">Loading…</div>}>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/mahjong" element={<MahjongGame />} />
+      </Routes>
+    </Suspense>
   )
 }
