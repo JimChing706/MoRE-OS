@@ -187,7 +187,7 @@ Day 1 (Jun 5): Phase 4 — 可观测性
 | TD-02 | RBAC 未在管道内部执行 | P0 | 1 | ✅ resolved |
 | TD-03 | MCP/A2A 零认证 | P0 | 1 | ✅ resolved |
 | TD-04 | LLMStateManager 未消费 | P1 | 2 | ✅ resolved |
-| TD-05 | 全局单例不可测试 | P2 | 2 | ⏳ deferred to v0.7.0 |
+| TD-05 | 全局单例不可测试 | P2 | 2 | ✅ resolved（commit 17a3ffc：LLMStateManager 去单例 + IncidentManager ctx.core 注入） |
 | TD-06 | Channels v2 草稿未清理 | P2 | 2 | ✅ resolved |
 | TD-07 | CronParser 跨小时回归 | P2 | 2 | ✅ resolved |
 | TD-08 | 安全渗透测试缺失 | P1 | 3 | ✅ resolved |
