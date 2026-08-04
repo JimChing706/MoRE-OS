@@ -109,13 +109,22 @@ class SQLiteMemoryStore(MemoryStore):
             self._conn.commit()
         return results
 
-    def list(self, kind: MemoryKind | None = None) -> list[MemoryEntry]:
+    def list(self, kind: MemoryKind | None = None, limit: int = 0) -> list[MemoryEntry]:
+        """List memory entries (newest first).
+
+        Args:
+            kind: Optional kind filter.
+            limit: Max rows to return; 0 or negative means no limit.
+        """
         sql = "SELECT id, kind, content, tags, score, created_at, access_count FROM memories"
         params: list[Any] = []
         if kind is not None:
             sql += " WHERE kind = ?"
             params.append(kind.value)
         sql += " ORDER BY created_at DESC"
+        if limit and limit > 0:
+            sql += " LIMIT ?"
+            params.append(limit)
         rows = self._conn.execute(sql, params).fetchall()
         return [
             MemoryEntry(

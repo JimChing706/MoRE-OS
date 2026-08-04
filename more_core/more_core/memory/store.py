@@ -56,15 +56,23 @@ class MemoryStore:
             return
         self._streams[entry.kind].append(entry)
 
-    def list(self, kind: MemoryKind | None = None) -> list[MemoryEntry]:
-        """List entries, optionally filtered by kind (TTL-aware)."""
+    def list(self, kind: MemoryKind | None = None, limit: int = 0) -> list[MemoryEntry]:
+        """List entries, optionally filtered by kind (TTL-aware).
+
+        Args:
+            kind: Optional kind filter.
+            limit: Max entries to return; 0 or negative means no limit.
+        """
         now = time.time()
         entries = (
             [e for stream in self._streams.values() for e in stream]
             if kind is None
             else list(self._streams[kind])
         )
-        return [e for e in entries if e.ttl is None or now <= e.ttl]
+        entries = [e for e in entries if e.ttl is None or now <= e.ttl]
+        if limit and limit > 0:
+            return entries[:limit]
+        return entries
 
     def search(
         self,

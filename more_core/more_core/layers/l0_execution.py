@@ -573,15 +573,15 @@ class ExecutionLayer(Layer):
         try:
             resp = await llm.generate(gen_req, provider=provider, model_override=model)
             return resp.prompt_tokens, resp.completion_tokens, resp.content
-        except Exception:
-            return (
-                0,
-                0,
-                (
-                    f"[Fallback simulation] Unable to reach any LLM provider. "
-                    f"The query was: {ctx.request.query[:200]}"
-                ),
+        except Exception as exc:
+            _log.error(
+                "LLM generation failed for task %s (provider=%s, model=%s): %s",
+                ctx.request.id,
+                provider,
+                model,
+                exc,
             )
+            raise
 
     # ── Confidence ─────────────────────────────────────────────────────────
 

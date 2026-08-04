@@ -8,6 +8,7 @@ and plugins.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import time
@@ -20,6 +21,7 @@ from ..core.errors import GovernanceError, MoREError
 from ..core.event_bus import EventBus
 from ..core.service_registry import ServiceRegistry
 from ..core.types import (
+    EngineStatus,
     LayerId,
     PerformanceMetrics,
     TaskRequest,
@@ -47,8 +49,8 @@ from ..metrics import get_collector
 from ..incident_response import get_incident_manager
 from ..hands.builtins import register_builtin_hands
 from ..commands.registry import register_builtin_commands
-from ..security.taint import TaintLabel
-from ..zen_rules import get_enforcer
+from ..security.taint import TaintContext, TaintLabel
+from ..zen_rules import ZENRulesEnforcer, get_enforcer
 
 from ..hands.browser_hand import BrowserHand
 from .bootstrap import init_capabilities, init_layers, init_services
@@ -157,6 +159,50 @@ class MoRECore:
 
         self._start_time = time.time()
 
+        self._register_services()
+
+    # -- service registry ---------------------------------------------------
+
+    def _register_services(self) -> None:
+        """Register core subsystems so ``registry.stats()`` reflects real state.
+
+        Each entry is keyed by the MoRECore attribute that owns the subsystem.
+        Services that failed to boot (attribute is None) are skipped.
+        """
+        from ..core.types import EngineStatus, ServiceMetadata
+        from ..version import __version__ as more_version
+
+        services: dict[str, tuple[object, str, list[str]]] = {
+            "llm": (self.llm, "llm", ["generate", "fallback", "cache"]),
+            "router": (self.router, "layers", ["route", "pipeline"]),
+            "memory": (self.memory, "capabilities", ["store", "recall"]),
+            "evolution": (self.evolution, "capabilities", ["dgm", "archive", "benchmark"]),
+            "sandbox": (self.sandbox, "capabilities", ["isolate", "execute"]),
+            "ontology": (self.ontology, "capabilities", ["constraints", "validate"]),
+            "metacognition": (self.metacognition, "capabilities", ["monitor", "reflect"]),
+            "tools": (self.tools, "capabilities", ["registry", "dispatch"]),
+            "channels": (self.channels, "services", ["adapters"]),
+            "cron": (self.cron, "services", ["schedule", "trigger"]),
+            "skills": (self.skill_manager, "services", ["browse", "code", "config"]),
+            "hands": (self.hands, "services", ["registry", "execute"]),
+            "plugins": (self.plugins, "services", ["discover", "activate"]),
+            "security": (self.rbac, "services", ["rbac", "taint", "output_filter"]),
+            "workflows": (self.workflows, "services", ["engine", "runs"]),
+            "planning": (self.planner, "services", ["plan", "monitor", "predict"]),
+        }
+        for name, (owner, provider, caps) in services.items():
+            if owner is None:
+                continue
+            self.registry.register(
+                ServiceMetadata(
+                    name=name,
+                    version=more_version,
+                    provider=provider,
+                    status=EngineStatus.IDLE,
+                    capabilities=caps,
+                )
+            )
+
     # -- factories ---------------------------------------------------------
 
     @classmethod
@@ -200,6 +246,9 @@ class MoRECore:
         register_builtin_commands(self.commands)
         await self.cron.start()
         from ..version import __version__
+
+        for _md in self.registry.list_all():
+            self.registry.set_status(_md.name, EngineStatus.RUNNING)
 
         self.audit.log(actor="system", action="start", entity="core", version=__version__)
 
@@ -280,7 +329,8 @@ class MoRECore:
             )
 
         # --- Task-level result cache (skip full pipeline for repeated queries) ---
-        cache_key = f"{request.type.value}|{request.query[:512]}"
+        # Full-query hash key avoids collisions from the old first-512-chars key.
+        cache_key = f"{request.type.value}|{hashlib.sha256(request.query.encode('utf-8')).hexdigest()}"
         cached = await self._request_cache.get(cache_key, "task")
         if cached is not None:
             clear_context(token)
@@ -299,11 +349,11 @@ class MoRECore:
             taint.track("query", request.query, TaintLabel.USER_INPUT, "api")
 
             available = set(self.llm.list_providers()) if self.llm else set()
-            decision = self.router.route(request, available_providers=available)
 
             # ── v3.0 Meta-Orchestrator spectral routing ─────────────────
-            # When Meta-Orchestrator is active, it overrides the pipeline
-            # with risk-aware spectral routing (village/river mode).
+            # When Meta-Orchestrator is active it fully overrides the
+            # pipeline decision, so the base LayerRouter pass is skipped
+            # (avoids duplicate keyword classification per request).
             meta_decision = None
             guardrail_config = None
             if hasattr(self, "meta_orchestrator") and self.meta_orchestrator is not None:
@@ -332,6 +382,8 @@ class MoRECore:
                         "v3.0 DynamicGuardrails applied: %s",
                         guardrail_config.reasoning,
                     )
+            else:
+                decision = self.router.route(request, available_providers=available)
 
             actor = request.context.get("actor", "anonymous")
             ctx = LayerContext(core=self, request=request, user_id=actor)
@@ -413,95 +465,150 @@ class MoRECore:
                 status = TaskStatus.FAILED
                 output = f"internal error: {exc}"
 
-            total_ms = (time.perf_counter() - start) * 1000
-            performance = PerformanceMetrics(
-                total_duration_ms=total_ms,
-                tokens_used=sum(s.input_tokens + s.output_tokens for s in ctx.accumulated_steps),
-                layer_transitions=max(0, len(ctx.accumulated_steps) - 1),
-            )
-            # --- ZEN-17: LLM output safety check ---
-            if status == TaskStatus.SUCCESS and output:
-                if zen.check_violation("ZEN-17", {"output": str(output), "task_id": request.id}):
-                    self.audit.log(
-                        actor=actor,
-                        action="zen_violation",
-                        entity="task",
-                        task_id=request.id,
-                        rule="ZEN-17",
-                    )
-
-            # Apply output filtering to scrub PII / sensitive data before delivery
-            filtered_output = self.output_filter.filter(str(output))
-            # Mark the query's output as sanitized after passing output_filter
-            taint.sanitize("query", "output_filter")
-
-            # ── v2: 产出物完整性评估 ────────────────────────
-            deliverable_complete, deliverable_missing = (
-                expectation.contract.check_completeness(str(filtered_output))
-                if filtered_output
-                else (False, [])
-            )
-            convergence_dict = (
-                convergence_tracker.record(
-                    len(ctx.accumulated_steps), str(filtered_output)
-                ).to_dict()
-                if filtered_output
-                else None
-            )
-
-            # v2: 收敛性降级 — 产出物不完整时标记为 PARTIAL
-            if status == TaskStatus.SUCCESS and not deliverable_complete:
-                if deliverable_missing:
-                    self.logger.warning(
-                        "task %s 产出物不完整，缺失维度: %s",
-                        request.id,
-                        deliverable_missing,
-                    )
-                # 关键维度缺失时降级
-                critical_dims = {"core_output", "reasoning"}
-                if any(d in deliverable_missing for d in critical_dims):
-                    status = TaskStatus.PARTIAL
-
-            result = TaskResult(
-                task_id=request.id,
-                layer=ctx.accumulated_steps[-1].layer if ctx.accumulated_steps else LayerId.L0,
-                status=status,
-                output=filtered_output,
-                reasoning_chain=list(ctx.accumulated_steps),
-                performance=performance,
-                calibration=ctx.scratch.get("calibration"),
-                deliverable_complete=deliverable_complete,
-                deliverable_missing=deliverable_missing,
-                convergence_report=convergence_dict,
-            )
-
-            await self.event_bus.publish(
-                "task.completed",
-                data={"id": request.id, "status": status.value, "duration_ms": total_ms},
-                source="orchestrator",
-            )
-            self.audit.log(
-                actor=request.context.get("actor", "anonymous"),
-                action="execute_end",
-                entity="task",
-                task_id=request.id,
-                status=status.value,
-                duration_ms=total_ms,
-            )
-            # --- Taint check: verify output is trusted before delivery ---
-            if status == TaskStatus.SUCCESS and not taint.check("query"):
-                self.logger.warning("taint violation: untrusted output for task %s", request.id)
-                self.audit.log(
-                    actor=actor, action="taint_violation", entity="task", task_id=request.id
+            try:
+                result = await self._complete_task(
+                    request=request,
+                    ctx=ctx,
+                    status=status,
+                    output=output,
+                    start=start,
+                    taint=taint,
+                    actor=actor,
+                    zen=zen,
+                    convergence_tracker=convergence_tracker,
+                    expectation=expectation,
+                    cache_key=cache_key,
                 )
-
-            self._metrics.record_request(total_ms, status == TaskStatus.SUCCESS)
-            # Cache successful results for future identical queries
-            if status == TaskStatus.SUCCESS and output:
-                await self._request_cache.set(cache_key, "task", str(output))
+            except Exception as exc:
+                self.logger.exception("task %s post-processing crashed", request.id)
+                result = TaskResult(
+                    task_id=request.id,
+                    layer=LayerId.L0,
+                    status=TaskStatus.FAILED,
+                    output=f"internal error: {exc}",
+                    performance=PerformanceMetrics(
+                        total_duration_ms=(time.perf_counter() - start) * 1000
+                    ),
+                )
         finally:
             taint.cleanup()
-        clear_context(token)
+            clear_context(token)
+        return result
+
+    async def _complete_task(
+        self,
+        *,
+        request: TaskRequest,
+        ctx: LayerContext,
+        status: TaskStatus,
+        output: Any,
+        start: float,
+        taint: TaintContext,
+        actor: str,
+        zen: ZENRulesEnforcer,
+        convergence_tracker: ConvergenceTracker,
+        expectation: TaskExpectation,
+        cache_key: str,
+    ) -> TaskResult:
+        """Build the final TaskResult and run post-processing.
+
+        Filtering, deliverable/convergence assessment, event publishing,
+        audit logging and caching.  A failure in any of these steps must
+        not escape ``execute()`` — the caller wraps this in a try/except
+        and converts it to a FAILED result.
+        """
+        total_ms = (time.perf_counter() - start) * 1000
+        performance = PerformanceMetrics(
+            total_duration_ms=total_ms,
+            tokens_used=sum(s.input_tokens + s.output_tokens for s in ctx.accumulated_steps),
+            layer_transitions=max(0, len(ctx.accumulated_steps) - 1),
+        )
+        # --- ZEN-17: LLM output safety check ---
+        if status == TaskStatus.SUCCESS and output:
+            if zen.check_violation("ZEN-17", {"output": str(output), "task_id": request.id}):
+                self.audit.log(
+                    actor=actor,
+                    action="zen_violation",
+                    entity="task",
+                    task_id=request.id,
+                    rule="ZEN-17",
+                )
+
+        # Apply output filtering to scrub PII / sensitive data before delivery
+        filtered_output = self.output_filter.filter(str(output))
+        # Mark the query's output as sanitized after passing output_filter
+        taint.sanitize("query", "output_filter")
+
+        # ── v2: 产出物完整性评估 ────────────────────────
+        # Single-scan assessment: deliverable check + convergence score
+        # computed together, so record() skips its own rescan.
+        deliverable_complete = False
+        deliverable_missing: list[str] = []
+        convergence_score = 0.5
+        if filtered_output:
+            deliverable_complete, deliverable_missing, convergence_score = (
+                ConvergenceTracker.assess(str(filtered_output), expectation.contract)
+            )
+        convergence_dict = (
+            convergence_tracker.record(
+                len(ctx.accumulated_steps),
+                str(filtered_output),
+                completeness=convergence_score,
+            ).to_dict()
+            if filtered_output
+            else None
+        )
+
+        # v2: 收敛性降级 — 产出物不完整时标记为 PARTIAL
+        if status == TaskStatus.SUCCESS and not deliverable_complete:
+            if deliverable_missing:
+                self.logger.warning(
+                    "task %s 产出物不完整，缺失维度: %s",
+                    request.id,
+                    deliverable_missing,
+                )
+            # 关键维度缺失时降级
+            critical_dims = {"core_output", "reasoning"}
+            if any(d in deliverable_missing for d in critical_dims):
+                status = TaskStatus.PARTIAL
+
+        result = TaskResult(
+            task_id=request.id,
+            layer=ctx.accumulated_steps[-1].layer if ctx.accumulated_steps else LayerId.L0,
+            status=status,
+            output=filtered_output,
+            reasoning_chain=list(ctx.accumulated_steps),
+            performance=performance,
+            calibration=ctx.scratch.get("calibration"),
+            deliverable_complete=deliverable_complete,
+            deliverable_missing=deliverable_missing,
+            convergence_report=convergence_dict,
+        )
+
+        await self.event_bus.publish(
+            "task.completed",
+            data={"id": request.id, "status": status.value, "duration_ms": total_ms},
+            source="orchestrator",
+        )
+        self.audit.log(
+            actor=request.context.get("actor", "anonymous"),
+            action="execute_end",
+            entity="task",
+            task_id=request.id,
+            status=status.value,
+            duration_ms=total_ms,
+        )
+        # --- Taint check: verify output is trusted before delivery ---
+        if status == TaskStatus.SUCCESS and not taint.check("query"):
+            self.logger.warning("taint violation: untrusted output for task %s", request.id)
+            self.audit.log(
+                actor=actor, action="taint_violation", entity="task", task_id=request.id
+            )
+
+        self._metrics.record_request(total_ms, status == TaskStatus.SUCCESS)
+        # Cache successful results for future identical queries
+        if status == TaskStatus.SUCCESS and output:
+            await self._request_cache.set(cache_key, "task", str(output))
         return result
 
     def _resolve_expectation(self, request: TaskRequest) -> TaskExpectation:

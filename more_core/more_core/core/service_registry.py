@@ -43,6 +43,14 @@ class ServiceRegistry:
         self._versions[md.provider].pop(md.version, None)
         self._health_checks.pop(name, None)
 
+    def set_status(self, name: str, status: EngineStatus) -> bool:
+        """Update a registered service's status. Returns False if unknown."""
+        md = self._services.get(name)
+        if md is None:
+            return False
+        md.status = status
+        return True
+
     def get(self, name: str) -> ServiceMetadata | None:
         return self._services.get(name)
 

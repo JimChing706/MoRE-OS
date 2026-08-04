@@ -183,6 +183,8 @@ class TestIntegrationGovernanceAndAudit:
             # Write audit records
             logger.log("user1", "task:create", "task_123", description="Created task")
             logger.log("user1", "task:execute", "task_123", result="success")
+            # Async audit writer: flush before reading back from disk
+            logger.flush()
             
             # Verify file exists and has content
             import os

@@ -28,7 +28,7 @@ import time
 import random
 from dataclasses import dataclass, field
 
-_log = logging.getLogger("more_core.v3.silver_habits")
+_log = logging.getLogger(__name__)
 
 
 # ── 1. Calibrated Confidence ─────────────────────────────────────────────

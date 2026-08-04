@@ -324,19 +324,38 @@ class UnifiedRBAC:
 # ---- FastAPI dependency helper ----
 
 
-def require_permission(permission: Permission) -> Callable[[str], Awaitable[None]]:
+def _header_default() -> Any:
+    """FastAPI ``Header`` sentinel or ``None`` when the api extra is absent.
+
+    Evaluated when ``require_permission(...)`` is called, so the optional
+    ``fastapi`` dependency is never required at import time.
+    """
+    try:
+        from fastapi import Header
+
+        return Header(None, alias="X-User-Id")
+    except ImportError:  # pragma: no cover — api extra not installed
+        return None
+
+
+def require_permission(permission: Permission) -> Callable[..., Awaitable[None]]:
     """Return a FastAPI dependency callable that checks *permission*.
+
+    The caller identity is read from the ``X-User-Id`` request header,
+    defaulting to ``"anonymous"``.
 
     Usage::
 
         @router.get("/admin", dependencies=[Depends(require_permission(Permission.SYS_ADMIN))])
     """
 
-    async def _checker(user_id: str = "anonymous") -> None:
+    async def _checker(
+        x_user_id: str | None = _header_default(),
+    ) -> None:
         rbac = get_rbac()
         if rbac is None:
             return
-        rbac.check_raise(user_id, permission)
+        rbac.check_raise(x_user_id or "anonymous", permission)
 
     return _checker
 

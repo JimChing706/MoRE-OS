@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,14 +13,12 @@ from more_core.core.deliverable import DeliverableKind
 from more_core.core.errors import GovernanceError, MoREError
 from more_core.core.types import (
     LayerId,
-    PerformanceMetrics,
     TaskRequest,
-    TaskResult,
     TaskStatus,
-    TaskType,
 )
 from more_core.layers.base import Layer, LayerContext, LayerResult
 from more_core.router.layer_router import RoutingDecision
+from more_core.runtime.orchestrator import MoRECore
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +149,14 @@ def test_init_with_minimal_settings() -> None:
     assert hasattr(core, "_rate_limiter")
     assert hasattr(core, "_request_cache")
     assert hasattr(core, "_llm_circuit_breaker")
+
+
+def test_core_registers_subsystems() -> None:
+    core = _make_core()
+    stats = core.registry.stats()
+    assert stats["total_services"] > 0
+    for name in ("llm", "router", "memory", "cron", "skills", "security"):
+        assert core.registry.get(name) is not None, name
 
 
 def test_from_env_delegation() -> None:
@@ -382,6 +389,24 @@ class TestExecute:
             result = await core.execute(TaskRequest(query="rm -rf /"))
         assert result.status == TaskStatus.REJECTED
         assert "forbidden" in result.output.lower() or "ZEN-19" in result.output
+
+    @pytest.mark.asyncio
+    async def test_post_processing_crash_returns_failed(self, core: "MoRECore") -> None:
+        core.output_filter.filter = MagicMock(side_effect=RuntimeError("filter boom"))
+        result = await core.execute(TaskRequest(query="boom"))
+        assert result.status == TaskStatus.FAILED
+        assert "filter boom" in result.output
+
+    @pytest.mark.asyncio
+    async def test_post_processing_crash_clears_request_context(self, core: "MoRECore") -> None:
+        import more_core.runtime.orchestrator as orch
+
+        core.output_filter.filter = MagicMock(side_effect=RuntimeError("boom"))
+        clear_spy = MagicMock(wraps=orch.clear_context)
+        with patch.object(orch, "clear_context", clear_spy):
+            result = await core.execute(TaskRequest(query="boom"))
+        assert result.status == TaskStatus.FAILED
+        clear_spy.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_meta_orchestrator_overrides_pipeline(self, core: "MoRECore") -> None:

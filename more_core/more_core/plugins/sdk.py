@@ -49,16 +49,43 @@ class PluginBase:
             dependencies=list(self.DEPENDENCIES),
         )
         self._ctx: PluginContext | None = None
+        self._registered_tools: set[str] = set()
 
     @property
     def core(self) -> "MoRECore":
         assert self._ctx is not None, "plugin not activated"
         return self._ctx.core
 
+    def register_tool(self, tool: Any) -> None:
+        """Register a tool with the core registry and track it so it is
+        automatically unregistered on deactivate()."""
+        self.core.tools.register(tool)
+        name = getattr(tool, "name", None)
+        if name:
+            self._registered_tools.add(name)
+
+    def register_tools(self, tools: list[Any]) -> None:
+        """Register multiple tools (see :meth:`register_tool`)."""
+        for tool in tools:
+            self.register_tool(tool)
+
     async def activate(self, ctx: PluginContext) -> None:
         self._ctx = ctx
 
     async def deactivate(self) -> None:
+        """Deactivate the plugin.
+
+        Unregisters any tools registered via :meth:`register_tool` /
+        :meth:`register_tools` before clearing the context, so plugin tools
+        are not left dangling in the core registry.
+        """
+        if self._ctx is not None:
+            for name in list(self._registered_tools):
+                try:
+                    self.core.tools.unregister(name)
+                except Exception:
+                    pass
+            self._registered_tools.clear()
         self._ctx = None
 
     def capabilities(self) -> dict[str, Any]:

@@ -21,7 +21,7 @@ from typing import Any, cast
 
 from ..core.types import LayerId
 
-_log = logging.getLogger("more_core.scene_router")
+_log = logging.getLogger(__name__)
 
 CONFIG_PATH = Path(__file__).parent / "scene_config.yaml"
 

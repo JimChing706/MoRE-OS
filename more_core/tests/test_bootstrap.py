@@ -6,7 +6,7 @@ can verify the returned dict structure without requiring all 3rd-party deps.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -62,7 +62,7 @@ class TestInitCapabilities:
             "llm", "task_model_router", "sandbox", "memory",
             "ontology", "metacognition", "evolution_archive",
             "evolution", "tools", "meta_orchestrator",
-            "dynamic_guardrails",
+            "dynamic_guardrails", "council_orchestrator",
         }
 
     def test_all_values_are_objects(self) -> None:
@@ -202,7 +202,7 @@ class TestCreateMemory:
             patch("more_core.memory.sqlite_store.SQLiteMemoryStore") as sqlite,
             patch.dict("os.environ", {"MORE_MEMORY_DB": "/tmp/test.db"}),
         ):
-            result = _create_memory(_settings())
+            _create_memory(_settings())
             sqlite.assert_called_once_with("/tmp/test.db")
 
 
@@ -225,5 +225,5 @@ class TestCreateEvolutionArchive:
             patch("more_core.evolution.sqlite_archive.SQLiteEvolutionArchive") as sqla,
             patch.dict("os.environ", {"MORE_EVOLUTION_DB": "/tmp/evo.db"}),
         ):
-            result = _create_evolution_archive(_settings())
+            _create_evolution_archive(_settings())
             sqla.assert_called_once_with("/tmp/evo.db")

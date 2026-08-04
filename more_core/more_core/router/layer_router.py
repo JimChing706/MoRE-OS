@@ -86,8 +86,7 @@ class LayerRouter:
         if request.target_layer is not None:
             # Respect explicit routing: run L4 → target → L0 transitively.
             idx = int(request.target_layer.value[1])
-            pipeline = [LayerId(f"L{i}") for i in range(5, -1, -1) if i <= idx]
-            pipeline.reverse()
+            pipeline = [LayerId(f"L{i}") for i in range(idx, -1, -1)]
             if LayerId.L4 not in pipeline:
                 pipeline.insert(0, LayerId.L4)
             return RoutingDecision(pipeline=pipeline, reasoning="explicit target_layer")

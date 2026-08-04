@@ -8,8 +8,6 @@ from more_core.core.import_task import (
     ImportTaskGenerator,
     ImportTaskParser,
     Priority,
-    QualityGate,
-    RequirementItem,
 )
 
 

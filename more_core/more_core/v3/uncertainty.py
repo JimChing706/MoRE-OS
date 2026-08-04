@@ -21,7 +21,7 @@ from typing import Any, cast
 
 from ..core.types import TaskType
 
-_log = logging.getLogger("more_core.v3.uncertainty")
+_log = logging.getLogger(__name__)
 
 
 # ── Semantic complexity signals ──────────────────────────────────────────
@@ -301,13 +301,13 @@ class UncertaintyAssessor:
         # Try memory lookup if available
         if self._memory and hasattr(self._memory, "search"):
             try:
-                results = self._memory.search(query, limit=3)
+                results = self._memory.search(query, top_k=3)
                 if results:
                     # Average similarity to top results
                     sim = sum(r.get("score", 0.5) for r in results) / len(results)
                     return cast(float, max(0.2, min(0.95, sim)))
-            except Exception:
-                pass
+            except Exception as exc:
+                _log.warning("Memory search failed for uncertainty assessment: %s", exc)
 
         # Fallback: adjust base by keyword signals
         lower = query.lower()

@@ -20,8 +20,21 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 
+def _make_council_complete_fn(llm: Any) -> Any:
+    """Build an adapter so CouncilOrchestrator can call llm.generate(str) -> str."""
+    from ..llm.provider import LLMRequest, LLMResponse
+
+    async def _complete(prompt: str) -> str:
+        req = LLMRequest(prompt=prompt, temperature=0.7, max_tokens=2048)
+        resp: LLMResponse = await llm.generate(req)
+        return resp.content
+
+    return _complete
+
+
 def init_capabilities(settings: Settings) -> dict[str, Any]:
     """Initialise core AI capabilities (LLM, sandbox, memory, ontology, evolution)."""
+    from ..council.orchestrator import CouncilOrchestrator
     from ..evolution.dgm import DGMEngine
     from ..llm.dynamic_router import DynamicModelRouter
     from ..llm.manager import LLMManager
@@ -37,6 +50,9 @@ def init_capabilities(settings: Settings) -> dict[str, Any]:
         state_manager=get_llm_state_manager(),
     )
     task_model_router = DynamicModelRouter(llm)
+    council_orchestrator = CouncilOrchestrator(
+        complete_fn=_make_council_complete_fn(llm),
+    )
 
     sandbox = create_secure_sandbox(
         SandboxConfig(
@@ -66,6 +82,7 @@ def init_capabilities(settings: Settings) -> dict[str, Any]:
     return {
         "llm": llm,
         "task_model_router": task_model_router,
+        "council_orchestrator": council_orchestrator,
         "sandbox": sandbox,
         "memory": memory,
         "ontology": ontology,

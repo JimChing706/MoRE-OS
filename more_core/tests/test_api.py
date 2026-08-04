@@ -7,7 +7,7 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 from more_core.api.server import create_app
 from more_core.core.config import Settings
-from more_core.core.import_task import ImportTaskGenerator, ImportTaskDocument, ResourceBudget
+from more_core.core.import_task import ImportTaskGenerator, ImportTaskDocument
 from more_core.runtime.orchestrator import MoRECore
 
 
@@ -154,3 +154,90 @@ class TestImportTaskDocumentAPI:
         assert "code" in ids
         assert "architecture" in ids
         assert "analysis" in ids
+
+
+class TestAPIAuth:
+    def test_health_requires_key_when_set(self, client, monkeypatch):
+        monkeypatch.setenv("MORE_API_KEY", "test-key-123")
+        resp = client.get("/api/v1/health")
+        assert resp.status_code == 401
+        resp = client.get(
+            "/api/v1/health",
+            headers={"Authorization": "Bearer test-key-123"},
+        )
+        assert resp.status_code == 200
+
+    def test_sensitive_read_endpoints_require_key(self, client, monkeypatch):
+        monkeypatch.setenv("MORE_API_KEY", "test-key-123")
+        for path in [
+            "/api/v1/tasks/history",
+            "/api/v1/projects/outputs",
+            "/api/v1/llm/state",
+            "/api/v1/security/audit",
+            "/api/v1/workflows",
+            "/api/v1/skills",
+        ]:
+            resp = client.get(path)
+            assert resp.status_code in (401, 403), f"{path} should be auth-gated"
+
+    def test_sensitive_read_endpoints_work_with_key(self, client, monkeypatch):
+        monkeypatch.setenv("MORE_API_KEY", "test-key-123")
+        resp = client.get(
+            "/api/v1/llm/state",
+            headers={"Authorization": "Bearer test-key-123"},
+        )
+        assert resp.status_code == 200
+
+    def test_create_app_warns_when_no_api_key(self, _core, caplog):
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            create_app(_core)
+        assert any("UNAUTHENTICATED" in r.message for r in caplog.records)
+
+    def test_create_app_no_warning_when_key_set(self, _core, caplog, monkeypatch):
+        import logging
+
+        monkeypatch.setenv("MORE_API_KEY", "x")
+        with caplog.at_level(logging.WARNING):
+            create_app(_core)
+        assert not any("UNAUTHENTICATED" in r.message for r in caplog.records)
+
+
+class TestRBACPermission:
+    def test_require_permission_honors_x_user_id_header(self):
+        import asyncio
+
+        from more_core.security.rbac import (
+            Permission,
+            UnifiedRBAC,
+            require_permission,
+            set_rbac_instance,
+        )
+
+        set_rbac_instance(UnifiedRBAC(admin_users=["alice"]))
+        try:
+            checker = require_permission(Permission.SYS_ADMIN)
+            asyncio.run(checker(x_user_id="alice"))  # admin passes
+
+            with pytest.raises(PermissionError):
+                asyncio.run(checker(x_user_id=None))  # anonymous denied
+        finally:
+            set_rbac_instance(None)
+
+    def test_require_permission_dev_mode_allows_anonymous(self):
+        import asyncio
+
+        from more_core.security.rbac import (
+            Permission,
+            UnifiedRBAC,
+            require_permission,
+            set_rbac_instance,
+        )
+
+        set_rbac_instance(UnifiedRBAC(admin_users=[]))
+        try:
+            checker = require_permission(Permission.SYS_ADMIN)
+            asyncio.run(checker(x_user_id=None))  # dev mode: no exception
+        finally:
+            set_rbac_instance(None)

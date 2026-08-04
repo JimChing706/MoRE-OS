@@ -32,3 +32,33 @@ def test_routing_with_evolution_enabled_keeps_L2() -> None:
     req = TaskRequest(type=TaskType.SELF_IMPROVEMENT, query="improve")
     decision = router.route(req)
     assert LayerId.L2 in decision.pipeline
+
+
+def test_routing_target_layer_descending_order() -> None:
+    router = LayerRouter(_settings())
+    req = TaskRequest(type=TaskType.NLP_TASK, query="hi", target_layer=LayerId.L1)
+    decision = router.route(req)
+    assert decision.pipeline == [LayerId.L4, LayerId.L1, LayerId.L0]
+
+
+def test_routing_target_layer_l4_includes_all_layers() -> None:
+    router = LayerRouter(_settings())
+    req = TaskRequest(type=TaskType.NLP_TASK, query="hi", target_layer=LayerId.L4)
+    decision = router.route(req)
+    assert decision.pipeline == [
+        LayerId.L4, LayerId.L3, LayerId.L2, LayerId.L1, LayerId.L0,
+    ]
+
+
+def test_routing_target_layer_l2_transitive() -> None:
+    router = LayerRouter(_settings())
+    req = TaskRequest(type=TaskType.NLP_TASK, query="hi", target_layer=LayerId.L2)
+    decision = router.route(req)
+    assert decision.pipeline == [LayerId.L4, LayerId.L2, LayerId.L1, LayerId.L0]
+
+
+def test_routing_target_layer_l0() -> None:
+    router = LayerRouter(_settings())
+    req = TaskRequest(type=TaskType.NLP_TASK, query="hi", target_layer=LayerId.L0)
+    decision = router.route(req)
+    assert decision.pipeline == [LayerId.L4, LayerId.L0]

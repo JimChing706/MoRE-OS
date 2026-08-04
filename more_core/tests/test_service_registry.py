@@ -29,3 +29,16 @@ def test_unregister() -> None:
     reg.register(md)
     reg.unregister("svc")
     assert reg.get("svc") is None
+
+
+def test_set_status_updates_registered_service() -> None:
+    reg = ServiceRegistry()
+    md = ServiceMetadata(name="svc", version="1", provider="core")
+    reg.register(md)
+    assert reg.set_status("svc", EngineStatus.RUNNING) is True
+    assert reg.get("svc").status == EngineStatus.RUNNING  # type: ignore[union-attr]
+
+
+def test_set_status_unknown_returns_false() -> None:
+    reg = ServiceRegistry()
+    assert reg.set_status("ghost", EngineStatus.RUNNING) is False

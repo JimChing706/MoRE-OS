@@ -11,6 +11,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+try:
+    from ..version import __version__
+except ImportError:
+    __version__ = "0.9.9"
+
 
 def _load_dotenv() -> None:
     """Load .env file from project root if it exists (no-op if dotenv unavailable)."""
@@ -107,7 +112,7 @@ class Settings(BaseModel):
     rate_limit_burst: int = 20
 
     # Version — sourced from version.py, overridable via env
-    version: str = "0.8.0"
+    version: str = __version__
 
     # Project root for file operations (set by BFF / CLI)
     project_root: str | None = None
@@ -253,6 +258,17 @@ class Settings(BaseModel):
                     api_key=os.getenv("MORE_VLLM_API_KEY", "EMPTY"),
                 )
             )
+        # DeepSeek (cloud)
+        if os.getenv("MORE_DEEPSEEK_API_KEY"):
+            providers.append(
+                LLMProviderConfig(
+                    name="deepseek",
+                    provider="deepseek",
+                    endpoint=os.getenv("MORE_DEEPSEEK_ENDPOINT", "https://api.deepseek.com"),
+                    model=os.getenv("MORE_DEEPSEEK_MODEL", "deepseek-chat"),
+                    api_key=os.getenv("MORE_DEEPSEEK_API_KEY"),
+                )
+            )
 
         # Mock provider — auto-enabled when no real providers are configured (dev mode)
         if not providers or os.getenv("MORE_USE_MOCK", "0") == "1":
@@ -270,11 +286,7 @@ class Settings(BaseModel):
             p.name for p in providers
         ]
 
-        # Resolve version from package metadata, falling back to default
-        try:
-            from ..version import __version__
-        except ImportError:
-            __version__ = "0.8.0"
+        # Version override via env
         version = os.getenv("MORE_VERSION", __version__)
 
         return cls(

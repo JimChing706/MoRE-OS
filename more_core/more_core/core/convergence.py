@@ -98,18 +98,24 @@ class ConvergenceTracker:
         self._snapshots: list[ConvergenceSnapshot] = []
         self._output_hashes: dict[str, int] = {}  # hash -> count
 
-    def record(self, step: int, output: str) -> ConvergenceReport:
+    def record(
+        self, step: int, output: str, completeness: float | None = None
+    ) -> ConvergenceReport:
         """记录一步推理并返回当前收敛状态。
 
         Args:
             step: 当前步数 (从 1 开始)
             output: 当前步的产出文本
+            completeness: 预计算的完整性得分；为 None 时内部对 output
+                执行一次契约关键词扫描（管道内每层输出不同，无法复用；
+                调用方已有结果时应传入以避免重复扫描）。
         """
         # 生成快照
         output_hash = _quick_hash(output)
-        completeness = (
-            self._compute_completeness(output) if self._contract.dimension_count() > 0 else 0.5
-        )
+        if completeness is None:
+            completeness = (
+                self._compute_completeness(output) if self._contract.dimension_count() > 0 else 0.5
+            )
 
         snapshot = ConvergenceSnapshot(
             step=step,
@@ -141,6 +147,28 @@ class ConvergenceTracker:
             should_terminate=should_terminate,
             killed_by=killed,
         )
+
+    @staticmethod
+    def assess(
+        output: str, contract: DeliverableContract
+    ) -> tuple[bool, list[str], float]:
+        """Single-scan completeness assessment.
+
+        Returns (complete, missing, completeness_score).  Callers needing
+        both the deliverable check and the convergence score should use this
+        once and pass the score to :meth:`record` to avoid double scanning.
+        """
+        complete, missing = contract.check_completeness(output)
+        total = contract.dimension_count()
+        covered = total - len(
+            [
+                m
+                for m in missing
+                if not m.startswith("min_length") and not m.startswith("must_contain")
+            ]
+        )
+        score = covered / total if total > 0 else 0.5
+        return complete, missing, score
 
     def _compute_completeness(self, output: str) -> float:
         """计算输出与契约的完整性匹配度 (0-1)。"""

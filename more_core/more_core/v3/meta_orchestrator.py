@@ -24,7 +24,7 @@ from typing import Any
 from ..core.types import LayerId, TaskType
 from .uncertainty import UncertaintyAssessment, UncertaintyAssessor
 
-_log = logging.getLogger("more_core.v3.meta_orchestrator")
+_log = logging.getLogger(__name__)
 
 
 # ── Routing mode ─────────────────────────────────────────────────────────

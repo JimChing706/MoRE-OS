@@ -154,6 +154,9 @@ class TestHyperAgentWithAudit:
         calibration = {"alignment": 0.5}
         proposal = await hyperagent.consider(ctx, calibration)
 
+        # Async audit writer: flush before reading back from disk
+        audit_logger.flush()
+
         log_file = f"{temp_dir}/audit.jsonl"
         with open(log_file) as f:
             content = f.read()
