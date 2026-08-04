@@ -145,6 +145,9 @@ class WebBrowseSkill(Skill):
         extract_type = params.get("extract", "text")
 
         try:
+            from ..security.ssrf import validate_http_url
+
+            validate_http_url(url)
             async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
                 r = await client.get(url)
                 r.raise_for_status()

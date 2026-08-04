@@ -88,6 +88,9 @@ class BrowserHand(Hand):
         try:
             import httpx
 
+            from ..security.ssrf import validate_http_url
+
+            validate_http_url(url)
             timeout = self._config.get("timeout_page_s", 30)
             headers = {}
             ua = self._config.get("user_agent")
