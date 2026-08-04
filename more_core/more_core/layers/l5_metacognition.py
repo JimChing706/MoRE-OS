@@ -1,10 +1,12 @@
-"""L5 — Metacognition Layer (calibration + plan monitoring + HyperAgent).
+"""L5 — Metacognition Layer (calibration + plan monitoring + council review + HyperAgent).
 
 Responsibilities:
 1. **Calibration** — confidence/accuracy alignment (always runs, cheap).
-2. **Plan monitoring** — observes active plans, detects anomalies, applies
+2. **Council review** — cross-references L4 CouncilResult against calibration;
+   detects blind spots where calibration is optimistic but council flagged risks.
+3. **Plan monitoring** — observes active plans, detects anomalies, applies
    adaptive actions (budget reallocation, step skipping, pause/abort).
-3. **Self-modification** — HyperAgent (opt-in, gated by settings + request).
+4. **Self-modification** — HyperAgent (opt-in, gated by settings + request).
 
 Includes incident response for unauthorized modification attempts.
 """
@@ -59,6 +61,28 @@ class MetacognitionLayer(Layer):
             plan_health = await self._monitor_plan(ctx, alignment)
             ctx.scratch["plan_health"] = plan_health
 
+        # --- Council review (cross-reference L4 CouncilResult with calibration) ---
+        council_review = None
+        plan_data = ctx.scratch.get("plan", {})
+        council_result = plan_data.get("council_result")
+        if council_result:
+            council_review = self._review_council_output(
+                council_result, calibration, alignment,
+            )
+            ctx.scratch["council_review"] = council_review
+            if council_review.get("confidence_adjustment", 0.0) < 0:
+                old_alignment = alignment
+                alignment = max(0.0, alignment + council_review["confidence_adjustment"])
+                _log.info(
+                    "L5 council review adjusted alignment: %.2f → %.2f (reason: %s)",
+                    old_alignment, alignment, council_review.get("adjustment_reason", ""),
+                )
+            if council_review.get("risks", []):
+                _log.info(
+                    "L5 council review flagged %d risks for task %s",
+                    len(council_review["risks"]), ctx.request.id,
+                )
+
         # --- Self-modification (opt-in) ---
         enable_self_mod = (
             ctx.core.settings.enable_metacognition and ctx.request.allow_self_improvement
@@ -70,6 +94,9 @@ class MetacognitionLayer(Layer):
                 _log.info("L5 self-modification applied: %s", result.get("changes", []))
 
         description = f"calibration aligned={alignment:.2f}"
+        if council_review:
+            adj = council_review.get("confidence_adjustment", 0.0)
+            description += f", council_adj={adj:+.2f}"
         if plan_health:
             description += f", plan_health={plan_health.get('status', 'unknown')}"
             # ABORT must interrupt the running pipeline, not just set plan status.
@@ -99,6 +126,7 @@ class MetacognitionLayer(Layer):
             output={
                 "calibration": calibration,
                 "plan_health": plan_health,
+                "council_review": council_review,
                 "structured_plan": ctx.scratch.get("structured_plan"),
             },
             confidence=alignment,
@@ -154,4 +182,62 @@ class MetacognitionLayer(Layer):
             "confidence_trend": report.confidence_trend,
             "actions_taken": [a.value for a in actions],
             "modifications": modifications,
+        }
+
+    @staticmethod
+    def _review_council_output(
+        council_result: Any,
+        calibration: dict[str, Any],
+        current_alignment: float,
+    ) -> dict[str, Any]:
+        """Cross-reference L4's CouncilResult against L5 calibration.
+
+        Detects blind spots where the multi-perspective council flagged
+        risks that calibration alone might have missed.
+        """
+        synthesis = getattr(council_result, "synthesis", None) or {}
+        risks = synthesis.get("risk_assessment", []) if isinstance(synthesis, dict) else []
+        consensus_level = getattr(council_result, "consensus_level", "unknown")
+        errors = getattr(council_result, "errors", [])
+        core_conclusion = getattr(council_result, "core_conclusion", "")
+
+        risk_count = len(risks)
+        high_risks = sum(
+            1 for r in risks if isinstance(r, dict) and r.get("severity") == "high"
+        )
+        divided = consensus_level == "divided"
+        weak_consensus = consensus_level in ("weak", "divided")
+
+        adjustment = 0.0
+        reasons = []
+
+        if divided:
+            adjustment -= 0.15
+            reasons.append("council consensus is divided")
+        elif weak_consensus:
+            adjustment -= 0.08
+            reasons.append(f"council consensus is {consensus_level}")
+
+        if high_risks > 0:
+            penalty = -0.05 * min(high_risks, 3)
+            adjustment += penalty
+            reasons.append(f"{high_risks} high-severity risk(s) flagged")
+
+        if risk_count >= 3 and current_alignment > 0.85:
+            adjustment -= 0.05
+            reasons.append("high risk count despite optimistic calibration")
+
+        if errors:
+            adjustment -= 0.05 * min(len(errors), 3)
+            reasons.append(f"{len(errors)} council error(s)")
+
+        adjustment = round(max(adjustment, -0.5), 3)
+
+        return {
+            "confidence_adjustment": adjustment,
+            "adjustment_reason": "; ".join(reasons) if reasons else "no adjustment needed",
+            "risks": risks[:5],
+            "consensus_level": consensus_level,
+            "core_conclusion": (core_conclusion[:200] if core_conclusion else ""),
+            "council_errors": len(errors),
         }

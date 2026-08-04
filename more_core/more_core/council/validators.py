@@ -17,7 +17,7 @@ import json
 import logging
 from typing import Any
 
-_log = logging.getLogger("more_core.council.validators")
+_log = logging.getLogger(__name__)
 
 
 class SchemaViolation(ValueError):

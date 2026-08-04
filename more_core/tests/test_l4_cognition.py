@@ -39,6 +39,8 @@ def _make_ctx(
     if has_output_filter:
         core.output_filter.filter.side_effect = lambda s: s
 
+    core.council_orchestrator = None
+
     if has_planner:
         core.planner = MagicMock()
         core.planner.create_plan.return_value = MagicMock(id="plan-123")

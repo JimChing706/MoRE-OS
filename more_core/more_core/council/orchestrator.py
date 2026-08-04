@@ -22,7 +22,7 @@ from ..core.errors import CouncilError
 
 from .roles import InMemoryCharterProvider, RoleCharterProvider
 
-_log = logging.getLogger("more_core.council")
+_log = logging.getLogger(__name__)
 
 # ── 场景领域知识映射（借鉴 ai_council 2 SCENE_DOMAIN_CONTEXT）─────────
 

@@ -20,6 +20,7 @@ from .outputs import create_router as create_outputs_router
 from .mcp import create_router as create_mcp_router
 from .a2a import create_router as create_a2a_router
 from .import_task import create_router as create_import_task_router
+from .deliberate import create_router as create_deliberate_router
 
 __all__ = [
     "create_health_router",
@@ -42,4 +43,5 @@ __all__ = [
     "create_mcp_router",
     "create_a2a_router",
     "create_import_task_router",
+    "create_deliberate_router",
 ]

@@ -1,6 +1,8 @@
 """L4 — Cognition Layer (task parsing, planning, difficulty estimation).
 
-Includes LLM-based task decomposition for complex queries.
+Includes multi-perspective cognitive deliberation (Council) for complex tasks,
+replacing the previous single-LLM decomposition with a structured debate among
+multiple expert roles (analyst, architect, critic, pragmatist, innovator).
 """
 
 from __future__ import annotations
@@ -146,8 +148,21 @@ class CognitionLayer(Layer):
             capability = min(10, 6 + len(ctx.core.llm.list_providers()))
         ctx.scratch["capability"] = capability
 
-        if difficulty >= _DECOMPOSE_THRESHOLD and ctx.core.llm:
-            plan = await self._decompose_with_llm(ctx, difficulty)
+        if difficulty >= _DECOMPOSE_THRESHOLD:
+            council = getattr(ctx.core, "council_orchestrator", None)
+            if council:
+                scene_label = ctx.request.context.get("scene_label", "general")
+                plan = await self._decompose_with_council(
+                    ctx, difficulty, scene_label,
+                )
+            elif ctx.core.llm:
+                plan = await self._decompose_with_llm(ctx, difficulty)
+            else:
+                plan = {
+                    "subtasks": [ctx.request.query],
+                    "difficulty": difficulty,
+                    "decomposed": False,
+                }
         else:
             plan = {
                 "subtasks": [ctx.request.query],
@@ -223,6 +238,59 @@ class CognitionLayer(Layer):
 
         except Exception as exc:
             _log.warning("L4 LLM decomposition failed for task %s: %s", ctx.request.id, exc)
+
+        return {
+            "subtasks": [ctx.request.query],
+            "difficulty": base_difficulty,
+            "decomposed": False,
+        }
+
+    async def _decompose_with_council(
+        self,
+        ctx: LayerContext,
+        base_difficulty: int,
+        scene_label: str = "general",
+    ) -> dict[str, Any]:
+        """Use multi-perspective Council deliberation to decompose complex tasks."""
+        council = ctx.core.council_orchestrator  # type: ignore[attr-defined]
+        try:
+            council_result = await council.deliberate(
+                question=ctx.request.query,
+                scene_label=scene_label,
+                mode="deep" if base_difficulty >= 8 else "standard",
+            )
+
+            if council_result.synthesis:
+                synthesis = council_result.synthesis
+                core_conclusion = synthesis.get("core_conclusion", "")
+                action_items = synthesis.get("action_items", [])
+                risk_assessment = synthesis.get("risk_assessment", [])
+
+                subtasks = []
+                if action_items:
+                    subtasks = [a.get("action", "") for a in action_items]
+                    subtasks = [s for s in subtasks if s]
+                if not subtasks and core_conclusion:
+                    subtasks = [core_conclusion]
+
+                plan = {
+                    "subtasks": subtasks,
+                    "difficulty": min(10, base_difficulty + 1),
+                    "decomposed": bool(subtasks),
+                    "decomposition_method": "council",
+                    "council_result": council_result,
+                    "core_conclusion": core_conclusion,
+                    "risk_assessment": risk_assessment,
+                    "consensus_level": council_result.consensus_level,
+                }
+                if subtasks and hasattr(ctx.core, "output_filter"):
+                    subtasks = [ctx.core.output_filter.filter(st) for st in subtasks]
+                return plan
+
+        except Exception as exc:
+            _log.warning(
+                "Council deliberation failed for task %s: %s", ctx.request.id, exc,
+            )
 
         return {
             "subtasks": [ctx.request.query],
