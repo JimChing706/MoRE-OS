@@ -55,8 +55,23 @@ class CronJob:
     run_count: int = 0
 
 
+@dataclass(frozen=True)
+class CronSpec:
+    """Fully parsed 5-field cron expression."""
+
+    minutes: frozenset[int]
+    hours: frozenset[int]
+    days: frozenset[int]
+    months: frozenset[int]
+    weekdays: frozenset[int]
+
+
+FULL_DAYS = frozenset(range(1, 32))
+FULL_WEEKDAYS = frozenset(range(0, 7))
+
+
 class CronParser:
-    """Parse cron expressions."""
+    """Parse cron expressions (full 5-field support)."""
 
     CRON_PATTERN = re.compile(r"^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)(?:\s+(.*))?$")
 
@@ -72,8 +87,12 @@ class CronParser:
     }
 
     @classmethod
-    def parse(cls, schedule: str) -> list[int]:
-        """Parse cron schedule and return next run times (minute intervals)."""
+    def parse(cls, schedule: str) -> CronSpec:
+        """Parse a cron expression into a :class:`CronSpec`.
+
+        All five fields (minute hour day-of-month month day-of-week) are
+        parsed; ``*/n``, ``a-b``, ``a,b,c`` and named weekdays are supported.
+        """
         if schedule in cls.SIMPLE_PATTERNS:
             schedule = cls.SIMPLE_PATTERNS[schedule]
 
@@ -83,7 +102,13 @@ class CronParser:
 
         minute, hour, day, month, weekday = match.groups()[:5]
 
-        return cls._parse_field(minute, 0, 59)
+        return CronSpec(
+            minutes=frozenset(cls._parse_field(minute, 0, 59)),
+            hours=frozenset(cls._parse_field(hour, 0, 23)),
+            days=frozenset(cls._parse_field(day, 1, 31)),
+            months=frozenset(cls._parse_field(month, 1, 12)),
+            weekdays=frozenset(cls._parse_weekday(weekday)),
+        )
 
     @classmethod
     def _parse_field(cls, field: str, min_val: int, max_val: int) -> list[int]:
@@ -94,8 +119,13 @@ class CronParser:
             if "/" in part:
                 base, step_str = part.split("/")
                 step = int(step_str)
-                start: int = cls._parse_single(base, min_val, max_val) if base != "*" else min_val
-                values.extend(range(start, max_val + 1, step))
+                if base == "*":
+                    values.extend(range(min_val, max_val + 1, step))
+                elif "-" in base:
+                    start_str, end_str = base.split("-")
+                    values.extend(range(int(start_str), int(end_str) + 1, step))
+                else:
+                    values.extend(range(cls._parse_single(base, min_val, max_val), max_val + 1, step))
             elif "-" in part:
                 start_str, end_str = part.split("-")
                 start = int(start_str)
@@ -109,6 +139,38 @@ class CronParser:
         return sorted(set(values))
 
     @classmethod
+    def _parse_weekday(cls, field: str) -> list[int]:
+        """Parse the day-of-week field.
+
+        Supports 0-6 (0 = Sunday) and 7 (also Sunday), plus names SUN-SAT.
+        """
+        names = {
+            "sun": 0, "mon": 1, "tue": 2, "wed": 3,
+            "thu": 4, "fri": 5, "sat": 6,
+        }
+        values: list[int] = []
+        for part in field.split(","):
+            normalized = part.lower()
+            if normalized in names:
+                values.append(names[normalized])
+            elif "/" in part:
+                base, step_str = part.split("/")
+                base_lower = base.lower()
+                if base_lower in names:
+                    values.extend(range(names[base_lower], 7, int(step_str)))
+                elif base == "*":
+                    values.extend(range(0, 7, int(step_str)))
+            elif "-" in part:
+                start_str, end_str = part.split("-")
+                values.extend(range(int(start_str), int(end_str) + 1))
+            elif part == "*":
+                values.extend(range(0, 7))
+            else:
+                raw = int(part)
+                values.append(7 if raw == 7 else raw)
+        return sorted(set(v % 7 for v in values))
+
+    @classmethod
     def _parse_single(cls, value: str, min_val: int, max_val: int) -> int:
         """Parse a single value."""
         try:
@@ -120,30 +182,54 @@ class CronParser:
     def get_next_run(cls, schedule: str, after: float | None = None) -> float | None:
         """Calculate next run time after given timestamp.
 
-        Handles cross-hour, cross-day, and cross-month boundaries by
-        advancing in 1-hour increments up to 31 days (max cron window).
+        Searches forward day-by-day (capped at 366 days) and returns the
+        first matching minute, respecting all five cron fields. When both
+        day-of-month and day-of-week are restricted, standard cron OR
+        semantics apply (match if either field matches).
         """
         if after is None:
             after = datetime.now(timezone.utc).timestamp()
 
         try:
-            minutes = cls.parse(schedule)
+            spec = cls.parse(schedule)
         except ValueError:
             return None
 
-        now = datetime.fromtimestamp(after, timezone.utc)
-
-        # Search forward in 1-hour increments (capped at 31 days)
         from datetime import timedelta
 
-        for hour_offset in range(24 * 31):
-            candidate_hour = now.replace(minute=0, second=0, microsecond=0) + timedelta(
-                hours=hour_offset
-            )
-            for minute in minutes:
-                next_time = candidate_hour.replace(minute=minute)
-                if next_time.timestamp() > after:
-                    return next_time.timestamp()
+        now = datetime.fromtimestamp(after, timezone.utc)
+
+        days_restricted = spec.days != FULL_DAYS
+        weekdays_restricted = spec.weekdays != FULL_WEEKDAYS
+
+        for day_offset in range(366):
+            candidate_date = (now + timedelta(days=day_offset)).date()
+            if candidate_date.month not in spec.months:
+                continue
+            day_match = candidate_date.day in spec.days
+            # Cron weekday convention is 0=Sunday, 6=Saturday; Python
+            # date.weekday() is 0=Monday. Convert before comparing.
+            weekday_match = ((candidate_date.weekday() + 1) % 7) in spec.weekdays
+            if days_restricted and weekdays_restricted:
+                if not (day_match or weekday_match):
+                    continue
+            elif days_restricted and not day_match:
+                continue
+            elif weekdays_restricted and not weekday_match:
+                continue
+
+            for hour in sorted(spec.hours):
+                for minute in sorted(spec.minutes):
+                    next_time = datetime(
+                        candidate_date.year,
+                        candidate_date.month,
+                        candidate_date.day,
+                        hour,
+                        minute,
+                        tzinfo=timezone.utc,
+                    )
+                    if next_time.timestamp() > after:
+                        return next_time.timestamp()
 
         return None
 
@@ -156,6 +242,7 @@ class CronScheduler:
         self._running = False
         self._scheduler_task: asyncio.Task[Any] | None = None
         self._results: dict[str, JobResult] = {}
+        self._in_flight: set[str] = set()
 
     def add_job(
         self,
@@ -257,10 +344,12 @@ class CronScheduler:
             now = datetime.now(timezone.utc).timestamp()
 
             for job in self._jobs.values():
-                if not job.enabled:
+                if not job.enabled or job.job_id in self._in_flight:
                     continue
 
                 if job.next_run and job.next_run <= now:
+                    job.next_run = None  # claim trigger; reset after completion
+                    self._in_flight.add(job.job_id)
                     asyncio.create_task(self._execute_job(job))
 
             await asyncio.sleep(10)
@@ -309,6 +398,7 @@ class CronScheduler:
         job.last_run = finish_time
         job.run_count += 1
         job.next_run = CronParser.get_next_run(job.schedule, finish_time)
+        self._in_flight.discard(job.job_id)
 
         _log.info(f"Job {job.name} completed: {result.status.value} ({result.duration_ms:.0f}ms)")
 
