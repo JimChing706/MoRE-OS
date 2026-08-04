@@ -23,7 +23,6 @@ from .protocol import (
 from .client import MCPClient, MCPClientSession
 from .server import MCPServer, MCPRequestHandler
 from .transport import StdioTransport, SSESTransport, HTTPTransport, ProcessTransport
-from .registry import ToolRegistry, ResourceRegistry, PromptRegistry
 
 __all__ = [
     "MCPMessage",
@@ -46,7 +45,4 @@ __all__ = [
     "SSESTransport",
     "HTTPTransport",
     "ProcessTransport",
-    "ToolRegistry",
-    "ResourceRegistry",
-    "PromptRegistry",
 ]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any, Callable, Awaitable, cast
 
@@ -57,16 +58,27 @@ class MCPClientSession:
         self,
         client_capabilities: ClientCapabilities,
         client_info: dict[str, Any],
+        auth_token: str | None = None,
     ) -> InitializeResult:
-        """Initialize connection with MCP server."""
+        """Initialize connection with MCP server.
+
+        Args:
+            client_capabilities: Client capabilities.
+            client_info: Client metadata.
+            auth_token: Optional token for servers that require auth
+                (``MORE_MCP_KEY`` / ``MORE_API_KEY`` on the server side).
+        """
         self._request_id += 1
+        params: dict[str, Any] = {
+            "capabilities": client_capabilities.__dict__,
+            "clientInfo": client_info,
+        }
+        if auth_token:
+            params["_auth"] = {"token": auth_token}
         request = MCPRequest(
             id=self._request_id,
             method="initialize",
-            params={
-                "capabilities": client_capabilities.__dict__,
-                "clientInfo": client_info,
-            },
+            params=params,
         )
 
         response = await self._send_request(request)
@@ -215,6 +227,7 @@ class MCPClient:
     def __init__(self) -> None:
         self._sessions: dict[str, MCPClientSession] = {}
         self._tools_cache: dict[str, list[Tool]] = {}
+        self._transports: dict[str, Any] = {}
 
     async def connect(
         self,
@@ -223,24 +236,74 @@ class MCPClient:
         write_callback: Callable[[str], Awaitable[None]],
         client_capabilities: ClientCapabilities | None = None,
         client_info: dict[str, Any] | None = None,
+        transport: Any | None = None,
+        auth_token: str | None = None,
     ) -> MCPClientSession:
-        """Connect to an MCP server."""
+        """Connect to an MCP server.
+
+        Args:
+            name: Server name (must be unique; existing connection is
+                replaced after the old one is shut down).
+            read_callback: Read callback used by the session.
+            write_callback: Write callback used by the session.
+            client_capabilities: Client capabilities for initialize.
+            client_info: Client info for initialize.
+            transport: Optional transport owned by this client (e.g. a
+                subprocess transport); it is disconnected on disconnect()
+                and on a failed initialize.
+            auth_token: Optional token; defaults to the ``MORE_MCP_KEY`` /
+                ``MORE_API_KEY`` env vars, matching the server side.
+
+        Raises:
+            MCPClientError: When initialize fails; the transport (if given)
+                is disconnected before re-raising so no subprocess leaks.
+        """
         if client_capabilities is None:
             client_capabilities = ClientCapabilities()
 
         if client_info is None:
             client_info = {"name": "QNMing MoRE OS", "version": "0.3.0"}
 
-        session = MCPClientSession(read_callback, write_callback)
-        await session.initialize(client_capabilities, client_info)
+        if auth_token is None:
+            auth_token = os.getenv("MORE_MCP_KEY") or os.getenv("MORE_API_KEY") or None
 
+        session = MCPClientSession(read_callback, write_callback)
+        try:
+            await session.initialize(client_capabilities, client_info, auth_token=auth_token)
+        except Exception:
+            if transport is not None:
+                await self._disconnect_transport(transport)
+            raise
+
+        old_session = self._sessions.get(name)
+        if old_session is not None:
+            _log.warning("Replacing existing MCP session '%s'", name)
         self._sessions[name] = session
+        if transport is not None:
+            self._transports[name] = transport
         return session
 
-    def disconnect(self, name: str) -> None:
-        """Disconnect from an MCP server."""
-        if name in self._sessions:
-            del self._sessions[name]
+    async def disconnect(self, name: str) -> None:
+        """Disconnect from an MCP server, shutting down its session and
+        closing the owned transport (terminates the subprocess)."""
+        session = self._sessions.pop(name, None)
+        transport = self._transports.pop(name, None)
+        if session is not None:
+            try:
+                await session.shutdown()
+            except Exception as exc:
+                _log.warning("MCP shutdown for '%s' failed: %s", name, exc)
+        if transport is not None:
+            await self._disconnect_transport(transport)
+
+    @staticmethod
+    async def _disconnect_transport(transport: Any) -> None:
+        try:
+            disconnect = getattr(transport, "disconnect", None)
+            if disconnect is not None:
+                await disconnect()
+        except Exception as exc:
+            _log.warning("MCP transport disconnect failed: %s", exc)
 
     def get_session(self, name: str) -> MCPClientSession | None:
         """Get a session by name."""
