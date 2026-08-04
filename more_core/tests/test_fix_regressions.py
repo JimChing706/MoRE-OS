@@ -172,6 +172,7 @@ def test_audit_logger_concurrent_writes() -> None:
             t.join()
 
         assert not errors
+        logger.flush()
         lines = path.read_text().strip().split("\n")
         assert len(lines) == 80  # 4 threads × 20 writes
         # Every line must be valid JSON

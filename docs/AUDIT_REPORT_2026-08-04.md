@@ -148,7 +148,7 @@ make: *** [test-cov] Error 4
 | 位置 | 声称 | 实际 |
 |------|------|------|
 | `README.md:7` badge | v0.6.0-alpha | v0.9.9 |
-| `CLAUDE.md` 模块表 | 21 routers | 22（新增 `deliberate.py`） |
+| `CLAUDE.md` 模块表 | 21 routers | **21（正确）**——审计初判"实际 22"是把 `__init__.py` 计入 router 数，`server.py` 实际 `include_router` 21 个（含 `deliberate.py`） |
 
 ### 6.4 ⚠️ 大量未提交迭代（P2）
 
@@ -171,7 +171,7 @@ make: *** [test-cov] Error 4
 | AUD-01 | P1 | 工程卫生 | 运行时 DB (10 文件, 480K) 被 git 追踪 | `git rm --cached` + 补 `.gitignore` 规则 |
 | AUD-02 | P1 | 工具链 | `make test-cov` 因缺 `pytest-cov` 失效 | 补 dev 依赖并重装 |
 | AUD-03 | P1 | 前端质量 | ESLint 36 errors/3 warnings，含渲染期 `Date.now()` | 见 3.2 分类修复 |
-| AUD-04 | P2 | 文档 | README badge 0.6.0 / routers 21→22 | 更新文档 |
+| AUD-04 | P2 | 文档 | README badge 0.6.0 过时；routers 21 正确（审计误数 `__init__.py`） | badge 更新为 v0.9.9 |
 | AUD-05 | P2 | 文档 | 8080 "被系统占用" 描述过时 | 更新 Known Issues |
 | AUD-06 | P2 | 流程 | 68 文件完整迭代未提交 | 尽快提交 |
 | AUD-07 | P3 | 观测 | 覆盖率不可测（依赖缺失） | 随 AUD-02 解决 |
@@ -202,7 +202,7 @@ make: *** [test-cov] Error 4
 | AUD-01 | P1 | ✅ 已修复 | `git rm --cached` 运行时 DB + `.gitignore` 补 `more_core/data/*.db*`（commit c051def） |
 | AUD-02 | P1 | ✅ 已修复 | dev extras 增加 `pytest-cov>=4.0`；实测 `735 passed`，coverage **65%** |
 | AUD-03 | P1 | ✅ 已修复 | 前端 ESLint 36 errors/3 warnings → **0 errors / 0 warnings**（见 §十 修复明细） |
-| AUD-04 | P2 | ✅ 已修复 | README badge → `v0.9.9`；CLAUDE.md routers 21→22 |
+| AUD-04 | P2 | ✅ 已修复 | README badge → `v0.9.9`；routers 复核为 **21**（`server.py` 21 个 `include_router`，`__init__.py` 不计入；审计初判 22 为计数错误） |
 | AUD-05 | P2 | ✅ 已修复 | CLAUDE.md Known Issues 更新为"API server 进程内挂载" |
 | AUD-06 | P2 | ✅ 已修复 | 本次迭代 + 修复全部按 Conventional Commits 提交 |
 | AUD-07 | P3 | ✅ 已修复 | 随 AUD-02 解决（覆盖率可复现） |

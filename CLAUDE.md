@@ -101,7 +101,7 @@ ARCHITECTURE_DESIGN: L5 → L4 → L3 → L1 → L0
 |--------|------|------|
 | **Orchestrator** | `runtime/orchestrator.py` | Wires all subsystems, lifecycle, service registry |
 | **Bootstrap** | `runtime/bootstrap.py` | `init_capabilities` / `init_layers` / `init_services` factories |
-| **API Routers** | `api/routers/` (22 routers) | REST endpoints |
+| **API Routers** | `api/routers/` (21 routers) | REST endpoints |
 | **LLM Manager** | `llm/manager.py` | Multi-provider + fallback + LRU cache |
 | **Layer Router** | `router/layer_router.py` | Difficulty-aware pipeline |
 | **Scene Router** | `router/scene_router.py` | Scene-aware task routing |
