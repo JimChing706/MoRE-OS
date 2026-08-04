@@ -146,6 +146,8 @@ class MoRECore:
         # Metrics & incidents (from singleton getters)
         self._metrics = get_collector()
         self._incident_manager = get_incident_manager()
+        # Public alias: layers resolve the incident manager via ctx.core (DI, TD-05)
+        self.incident_manager = self._incident_manager
 
         # Reasoning & Model Aliases
         self.reasoning_router = self.task_model_router.reasoning_router

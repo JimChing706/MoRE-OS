@@ -23,6 +23,7 @@ def _make_ctx(
     allow_self_improvement: bool = False,
 ) -> LayerContext:
     core = MagicMock()
+    core.incident_manager = None  # fall back to global getter (patched in tests)
     core.settings.enable_metacognition = enable_metacognition
 
     # Metacognition engine

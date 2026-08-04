@@ -31,7 +31,7 @@ class EvolutionLayer(Layer):
                 confidence=1.0,
             )
 
-        incident_mgr = get_incident_manager()
+        incident_mgr = getattr(ctx.core, "incident_manager", None) or get_incident_manager()
 
         dgm = ctx.core.evolution
         snapshot = await dgm.snapshot()

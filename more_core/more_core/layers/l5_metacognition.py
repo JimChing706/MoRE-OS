@@ -30,7 +30,7 @@ class MetacognitionLayer(Layer):
     layer_id = LayerId.L5
 
     async def process(self, ctx: LayerContext) -> LayerResult:
-        incident_mgr = get_incident_manager()
+        incident_mgr = getattr(ctx.core, "incident_manager", None) or get_incident_manager()
 
         actor = ctx.request.context.get("actor", "anonymous")
 

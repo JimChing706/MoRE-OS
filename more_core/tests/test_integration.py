@@ -15,8 +15,6 @@ class TestIntegrationLLMStateAndProviders:
         """Test LLM state manager with provider configuration."""
         from more_core.llm.state_manager import LLMStateManager
         
-        # Reset singleton
-        LLMStateManager._instance = None
         manager = LLMStateManager()
         
         # Update provider settings
@@ -35,7 +33,6 @@ class TestIntegrationLLMStateAndProviders:
         """Test LLM state manager with LM Studio configuration."""
         from more_core.llm.state_manager import LLMStateManager
         
-        LLMStateManager._instance = None
         manager = LLMStateManager()
         
         # Configure LM Studio specific settings

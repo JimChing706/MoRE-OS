@@ -16,14 +16,11 @@ class TestLLMStateManager:
 
     def test_state_manager_initialization(self):
         """Test state manager initializes correctly."""
-        # Use a fresh instance by resetting singleton
-        LLMStateManager._instance = None
         manager = LLMStateManager()
         assert manager is not None
 
     def test_get_state(self):
         """Test getting LLM state."""
-        LLMStateManager._instance = None
         manager = LLMStateManager()
         state = manager.get_state()
         assert state is not None
@@ -32,7 +29,6 @@ class TestLLMStateManager:
 
     def test_update_state(self):
         """Test updating LLM state."""
-        LLMStateManager._instance = None
         manager = LLMStateManager()
         result = manager.update_state(temperature=0.8)
         assert isinstance(result, LLMCallState)
@@ -40,7 +36,6 @@ class TestLLMStateManager:
 
     def test_reset_state(self):
         """Test resetting LLM state."""
-        LLMStateManager._instance = None
         manager = LLMStateManager()
         manager.update_state(temperature=0.9)
         manager.reset_state()
@@ -49,7 +44,6 @@ class TestLLMStateManager:
 
     def test_get_usage(self):
         """Test getting usage statistics."""
-        LLMStateManager._instance = None
         manager = LLMStateManager()
         stats = manager.get_usage()
         assert stats is not None

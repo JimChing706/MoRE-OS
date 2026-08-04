@@ -21,6 +21,7 @@ def _make_ctx(
     report_pass_rate: float = 0.9,
 ) -> LayerContext:
     core = MagicMock()
+    core.incident_manager = None  # fall back to global getter (patched in tests)
     core.settings.enable_evolution = enable_evolution
     core.settings.enable_evolution_llm_variants = enable_evolution_llm_variants
 

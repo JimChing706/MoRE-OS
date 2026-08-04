@@ -49,23 +49,8 @@ class LLMUsageStats:
 class LLMStateManager:
     """Manages LLM call state with dynamic adjustment capability."""
 
-    _instance: LLMStateManager | None = None
-    _initialized: bool = False
-    _lock = threading.Lock()
-
-    def __new__(cls) -> LLMStateManager:
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    instance = super().__new__(cls)
-                    instance._initialized = False
-                    cls._instance = instance
-        return cls._instance
-
     def __init__(self) -> None:
-        if self._initialized:
-            return
-        self._initialized = True
+        self._lock = threading.Lock()
         self._state = LLMCallState()
         self._default_state = LLMCallState()
         self._usage = LLMUsageStats()
