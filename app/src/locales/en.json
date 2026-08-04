@@ -82,6 +82,7 @@
   "safety": {
     "title": "Safety & Governance",
     "auditLog": "Audit Log",
+    "noAuditLogs": "No audit logs available",
     "sandboxStatus": "Sandbox Status",
     "policyEnforcement": "Policy Enforcement",
     "threatDetection": "Threat Detection",

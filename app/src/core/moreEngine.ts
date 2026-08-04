@@ -42,6 +42,15 @@ interface IncidentDto {
   resolved: boolean;
 }
 
+interface AuditRecordDto {
+  id: string;
+  timestamp: number;
+  actor: string;
+  action: string;
+  entity: string;
+  payload?: Record<string, unknown>;
+}
+
 // --- 六层架构定义 ---
 
 export const LAYER_DEFINITIONS: LayerDefinition[] = [
@@ -532,6 +541,7 @@ export function getDashboardData(): DashboardData {
     recentTasks: _recentTasks,
     memorySystem: _persistentMemory,
     safetyEvents: _persistentSafety,
+    auditLogs: [],
     layerMetrics: _simState.layerMetrics.map(m => ({ ...m })),
     evolutionStats: {
       totalAgents: _persistentArchive.agents.length,
@@ -628,7 +638,7 @@ export class MoreV3Engine {
       if (this.useRealAPI) {
         try {
           // Fetch core state + evolution + security + memory in parallel
-          const [systemRes, evolutionRes, incidentsRes] = await Promise.all([
+          const [systemRes, evolutionRes, incidentsRes, auditRes] = await Promise.all([
             fetch(`${this.apiBaseUrl}/api/v1/system/state`),
             fetch(`${this.apiBaseUrl}/api/v1/evolution/archive`),
             fetch(`${this.apiBaseUrl}/api/v1/incidents`),
@@ -688,6 +698,22 @@ export class MoreV3Engine {
                 description: i.description, layer: i.layer || 'L0',
                 timestamp: i.timestamp ? new Date(i.timestamp).getTime() : Date.now(),
                 resolved: i.resolved,
+              }));
+            }
+          }
+
+          // Audit log entries
+          if (auditRes && auditRes.ok) {
+            const audit = await auditRes.json();
+            const records = audit.records as AuditRecordDto[] | undefined;
+            if (Array.isArray(records)) {
+              data.auditLogs = records.map((r: AuditRecordDto) => ({
+                id: r.id,
+                timestamp: r.timestamp,
+                actor: r.actor,
+                action: r.action,
+                entity: r.entity,
+                payload: r.payload ?? {},
               }));
             }
           }

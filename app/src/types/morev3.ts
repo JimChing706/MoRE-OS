@@ -219,12 +219,23 @@ export interface SafetyEvent {
   resolved: boolean;
 }
 
+/** 审计日志条目 */
+export interface AuditLogEntry {
+  id: string;
+  timestamp: number;
+  actor: string;
+  action: string;
+  entity: string;
+  payload: Record<string, unknown>;
+}
+
 /** 仪表盘数据 */
 export interface DashboardData {
   systemState: SystemState;
   recentTasks: TaskResult[];
   memorySystem: MemorySystem;
   safetyEvents: SafetyEvent[];
+  auditLogs: AuditLogEntry[];
   layerMetrics: LayerMetrics[];
   evolutionStats: EvolutionStats;
 }

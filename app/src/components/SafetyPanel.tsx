@@ -2,9 +2,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import type { DashboardData, SafetyEvent } from '@/types/morev3';
+import type { AuditLogEntry, DashboardData, SafetyEvent } from '@/types/morev3';
 import { ShieldAlert, ShieldCheck, AlertTriangle, AlertCircle, Info, Clock, CheckCircle2, FileText, Users, Scale } from 'lucide-react';
 import { formatTimestamp } from '@/lib/format';
+import { useTranslation } from 'react-i18next';
 
 interface SafetyPanelProps {
   data: DashboardData;
@@ -23,23 +24,6 @@ const typeLabels: Record<SafetyEvent['type'], string> = {
   self_modification: '自我修改',
   unauthorized_access: '未授权访问',
 };
-
-interface MockAuditLog {
-  id: string;
-  timestamp: number;
-  actor: string;
-  action: string;
-  entity: string;
-  payload: Record<string, unknown>;
-}
-
-const MOCK_NOW = Date.now();
-const MOCK_AUDIT_LOGS: MockAuditLog[] = [
-  { id: 'audit_001', timestamp: MOCK_NOW - 60000, actor: 'admin', action: 'execute', entity: 'task_abc123', payload: { layer: 'L3', status: 'success' } },
-  { id: 'audit_002', timestamp: MOCK_NOW - 120000, actor: 'system', action: 'evolve', entity: 'agent_xyz', payload: { branch: 'main', score: 0.85 } },
-  { id: 'audit_003', timestamp: MOCK_NOW - 180000, actor: 'operator', action: 'configure', entity: 'llm_config', payload: { provider: 'openai' } },
-  { id: 'audit_004', timestamp: MOCK_NOW - 300000, actor: 'system', action: 'block', entity: 'task_def456', payload: { reason: 'ontology_violation' } },
-];
 
 export function SafetyPanel({ data }: SafetyPanelProps) {
   const { safetyEvents, systemState } = data;
@@ -158,7 +142,7 @@ export function SafetyPanel({ data }: SafetyPanelProps) {
         </TabsList>
 
         <TabsContent value="audit" className="mt-3">
-          <AuditLogPanel />
+          <AuditLogPanel auditLogs={data.auditLogs} />
         </TabsContent>
 
         <TabsContent value="rbac" className="mt-3">
@@ -173,8 +157,8 @@ export function SafetyPanel({ data }: SafetyPanelProps) {
   );
 }
 
-function AuditLogPanel() {
-  const mockAuditLogs = MOCK_AUDIT_LOGS;
+function AuditLogPanel({ auditLogs }: { auditLogs: AuditLogEntry[] }) {
+  const { t } = useTranslation();
 
   return (
     <Card>
@@ -185,24 +169,31 @@ function AuditLogPanel() {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <ScrollArea className="h-48">
-          <div className="space-y-2">
-            {mockAuditLogs.map(log => (
-              <div key={log.id} className="flex items-start gap-3 p-2 bg-gray-50 rounded text-xs">
-                <div className="w-16 text-gray-400 font-mono flex-shrink-0">
-                  {formatTimestamp(log.timestamp)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-[8px] h-4">{log.actor}</Badge>
-                    <span className="text-blue-600">{log.action}</span>
-                    <span className="text-gray-600 truncate">{log.entity}</span>
+        {auditLogs.length === 0 ? (
+          <div className="text-center py-8 text-gray-400">
+            <FileText className="w-8 h-8 mx-auto mb-2" />
+            <p className="text-sm">{t('safety.noAuditLogs')}</p>
+          </div>
+        ) : (
+          <ScrollArea className="h-48">
+            <div className="space-y-2">
+              {auditLogs.map(log => (
+                <div key={log.id} className="flex items-start gap-3 p-2 bg-gray-50 rounded text-xs">
+                  <div className="w-16 text-gray-400 font-mono flex-shrink-0">
+                    {formatTimestamp(log.timestamp)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-[8px] h-4">{log.actor}</Badge>
+                      <span className="text-blue-600">{log.action}</span>
+                      <span className="text-gray-600 truncate">{log.entity}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </ScrollArea>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
       </CardContent>
     </Card>
   );

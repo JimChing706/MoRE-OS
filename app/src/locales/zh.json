@@ -82,6 +82,7 @@
   "safety": {
     "title": "安全与治理",
     "auditLog": "审计日志",
+    "noAuditLogs": "暂无审计日志",
     "sandboxStatus": "沙箱状态",
     "policyEnforcement": "策略执行",
     "threatDetection": "威胁检测",

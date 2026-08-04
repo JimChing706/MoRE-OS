@@ -1,5 +1,8 @@
 """API integration tests — FastAPI TestClient."""
 
+from collections.abc import Iterator
+from pathlib import Path
+
 import pytest
 
 pytest.importorskip("fastapi")
@@ -22,6 +25,7 @@ def _core():
     )
     core = MoRECore(settings)
     from conftest import _FakeLLMProvider
+
     core.llm._providers["fake"] = _FakeLLMProvider()
     core.llm._fallback = ["fake"]
     return core
@@ -32,6 +36,27 @@ def client(_core):
     app = create_app(_core)
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture
+def audit_client(tmp_path: Path) -> Iterator[tuple[MoRECore, TestClient]]:
+    """TestClient wired to an isolated audit store so reads are deterministic."""
+    settings = Settings(
+        audit_log_path=str(tmp_path / "audit.jsonl"),
+        providers=[],
+        fallback_chain=[],
+        enable_evolution=False,
+        enable_metacognition=False,
+        enable_symbolic=True,
+    )
+    core = MoRECore(settings)
+    from conftest import _FakeLLMProvider
+
+    core.llm._providers["fake"] = _FakeLLMProvider()
+    core.llm._fallback = ["fake"]
+    app = create_app(core)
+    with TestClient(app) as c:
+        yield core, c
 
 
 class TestHealthEndpoint:
@@ -134,15 +159,18 @@ class TestImportTaskDocumentAPI:
         assert "summary" in data
 
     def test_generate_itd(self, client):
-        resp = client.post("/api/v1/tasks/itd/generate", json={
-            "title": "Gen Task",
-            "version": "1.0.0",
-            "author": "test",
-            "type": "code_generation",
-            "priority": "low",
-            "deliverable_kind": "code",
-            "summary": "Generated from API",
-        })
+        resp = client.post(
+            "/api/v1/tasks/itd/generate",
+            json={
+                "title": "Gen Task",
+                "version": "1.0.0",
+                "author": "test",
+                "type": "code_generation",
+                "priority": "low",
+                "deliverable_kind": "code",
+                "summary": "Generated from API",
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "success"
@@ -202,6 +230,64 @@ class TestAPIAuth:
         with caplog.at_level(logging.WARNING):
             create_app(_core)
         assert not any("UNAUTHENTICATED" in r.message for r in caplog.records)
+
+
+class TestAuditEndpoint:
+    def test_audit_logs_returns_records_with_expected_fields(
+        self,
+        audit_client: tuple[MoRECore, TestClient],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("MORE_API_KEY", "test-key-123")
+        core, client = audit_client
+
+        core.audit.log(
+            actor="alice",
+            action="execute",
+            entity="task_abc123",
+            layer="L3",
+            status="success",
+        )
+        core.audit.log(
+            actor="system",
+            action="evolve",
+            entity="agent_xyz",
+            branch="main",
+            score=0.85,
+        )
+        core.audit.flush()
+
+        resp = client.get(
+            "/api/v1/security/audit?limit=2",
+            headers={"Authorization": "Bearer test-key-123"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2
+        assert len(data["records"]) == 2
+
+        expected_fields = {"id", "timestamp", "actor", "action", "entity", "payload"}
+        for record in data["records"]:
+            assert expected_fields.issubset(record.keys())
+            assert isinstance(record["timestamp"], float)
+            assert isinstance(record["payload"], dict)
+
+        written = {(r["actor"], r["action"], r["entity"]) for r in data["records"]}
+        assert written == {
+            ("alice", "execute", "task_abc123"),
+            ("system", "evolve", "agent_xyz"),
+        }
+
+    def test_audit_logs_auth_gated_with_key(self, audit_client, monkeypatch):
+        monkeypatch.setenv("MORE_API_KEY", "test-key-123")
+        _, client = audit_client
+        resp = client.get("/api/v1/security/audit")
+        assert resp.status_code == 401
+        resp = client.get(
+            "/api/v1/security/audit",
+            headers={"Authorization": "Bearer test-key-123"},
+        )
+        assert resp.status_code == 200
 
 
 class TestRBACPermission:

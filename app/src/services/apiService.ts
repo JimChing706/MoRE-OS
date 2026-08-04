@@ -286,6 +286,7 @@ class APIService {
       safetyEvents: [
         { id: 'sev_001', severity: 'low', type: 'sandbox_breach', description: '沙箱执行超时', layer: 'L0', timestamp: Date.now() - 3600000, resolved: true },
       ],
+      auditLogs: [],
       layerMetrics,
       evolutionStats: {
         totalAgents: 26,
