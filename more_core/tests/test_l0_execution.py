@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -12,6 +12,8 @@ from more_core.layers.l0_execution import (
     _extract_llm_confidence,
 )
 from more_core.layers.base import LayerContext
+from more_core.llm.provider import LLMResponse
+from more_core.tools.registry import ToolResult
 
 
 # =========================================================================
@@ -338,6 +340,179 @@ class TestExtractLLMConfidence:
 
 
 # =========================================================================
+# Unit tests — fix loop (_run_fix_loop)
+# =========================================================================
+
+
+class TestRunFixLoop:
+    def _make_ctx(self, core=None, scratch: dict | None = None) -> LayerContext:
+        if core is None:
+            core = MagicMock()
+        req = MagicMock()
+        req.id = "fix-loop-test"
+        req.type = TaskType.CODE_GENERATION
+        ctx = LayerContext(core=core, request=req)
+        if scratch:
+            ctx.scratch.update(scratch)
+        return ctx
+
+    def _sbx(self, success: bool, error: str = "") -> ToolResult:
+        return ToolResult(
+            tool="python_exec",
+            success=success,
+            output="ok" if success else "",
+            error=error,
+            duration_ms=1.0,
+        )
+
+    def _llm_response(self, content: str) -> LLMResponse:
+        return LLMResponse(
+            content=content,
+            provider="fake",
+            model="fake-model",
+            prompt_tokens=10,
+            completion_tokens=20,
+        )
+
+    async def _run(self, ctx, invoke_results, *, gen_content, scope="code"):
+        from more_core.llm.provider import LLMRequest
+
+        ctx.core.tools.invoke = AsyncMock(side_effect=invoke_results)
+        ctx.core.llm.generate = AsyncMock(return_value=self._llm_response(gen_content))
+        ctx.core.get_layer.side_effect = KeyError("L3 not found")
+        ctx.core.audit.log = MagicMock()
+        gen_req = LLMRequest(prompt="write code", system="sys", temperature=0.7, max_tokens=100)
+        layer = ExecutionLayer()
+        return await layer._run_fix_loop(
+            ctx, gen_req, provider=None, model=None, code="print('x')", scope=scope
+        )
+
+    @pytest.mark.asyncio
+    async def test_success_on_first_exec_no_fix(self):
+        ctx = self._make_ctx()
+        result, added_in, added_out = await self._run(
+            ctx, [self._sbx(True)], gen_content="n/a"
+        )
+        assert result.success
+        assert added_in == 0 and added_out == 0
+        assert ctx.scratch["code_fix_iterations"] == 0
+        assert "code_fix_output" not in ctx.scratch
+
+    @pytest.mark.asyncio
+    async def test_fixes_broken_code(self):
+        ctx = self._make_ctx()
+        fixed = "```python\nx = 1\n```"
+        result, added_in, added_out = await self._run(
+            ctx,
+            [self._sbx(False, error="NameError: name 'nope' is not defined"), self._sbx(True)],
+            gen_content=fixed,
+        )
+        assert result.success
+        assert ctx.scratch["code_fix_iterations"] == 1
+        assert ctx.scratch["code_fix_output"] == fixed
+        assert added_in > 0 and added_out > 0
+        assert ctx.core.tools.invoke.await_count == 2
+        assert ctx.core.llm.generate.await_count == 1
+        # fix prompt must carry the original request + the sandbox error
+        fix_prompt = ctx.core.llm.generate.await_args.args[0].prompt
+        assert "write code" in fix_prompt
+        assert "NameError" in fix_prompt
+
+    @pytest.mark.asyncio
+    async def test_exhausts_max_rounds(self):
+        from more_core.layers.l0_execution import _MAX_CODE_FIX_ROUNDS
+
+        ctx = self._make_ctx()
+        always_fail = [self._sbx(False, error="boom")] * (_MAX_CODE_FIX_ROUNDS + 1)
+        result, _, _ = await self._run(
+            ctx, always_fail, gen_content="```python\nx = 1\n```"
+        )
+        assert not result.success
+        assert ctx.scratch["code_fix_iterations"] == _MAX_CODE_FIX_ROUNDS
+        assert "code_fix_output" not in ctx.scratch
+        assert ctx.core.llm.generate.await_count == _MAX_CODE_FIX_ROUNDS
+
+    @pytest.mark.asyncio
+    async def test_breaks_when_no_code_in_fix_output(self):
+        ctx = self._make_ctx()
+        result, _, _ = await self._run(
+            ctx, [self._sbx(False, error="boom"), self._sbx(True)], gen_content="no fence here"
+        )
+        assert not result.success
+        assert ctx.scratch["code_fix_iterations"] == 0
+        assert ctx.core.tools.invoke.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_unsafe_fix_is_blocked(self):
+        ctx = self._make_ctx()
+        dangerous = "```python\nimport os\nos.system('rm -rf /')\n```"
+        result, _, _ = await self._run(
+            ctx, [self._sbx(False, error="boom"), self._sbx(True)], gen_content=dangerous
+        )
+        assert not result.success
+        assert ctx.scratch.get("code_fix_blocked")
+        assert ctx.core.tools.invoke.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_audit_writes_iteration_events(self):
+        ctx = self._make_ctx()
+        await self._run(
+            ctx,
+            [self._sbx(False, error="NameError: boom"), self._sbx(True)],
+            gen_content="```python\nx = 1\n```",
+        )
+        calls = [
+            c for c in ctx.core.audit.log.call_args_list if c.kwargs.get("action") == "code_fix_iteration"
+        ]
+        assert len(calls) == 2
+        assert calls[0].kwargs["round"] == 0 and calls[0].kwargs["success"] is False
+        assert calls[1].kwargs["round"] == 1 and calls[1].kwargs["success"] is True
+        assert calls[1].kwargs["entity"] == "code"
+
+    @pytest.mark.asyncio
+    async def test_audit_failure_does_not_crash(self):
+        ctx = self._make_ctx()
+        ctx.core.audit.log = MagicMock(side_effect=RuntimeError("audit down"))
+        result, _, _ = await self._run(
+            ctx, [self._sbx(False, error="boom"), self._sbx(True)],
+            gen_content="```python\nx = 1\n```",
+        )
+        assert result.success
+
+
+# =========================================================================
+# Unit tests — _build_fix_prompt
+# =========================================================================
+
+
+class TestBuildFixPrompt:
+    @pytest.mark.asyncio
+    async def test_embeds_error_and_code(self):
+        from more_core.llm.provider import LLMRequest
+        from more_core.layers.l0_execution import ExecutionLayer
+        from more_core.tools.registry import ToolResult
+
+        req = LLMRequest(prompt="fix my code", system="sys", temperature=0.4, max_tokens=200)
+        sbx = ToolResult(tool="python_exec", success=False, output="", error="TypeError: boom")
+        prompt = ExecutionLayer._build_fix_prompt(req, "print('x')", sbx)
+        assert "fix my code" in prompt
+        assert "print('x')" in prompt
+        assert "TypeError: boom" in prompt
+        assert "代码执行失败" in prompt
+
+    @pytest.mark.asyncio
+    async def test_english_directive(self):
+        from more_core.llm.provider import LLMRequest
+        from more_core.layers.l0_execution import ExecutionLayer
+        from more_core.tools.registry import ToolResult
+
+        req = LLMRequest(prompt="write fibonacci in python", system="sys", temperature=0.4, max_tokens=200)
+        sbx = ToolResult(tool="python_exec", success=False, output="", error="SyntaxError")
+        prompt = ExecutionLayer._build_fix_prompt(req, "def f", sbx)
+        assert "code fix enforcement" in prompt
+
+
+# =========================================================================
 # Integration tests
 # =========================================================================
 
@@ -371,3 +546,62 @@ async def test_multiple_task_types_produce_output(core) -> None:
         result = await core.execute(TaskRequest(type=tt, query="test"))
         assert result.status == TaskStatus.SUCCESS, f"failed for {tt}"
         assert result.output, f"empty output for {tt}"
+
+
+class _FailingThenFixedProvider:
+    """LLM provider that emits broken code first, then a fixed version.
+
+    Mirrors a real LLM reacting to the sandbox error fed back by the fix loop.
+    """
+
+    name = "fixloop"
+
+    def __init__(self) -> None:
+        self._calls = 0
+
+    async def generate(self, request):
+        from more_core.llm.provider import LLMResponse
+
+        self._calls += 1
+        if self._calls == 1:
+            content = "```python\nprint(1 / 0)\n```"
+        else:
+            content = "```python\nprint('fixed-ok')\n```"
+        return LLMResponse(
+            content=content,
+            provider=self.name,
+            model="fixloop-model",
+            prompt_tokens=10,
+            completion_tokens=10,
+        )
+
+    async def stream(self, request):
+        yield "stream"
+
+    async def health(self):
+        return True
+
+
+@pytest.mark.asyncio
+async def test_fix_loop_end_to_end(core) -> None:
+    """Broken generated code is executed, fails, gets fixed, and re-executes.
+
+    The final L0 output must be the fixed code, and the description must
+    mention the fix loop.
+    """
+    from more_core.tools.builtins import register_builtins
+
+    register_builtins(core.tools, core)
+    provider = _FailingThenFixedProvider()
+    core.llm._providers[provider.name] = provider
+    core.llm._fallback = [provider.name]
+
+    req = TaskRequest(type=TaskType.CODE_GENERATION, query="print 1 divided by 0")
+    result = await core.execute(req)
+
+    assert provider._calls >= 2
+    assert result.status == TaskStatus.SUCCESS
+    assert "fixed-ok" in result.output
+    l0_step = next(s for s in result.reasoning_chain if s.layer.value == "L0")
+    assert "fix loop" in l0_step.description
+    assert l0_step.confidence == 0.95

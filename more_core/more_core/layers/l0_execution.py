@@ -32,6 +32,7 @@ import re
 from ..core.types import LayerId, TaskType
 from ..core.unicode_utils import detect_language, is_predominantly_cjk
 from ..llm.provider import LLMRequest
+from ..tools.registry import ToolResult
 from .base import Layer, LayerContext, LayerResult
 from typing import Any
 
@@ -55,6 +56,11 @@ _MAX_TOOL_ROUNDS = 5
 # the layer will auto-prompt up to this many times before delivering the
 # last response as-is.
 _MAX_CODE_CONTINUITY_ROUNDS = 3
+
+# Maximum auto-fix rounds for the generate → execute → fix → re-execute
+# loop.  When sandbox execution fails, the error is fed back to the LLM
+# and a fixed version is regenerated up to this many times.
+_MAX_CODE_FIX_ROUNDS = 3
 
 # Patterns that indicate the LLM is asking a clarification question
 # rather than generating code.  Multi-language support.
@@ -304,7 +310,7 @@ class ExecutionLayer(Layer):
                 )
                 ctx.scratch["subtasks_executed"] = len(subtask_outputs)
 
-        # --- auto code-exec for code tasks (post-generation safety check) ---
+        # --- auto code-exec for code tasks (post-generation safety check + fix loop) ---
         if req.type in (
             TaskType.CODE_GENERATION,
             TaskType.CODE_DEBUGGING,
@@ -314,22 +320,39 @@ class ExecutionLayer(Layer):
             if code:
                 is_safe, violations = self._check_code_safety(code, ctx)
                 if is_safe:
-                    sbx_result = await ctx.core.tools.invoke(
-                        "python_exec", {"code": code}, user_id=ctx.user_id
+                    sbx_result, fix_in, fix_out = await self._run_fix_loop(
+                        ctx,
+                        gen_req,
+                        provider,
+                        model,
+                        code,
+                        scope="code",
                     )
+                    total_in += fix_in
+                    total_out += fix_out
                     ctx.scratch["sandbox_result"] = sbx_result
+                    fixed_output = ctx.scratch.get("code_fix_output")
+                    if fixed_output:
+                        output = fixed_output
                 else:
                     ctx.scratch["code_blocked"] = violations
 
-        # --- code_testing: auto-generate and execute test suite ---
+        # --- code_testing: auto-generate, execute and fix test suite ---
         if req.type == TaskType.CODE_TESTING and ctx.core.tools.get("python_exec"):
             test_code = self._extract_test_code(output)
             if test_code:
                 is_safe, violations = self._check_code_safety(test_code, ctx)
                 if is_safe:
-                    sbx_result = await ctx.core.tools.invoke(
-                        "python_exec", {"code": test_code}, user_id=ctx.user_id
+                    sbx_result, fix_in, fix_out = await self._run_fix_loop(
+                        ctx,
+                        gen_req,
+                        provider,
+                        model,
+                        test_code,
+                        scope="test",
                     )
+                    total_in += fix_in
+                    total_out += fix_out
                     ctx.scratch["test_result"] = sbx_result
                     if sbx_result.success:
                         output += f"\n\n=== 测试执行结果 ===\n{sbx_result.output}"
@@ -349,6 +372,12 @@ class ExecutionLayer(Layer):
             desc_parts.append("tests run")
         if ctx.scratch.get("code_blocked") or ctx.scratch.get("test_blocked"):
             desc_parts.append("safety blocked")
+        for scope in ("code", "test"):
+            iterations = ctx.scratch.get(f"{scope}_fix_iterations", 0)
+            if iterations:
+                desc_parts.append(
+                    f"{scope} fix loop ({iterations}/{_MAX_CODE_FIX_ROUNDS})"
+                )
         if ctx.scratch.get("subtasks_executed"):
             desc_parts.append(f"subtask iteration ({ctx.scratch['subtasks_executed']})")
         annotation_guidance = self._build_annotation_guidance(
@@ -663,6 +692,109 @@ class ExecutionLayer(Layer):
             return (False, [f"code uses dangerous primitive: {m}" for m in matches])
         return (True, [])
 
+    # ── Auto-fix loop (generate → execute → fix → re-execute) ─────────────
+
+    async def _run_fix_loop(
+        self,
+        ctx: LayerContext,
+        gen_req: LLMRequest,
+        provider: str | None,
+        model: str | None,
+        code: str,
+        *,
+        scope: str,
+    ) -> tuple[ToolResult, int, int]:
+        """Execute *code* in the sandbox; on failure, feed the error back to
+        the LLM and regenerate a fixed version.
+
+        Loops up to ``_MAX_CODE_FIX_ROUNDS`` times.  When the final attempt
+        succeeds, the regenerated output is stored under
+        ``ctx.scratch[f"{scope}_fix_output"]`` so the caller can deliver the
+        corrected code.  Each iteration is audited.
+
+        Returns ``(last_sandbox_result, added_input_tokens, added_output_tokens)``.
+        """
+        sbx_result = await ctx.core.tools.invoke(
+            "python_exec", {"code": code}, user_id=ctx.user_id
+        )
+        ctx.scratch[f"{scope}_fix_iterations"] = 0
+        self._audit_fix_iteration(ctx, scope, round_idx=0, sbx=sbx_result)
+        if sbx_result.success:
+            return sbx_result, 0, 0
+
+        added_in, added_out = 0, 0
+        fixed_output = ""
+        for round_idx in range(1, _MAX_CODE_FIX_ROUNDS + 1):
+            fix_req = LLMRequest(
+                prompt=self._build_fix_prompt(gen_req, code, sbx_result),
+                system=gen_req.system,
+                temperature=0.4,
+                max_tokens=gen_req.max_tokens,
+            )
+            in_tok, out_tok, fixed_output = await self._do_generate(
+                ctx, fix_req, provider, model
+            )
+            added_in += in_tok
+            added_out += out_tok
+            new_code = self._extract_python(fixed_output)
+            if not new_code:
+                break
+            is_safe, violations = self._check_code_safety(new_code, ctx)
+            if not is_safe:
+                ctx.scratch[f"{scope}_fix_blocked"] = violations
+                break
+            sbx_result = await ctx.core.tools.invoke(
+                "python_exec", {"code": new_code}, user_id=ctx.user_id
+            )
+            ctx.scratch[f"{scope}_fix_iterations"] = round_idx
+            self._audit_fix_iteration(ctx, scope, round_idx=round_idx, sbx=sbx_result)
+            code = new_code
+            if sbx_result.success:
+                break
+
+        if sbx_result.success:
+            ctx.scratch[f"{scope}_fix_output"] = fixed_output
+        return sbx_result, added_in, added_out
+
+    @staticmethod
+    def _build_fix_prompt(
+        gen_req: LLMRequest,
+        code: str,
+        sbx: ToolResult,
+    ) -> str:
+        """Build a fix prompt from the original request + failing code + error."""
+        lang = "zh" if is_predominantly_cjk(gen_req.prompt) else "en"
+        directive = _FIX_DIRECTIVES.get(lang, _FIX_DIRECTIVES["en"])
+        error_text = (sbx.error or "") + "\n" + str(sbx.output or "")
+        return (
+            f"{gen_req.prompt}\n\n"
+            "## 代码执行失败，请修复\n\n"
+            f"代码:\n```python\n{code}\n```\n\n"
+            f"错误信息:\n{error_text[:1500]}\n\n"
+            f"{directive}"
+        )
+
+    @staticmethod
+    def _audit_fix_iteration(
+        ctx: LayerContext,
+        scope: str,
+        round_idx: int,
+        sbx: ToolResult,
+    ) -> None:
+        """Audit a code/test execution or fix iteration."""
+        try:
+            ctx.core.audit.log(
+                actor="l0_execution",
+                action="code_fix_iteration",
+                entity=scope,
+                task_id=ctx.request.id,
+                round=round_idx,
+                success=sbx.success,
+                error=(sbx.error or "")[:300],
+            )
+        except Exception:
+            pass
+
     # ── Annotation guidance ────────────────────────────────────────────────
 
     @staticmethod
@@ -707,6 +839,24 @@ _CONTINUITY_DIRECTIVES: dict[str, str] = {
         "Generate complete code immediately. Make reasonable assumptions "
         "for any unspecified technical choices and note them in comments.\n"
         "Do NOT ask questions. Do NOT ask for user preferences. Output code."
+    ),
+}
+
+# Injected when sandbox execution of the generated code fails — forces the
+# LLM to diagnose the error and regenerate a fixed version (the fix loop).
+_FIX_DIRECTIVES: dict[str, str] = {
+    "zh": (
+        "【系统指令 - 代码修复强制要求】\n"
+        "你上一轮生成的代码在沙箱中执行失败。请阅读上面的错误信息，分析失败原因，"
+        "输出修复后的完整可运行代码（使用```python代码块）。\n"
+        "不要解释，不要提问。直接输出修复后的完整代码。"
+    ),
+    "en": (
+        "[System directive — code fix enforcement]\n"
+        "The code you generated failed to execute in the sandbox. Read the "
+        "error above, diagnose the root cause, and output the fixed, complete "
+        "runnable code (in a ```python fence).\n"
+        "Do not explain. Do not ask questions. Output the fixed code directly."
     ),
 }
 
