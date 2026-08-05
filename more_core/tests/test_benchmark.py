@@ -3,7 +3,12 @@
 import pytest
 
 from more_core.evolution.archive import EvolutionArchive, EvolvedAgent
-from more_core.evolution.benchmark import BenchmarkCase, BenchmarkRunner, SimpleBenchmark
+from more_core.evolution.benchmark import (
+    BenchmarkCase,
+    BenchmarkRunner,
+    DEFAULT_SUITE,
+    SimpleBenchmark,
+)
 from more_core.evolution.dgm import DGMEngine
 from more_core.core.types import TaskRequest
 
@@ -76,3 +81,31 @@ async def test_benchmark_runner(core):
     report = await runner.run(seed, "simple")
     assert report.total == 1
     assert report.benchmark_name == "simple"
+
+
+def test_default_suite_is_seeded():
+    """SimpleBenchmark() without a suite falls back to DEFAULT_SUITE.
+
+    This keeps the DGM/L2 evaluation loop from always rejecting variants
+    when no benchmark plugin is registered.
+    """
+    bm = SimpleBenchmark()
+    cases = bm.cases()
+    assert len(cases) == len(DEFAULT_SUITE) == 3
+    assert {c.id for c in cases} == {"code_fib", "code_sort", "code_hello"}
+    assert all(c.expected for c in cases)
+
+
+@pytest.mark.asyncio
+async def test_default_suite_evaluates_code_fib():
+    """A competent code-gen output should satisfy the seeded suite."""
+    from more_core.evolution.benchmark import DEFAULT_SUITE
+
+    bm = SimpleBenchmark()
+    fib_case = next(c for c in DEFAULT_SUITE if c.id == "code_fib")
+    result = await bm.evaluate(
+        fib_case,
+        "```python\ndef fib(n: int) -> int:\n    ...\n```",
+    )
+    assert result.passed
+    assert result.score == 1.0

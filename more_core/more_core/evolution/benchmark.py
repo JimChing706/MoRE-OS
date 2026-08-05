@@ -43,6 +43,31 @@ class CaseResult:
     error: str = ""
 
 
+# Seed suite for the DGM evaluation loop.  These are string-match cases over
+# pipeline output, chosen so a competent code-gen run produces the expected
+# substring.  Swap in real SWE-bench-style cases for production.
+DEFAULT_SUITE: tuple[BenchmarkCase, ...] = (
+    BenchmarkCase(
+        id="code_fib",
+        input="Write a Python function that computes the nth Fibonacci number",
+        expected="def fib",
+        tags=["code", "algorithm"],
+    ),
+    BenchmarkCase(
+        id="code_sort",
+        input="Write a Python function that sorts a list of integers",
+        expected="def sort",
+        tags=["code", "algorithm"],
+    ),
+    BenchmarkCase(
+        id="code_hello",
+        input="Write a Python script that prints hello world",
+        expected="print(",
+        tags=["code", "basics"],
+    ),
+)
+
+
 @dataclass(slots=True)
 class BenchmarkReport:
     benchmark_name: str
@@ -74,10 +99,15 @@ class Benchmark(ABC):
 
 
 class SimpleBenchmark(Benchmark):
-    """Minimal string-match benchmark for dev/testing."""
+    """Minimal string-match benchmark for dev/testing.
+
+    When constructed without an explicit suite, it falls back to a small
+    seeded suite (:data:`DEFAULT_SUITE`) so the L2/DGM evaluation loop has
+    real cases to score instead of always rejecting variants.
+    """
 
     def __init__(self, suite: list[BenchmarkCase] | None = None) -> None:
-        self._cases = suite or []
+        self._cases = suite if suite is not None else list(DEFAULT_SUITE)
 
     @property
     def name(self) -> str:
