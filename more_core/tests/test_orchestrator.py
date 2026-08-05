@@ -480,6 +480,27 @@ class TestExecute:
         await core.execute(TaskRequest(query="no cache"))
         core._request_cache.set.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_self_check_written_to_metadata(self, core: "MoRECore") -> None:
+        """Pipeline output self-check runs in _complete_task and is stored in metadata."""
+
+        class _RecordingLayer(Layer):
+            layer_id = LayerId.L0
+
+            async def process(self, ctx: LayerContext) -> LayerResult:
+                return LayerResult(
+                    layer=LayerId.L0,
+                    description="L0 done",
+                    output="final output text",
+                )
+
+        core.layers = {LayerId.L0: _RecordingLayer()}
+        result = await core.execute(TaskRequest(query="self check me"))
+        assert result.metadata.get("self_check") is not None
+        report = result.metadata["self_check"]
+        assert "coverage_pct" in report
+        assert "completeness_check" in report
+
 
 # ===================================================================
 # stream_execute()

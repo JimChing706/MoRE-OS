@@ -574,6 +574,28 @@ class MoRECore:
             if any(d in deliverable_missing for d in critical_dims):
                 status = TaskStatus.PARTIAL
 
+        # ── 管道输出自检（advisory，不影响主流程） ──────────────
+        # 复用 council.self_check 对推理链→最终输出的覆盖度做启发式审计，
+        # 结果写入 TaskResult.metadata 供可观测/审计使用。
+        self_check_report: dict[str, Any] | None = None
+        try:
+            if ctx.accumulated_steps and filtered_output:
+                from ..council.self_check import run_pipeline_self_check
+
+                report = run_pipeline_self_check(ctx.accumulated_steps, str(filtered_output))
+                self_check_report = report.to_dict()
+                if report.backfill_required:
+                    self.audit.log(
+                        actor="system",
+                        action="self_check_backfill",
+                        entity="task",
+                        task_id=request.id,
+                        coverage_pct=report.coverage_pct,
+                        backfill_items=report.backfill_items,
+                    )
+        except Exception as exc:
+            self.logger.warning("pipeline self-check failed for task %s: %s", request.id, exc)
+
         result = TaskResult(
             task_id=request.id,
             layer=ctx.accumulated_steps[-1].layer if ctx.accumulated_steps else LayerId.L0,
@@ -585,6 +607,7 @@ class MoRECore:
             deliverable_complete=deliverable_complete,
             deliverable_missing=deliverable_missing,
             convergence_report=convergence_dict,
+            metadata={"self_check": self_check_report} if self_check_report else {},
         )
 
         await self.event_bus.publish(
