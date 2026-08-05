@@ -86,13 +86,22 @@
 
 ## 第四章: 代码清理与质量提升 (Phase 2) ✅
 
-### 4.1 多版本代码库整合 — DEFERRED
+### 4.1 多版本代码库整合 — DONE
 
-当前 4 个副本仍存在。建议先删除旧版以释放空间：
-```bash
-rm -rf /Users/qnming/AI_Cample/"QNMing MoRE OS preVersion"
-rm -rf /Users/qnming/AI_Cample/"qnm-os-prev-202605211332"/.venv.bak
-```
+**执行 (2026-08-05)**: 实际发现 6 个冗余副本（超出计划原文的 2 个），全部删除，释放 ~2.5G：
+
+| 路径 | 大小 | 说明 |
+|------|------|------|
+| `QNMing MoRE OS preVersion/` | 1.4G | 旧版 v0.3.0（自带 .git `b6144b1`） |
+| `QNMing\ MoRE\ OS\ preVersion/` | 48K | 名字带反斜杠的垃圾目录 |
+| `qnm-os-prev-202605211332/.venv.bak/` | 125M | 工作副本内 venv 备份 |
+| `/Users/qnming/AI_Cample/.venv/` | 38M | 残留根级 venv（无引用） |
+| `QNMing/qnm-os-prev-202605211332/` | 599M | 另一份完整拷贝（v0.6.0-alpha, .git `308e6a1`） |
+| `QNMing/qnm-more-os-v0.6.0-alpha-20260601/` | 367M | 解压后的 tarball 拷贝 |
+
+**保留**: 工作副本 `qnm-os-prev-202605211332/`（761M）、`QNMing_MoRE_OS_LIVE/` 软链接、发布归档 `QNMing/qnm-more-os-v0.6.0-alpha-20260601.tar.gz`。
+
+**验证**: 删除后 `743 passed`，工作副本 venv 健康，旧路径无进程占用、无代码引用。
 
 ### 4.2 修复 11 个失败测试 — DONE
 
@@ -199,7 +208,6 @@ Day 1 (Jun 5): Phase 4 — 可观测性
 ## 剩余项
 
 - **3.2 ServiceRegistry DI**: `MoRECore.registry` 已在，迁移 `get_*()` 单例到注册表（v0.7.0）
-- **4.1 版本库整合**: 删除旧版目录（手动操作，约 2GB 空间）
 - **1.2 PYTHONPATH**: 检查 `~/.zshrc` 中的 `export PYTHONPATH`，移除 `/Users/qnming/AI_Cample/`
 
 ---
