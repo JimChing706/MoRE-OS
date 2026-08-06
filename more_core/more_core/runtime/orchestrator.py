@@ -595,7 +595,11 @@ class MoRECore:
             if ctx.accumulated_steps and filtered_output:
                 from ..council.self_check import run_pipeline_self_check
 
-                report = run_pipeline_self_check(ctx.accumulated_steps, str(filtered_output))
+                report = run_pipeline_self_check(
+                    ctx.accumulated_steps,
+                    str(filtered_output),
+                    task_type=request.type,
+                )
                 self_check_report = report.to_dict()
                 if report.backfill_required:
                     self.audit.log(

@@ -16,6 +16,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..core.types import TaskType
+
+_CODE_TASK_TYPES = frozenset(
+    {
+        TaskType.CODE_GENERATION,
+        TaskType.CODE_DEBUGGING,
+        TaskType.CODE_TESTING,
+        TaskType.CODE_REVIEW,
+    }
+)
+
 
 @dataclass
 class SelfCheckReport:
@@ -44,6 +55,7 @@ class SelfCheckReport:
 def run_pipeline_self_check(
     reasoning_chain: list[Any],  # list of ReasoningStep
     final_output: str,
+    task_type: TaskType | None = None,
 ) -> SelfCheckReport:
     """对管道输出执行启发式自检。
 
@@ -51,7 +63,72 @@ def run_pipeline_self_check(
     1. 每层推理步骤的关键词是否在最终输出中出现
     2. 是否存在明显被忽略的层输出
     3. 计算覆盖度百分比
+
+    代码任务走专用分支：最终输出中出现可执行代码产物即视为覆盖完整，
+    关键词覆盖启发式对代码输出无意义（代码中不会出现“策略=balanced”这类
+    层描述词，旧逻辑会让每个代码任务固定报 0% 覆盖）。
     """
+    if task_type in _CODE_TASK_TYPES:
+        return _self_check_code(reasoning_chain, str(final_output))
+    return _self_check_text(reasoning_chain, str(final_output))
+
+
+def _self_check_code(reasoning_chain: list[Any], final_output: str) -> SelfCheckReport:
+    """Code-task self-check: success = an executable code artifact is delivered."""
+    has_code = _contains_code_artifact(final_output)
+    completeness: list[dict[str, Any]] = []
+    for step in reasoning_chain:
+        layer_id = getattr(step, "layer", "unknown")
+        if hasattr(layer_id, "value"):
+            layer_id = layer_id.value
+        desc = getattr(step, "description", "")
+        completeness.append(
+            {
+                "layer": str(layer_id),
+                "core_output": desc[:120],
+                "covered_in_final": has_code,
+                "note": "代码产物已生成" if has_code else "最终输出中未检测到可执行代码",
+            }
+        )
+    return SelfCheckReport(
+        completeness_check=completeness,
+        backfill_required=not has_code,
+        backfill_items=(
+            ["未生成代码产物（无 ```python 代码块或可编译源码）"] if not has_code else []
+        ),
+        overall_assessment=(
+            "代码产物完整" if has_code else "代码任务未产出代码: 需人工介入"
+        ),
+        coverage_pct=100.0 if has_code else 0.0,
+    )
+
+
+def _contains_code_artifact(text: str) -> bool:
+    """True when *text* carries a fenced code block or bare compilable code."""
+    if not text:
+        return False
+    lower = text.lower()
+    if "```python" in lower or "```py" in lower:
+        return True
+    if not _looks_like_python(text):
+        return False
+    try:
+        compile(text, "<self-check>", "exec")
+    except (SyntaxError, ValueError, TypeError):
+        return False
+    return True
+
+
+def _looks_like_python(text: str) -> bool:
+    lower = text.lower()
+    return any(
+        token in lower
+        for token in ("def ", "class ", "import ", "from ", "print(", "print (", "return ")
+    )
+
+
+def _self_check_text(reasoning_chain: list[Any], final_output: str) -> SelfCheckReport:
+    """Text-task self-check: keyword-coverage heuristic over reasoning steps."""
     completeness: list[dict[str, Any]] = []
     covered_count = 0
     total_steps = len(reasoning_chain)
