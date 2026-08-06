@@ -132,14 +132,17 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         if result.status == TaskStatus.SUCCESS:
             from .outputs import _auto_create_output
 
+            # When AUTO was classified, surface the resolved type in the output record.
+            resolved_type = result.metadata.get("auto_resolved_type", payload.type.value)
             _auto_create_output(
                 {
                     "task_id": result.task_id if hasattr(result, "task_id") else "task_auto",
                     "output": result.output,
-                    "type": payload.type.value,
+                    "type": resolved_type,
                     "metadata": {
-                        "task_type": payload.type.value,
+                        "task_type": resolved_type,
                         "task_label": payload.query[:50],
+                        **result.metadata,
                     },
                     "reasoning_chain": result.reasoning_chain
                     if hasattr(result, "reasoning_chain")

@@ -43,6 +43,7 @@ class TaskType(str, Enum):
     CROSS_DOMAIN_TRANSFER = "cross_domain_transfer"
     ARCHITECTURE_DESIGN = "architecture_design"
     PLUGIN_DEFINED = "plugin_defined"  # opaque; plugin carries its own sub-type
+    AUTO = "auto"  # classify from the query text at execution time
 
 
 class TaskStatus(str, Enum):

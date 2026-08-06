@@ -27,6 +27,7 @@ from ..core.types import (
     TaskRequest,
     TaskResult,
     TaskStatus,
+    TaskType,
 )
 from ..evolution.archive import EvolutionArchive
 from ..layers.base import Layer, LayerContext
@@ -311,6 +312,12 @@ class MoRECore:
     async def execute(self, request: TaskRequest) -> TaskResult:
         start = time.perf_counter()
 
+        # --- AUTO task-type resolution (zero-LLM keyword classification) ---
+        # Normalize TaskType.AUTO into a concrete type up-front so the rest of
+        # the pipeline (cache key, routing, meta-orchestrator) sees a real type.
+        if request.type is TaskType.AUTO:
+            self._resolve_auto_type(request)
+
         # --- Correlation context for structured logging ---
         req_ctx = RequestContext(
             task_id=request.id,
@@ -456,6 +463,12 @@ class MoRECore:
             except asyncio.TimeoutError:
                 status = TaskStatus.FAILED
                 output = f"task timed out after {request.timeout_s}s"
+            except asyncio.CancelledError:
+                # Provider-side cancellation (e.g. httpx internal timeout on a
+                # hung local model) must surface as a structured FAILED result,
+                # not escape as a bare 500.
+                status = TaskStatus.FAILED
+                output = "task cancelled by provider timeout"
             except GovernanceError as exc:
                 status = TaskStatus.REJECTED
                 output = f"rejected: {exc}"
@@ -596,6 +609,13 @@ class MoRECore:
         except Exception as exc:
             self.logger.warning("pipeline self-check failed for task %s: %s", request.id, exc)
 
+        metadata: dict[str, Any] = {}
+        if self_check_report:
+            metadata["self_check"] = self_check_report
+        if "auto_resolved_type" in request.context:
+            metadata["auto_resolved_type"] = request.context["auto_resolved_type"]
+            metadata["auto_confidence"] = request.context["auto_confidence"]
+
         result = TaskResult(
             task_id=request.id,
             layer=ctx.accumulated_steps[-1].layer if ctx.accumulated_steps else LayerId.L0,
@@ -607,7 +627,7 @@ class MoRECore:
             deliverable_complete=deliverable_complete,
             deliverable_missing=deliverable_missing,
             convergence_report=convergence_dict,
-            metadata={"self_check": self_check_report} if self_check_report else {},
+            metadata=metadata,
         )
 
         await self.event_bus.publish(
@@ -635,6 +655,26 @@ class MoRECore:
         if status == TaskStatus.SUCCESS and output:
             await self._request_cache.set(cache_key, "task", str(output))
         return result
+
+    def _resolve_auto_type(self, request: TaskRequest) -> None:
+        """Resolve ``TaskType.AUTO`` into a concrete type from the query text.
+
+        Mutates ``request.type`` in place and records the classification in
+        ``request.context`` so callers can observe what was decided.
+        """
+        from ..router.task_classifier import classify
+
+        result = classify(request.query)
+        request.type = result.task_type
+        request.context["auto_resolved_type"] = result.task_type.value
+        request.context["auto_confidence"] = result.confidence
+        request.context["auto_matched_keywords"] = list(result.matched_keywords)
+        self.logger.debug(
+            "auto-classified task %s as %s (conf=%.2f)",
+            request.id,
+            result.task_type.value,
+            result.confidence,
+        )
 
     def _resolve_expectation(self, request: TaskRequest) -> TaskExpectation:
         """解析任务请求中的业务预期。
@@ -753,6 +793,10 @@ class MoRECore:
 
         start = time.perf_counter()
 
+        # Resolve AUTO type so the code-detection branch below sees a real type.
+        if request.type is TaskType.AUTO:
+            self._resolve_auto_type(request)
+
         # Rate limiting
         if not await self._rate_limiter.acquire():
             yield f"data: {json.dumps({'error': 'rate limit exceeded'})}\n\n"
@@ -790,7 +834,6 @@ class MoRECore:
             # Stream L0 execution — use the same ctx.scratch that L4/L3/L1
             # populated, so code detection / plan / annotations are preserved.
             from ..layers.l0_execution import ExecutionLayer, _CODE_SYSTEM_PROMPTS, _SYSTEM_PROMPTS
-            from ..core.types import TaskType
 
             is_code = request.type in (
                 TaskType.CODE_GENERATION,

@@ -104,7 +104,26 @@ class TestTasksEndpoint:
         )
         assert resp.status_code in (200, 422)
 
-    def test_path_traversal_blocked(self, client, monkeypatch):
+    def test_execute_auto_type_is_accepted(self, client):
+        """'auto' is a valid TaskType and resolves to a concrete type."""
+        resp = client.post(
+            "/api/v1/tasks/execute",
+            json={"query": "开发电话拨号程序APP", "type": "auto"},
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["metadata"]["auto_resolved_type"] == "code_generation"
+        assert data["metadata"]["auto_confidence"] >= 0.6
+
+    def test_execute_auto_falls_back_to_nlp(self, client):
+        resp = client.post(
+            "/api/v1/tasks/execute",
+            json={"query": "你好，随便聊聊", "type": "auto"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["metadata"]["auto_resolved_type"] == "nlp_task"
+
+    def test_execute_path_traversal_blocked(self, client, monkeypatch):
         monkeypatch.setenv("MORE_API_KEY", "test-key-123")
         resp = client.post(
             "/api/v1/tasks/execute",

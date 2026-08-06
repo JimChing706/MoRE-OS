@@ -37,6 +37,9 @@ DEFAULT_PIPELINES: dict[TaskType, list[LayerId]] = {
     TaskType.NLP_TASK: [LayerId.L4, LayerId.L3, LayerId.L1, LayerId.L0],
     TaskType.ARCHITECTURE_DESIGN: [LayerId.L5, LayerId.L4, LayerId.L3, LayerId.L1, LayerId.L0],
     TaskType.PLUGIN_DEFINED: [LayerId.L4, LayerId.L1, LayerId.L0],
+    # AUTO is normalized by the orchestrator before routing; fall back to the
+    # generic NLP pipeline if it ever reaches the router unresolved.
+    TaskType.AUTO: [LayerId.L4, LayerId.L3, LayerId.L1, LayerId.L0],
 }
 
 

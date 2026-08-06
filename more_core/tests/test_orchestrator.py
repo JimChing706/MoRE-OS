@@ -15,6 +15,7 @@ from more_core.core.types import (
     LayerId,
     TaskRequest,
     TaskStatus,
+    TaskType,
 )
 from more_core.layers.base import Layer, LayerContext, LayerResult
 from more_core.router.layer_router import RoutingDecision
@@ -500,6 +501,61 @@ class TestExecute:
         report = result.metadata["self_check"]
         assert "coverage_pct" in report
         assert "completeness_check" in report
+
+    @pytest.mark.asyncio
+    async def test_provider_cancelled_error_becomes_failed_result(
+        self, core: "MoRECore",
+    ) -> None:
+        """asyncio.CancelledError from a hung provider surfaces as FAILED, not a 500."""
+
+        async def _boom(*_args: object, **_kwargs: object) -> None:
+            raise asyncio.CancelledError
+
+        core._run_pipeline = _boom  # type: ignore[method-assign]
+        result = await core.execute(TaskRequest(query="boom"))
+        assert result.status == TaskStatus.FAILED
+        assert "cancelled" in result.output.lower()
+
+
+class TestAutoTypeResolution:
+    """TaskType.AUTO is classified from the query before the pipeline runs."""
+
+    @pytest.mark.asyncio
+    async def test_auto_resolves_to_code_generation(self, core: "MoRECore") -> None:
+        req = TaskRequest(query="开发电话拨号程序APP", type=TaskType.AUTO)
+        await core.execute(req)
+        assert req.type is TaskType.CODE_GENERATION
+        assert req.context["auto_resolved_type"] == "code_generation"
+        assert req.context["auto_confidence"] >= 0.6
+
+    @pytest.mark.asyncio
+    async def test_auto_resolves_to_math(self, core: "MoRECore") -> None:
+        req = TaskRequest(query="prove that sqrt(2) is irrational", type=TaskType.AUTO)
+        await core.execute(req)
+        assert req.type is TaskType.MATH_REASONING
+
+    @pytest.mark.asyncio
+    async def test_auto_falls_back_to_nlp(self, core: "MoRECore") -> None:
+        req = TaskRequest(query="你好，随便聊聊", type=TaskType.AUTO)
+        await core.execute(req)
+        assert req.type is TaskType.NLP_TASK
+
+    @pytest.mark.asyncio
+    async def test_explicit_type_untouched(self, core: "MoRECore") -> None:
+        req = TaskRequest(query="写一个函数", type=TaskType.CODE_GENERATION)
+        await core.execute(req)
+        assert req.type is TaskType.CODE_GENERATION
+        assert "auto_resolved_type" not in req.context
+
+    @pytest.mark.asyncio
+    async def test_auto_resolution_recorded_in_result_metadata(
+        self, core: "MoRECore",
+    ) -> None:
+        result = await core.execute(
+            TaskRequest(query="开发电话拨号程序APP", type=TaskType.AUTO)
+        )
+        assert result.metadata.get("auto_resolved_type") == "code_generation"
+        assert "auto_confidence" in result.metadata
 
 
 # ===================================================================
