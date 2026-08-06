@@ -103,6 +103,23 @@ class TestExtractPython:
         text = f"```PYTHON\n{code}\n```"
         assert self._method(text) == code
 
+    def test_structured_json_code(self):
+        text = '{"code": "print(\\"hi\\")", "language": "python"}'
+        assert self._method(text) == 'print("hi")'
+
+    def test_structured_json_with_source_key(self):
+        text = '{"source": "x = 1", "language": "py"}'
+        assert self._method(text) == "x = 1"
+
+    def test_bare_code_compiles_and_is_extracted(self):
+        assert self._method("def add(a, b):\n    return a + b") == "def add(a, b):\n    return a + b"
+
+    def test_bare_code_import_extracted(self):
+        assert self._method("import math\nprint(math.pi)") == "import math\nprint(math.pi)"
+
+    def test_prose_returns_empty(self):
+        assert self._method("just plain text") == ""
+
 
 # =========================================================================
 # Unit tests — _extract_test_code
@@ -374,7 +391,16 @@ class TestRunFixLoop:
             completion_tokens=20,
         )
 
-    async def _run(self, ctx, invoke_results, *, gen_content, scope="code"):
+    async def _run(
+        self,
+        ctx,
+        invoke_results,
+        *,
+        gen_content,
+        scope="code",
+        code="print('x')",
+        assertions=None,
+    ):
         from more_core.llm.provider import LLMRequest
 
         ctx.core.tools.invoke = AsyncMock(side_effect=invoke_results)
@@ -384,7 +410,13 @@ class TestRunFixLoop:
         gen_req = LLMRequest(prompt="write code", system="sys", temperature=0.7, max_tokens=100)
         layer = ExecutionLayer()
         return await layer._run_fix_loop(
-            ctx, gen_req, provider=None, model=None, code="print('x')", scope=scope
+            ctx,
+            gen_req,
+            provider=None,
+            model=None,
+            code=code,
+            scope=scope,
+            assertions=assertions,
         )
 
     @pytest.mark.asyncio
@@ -478,6 +510,120 @@ class TestRunFixLoop:
             gen_content="```python\nx = 1\n```",
         )
         assert result.success
+
+    # --- assertion-based behavioural verification (TDD-style) ------------
+
+    @pytest.mark.asyncio
+    async def test_assertions_reject_code_that_runs_but_fails(self):
+        """Code that runs yet violates an acceptance assertion triggers a fix round."""
+        ctx = self._make_ctx()
+        result, added_in, added_out = await self._run(
+            ctx,
+            [self._sbx(False, error="AssertionError"), self._sbx(True)],
+            gen_content="```python\nx = 2\n```",
+            code="x = 1",
+            assertions=["x == 2"],
+        )
+        assert result.success
+        assert ctx.scratch["code_fix_iterations"] == 1
+        assert ctx.scratch["code_verified"] is True
+        assert ctx.core.tools.invoke.await_count == 2
+        assert ctx.core.llm.generate.await_count == 1
+        fix_prompt = ctx.core.llm.generate.await_args.args[0].prompt
+        assert "AssertionError" in fix_prompt
+
+    @pytest.mark.asyncio
+    async def test_assertions_pass_without_extra_round(self):
+        ctx = self._make_ctx()
+        result, added_in, added_out = await self._run(
+            ctx,
+            [self._sbx(True)],
+            gen_content="n/a",
+            code="x = 1",
+            assertions=["x == 1"],
+        )
+        assert result.success
+        assert ctx.scratch["code_fix_iterations"] == 0
+        assert ctx.scratch["code_verified"] is True
+        assert ctx.core.tools.invoke.await_count == 1
+        assert ctx.core.llm.generate.await_count == 0
+
+    @pytest.mark.asyncio
+    async def test_assertions_exhaust_rounds_on_stubborn_failure(self):
+        ctx = self._make_ctx()
+        always_fail = [self._sbx(False, error="AssertionError: x != 2")] * 4
+        result, _, _ = await self._run(
+            ctx,
+            always_fail,
+            gen_content="```python\nx = 1\n```",
+            code="x = 1",
+            assertions=["x == 2"],
+        )
+        assert not result.success
+        assert "code_verified" not in ctx.scratch
+
+    @pytest.mark.asyncio
+    async def test_no_assertions_keeps_run_only_semantics(self):
+        ctx = self._make_ctx()
+        result, _, _ = await self._run(ctx, [self._sbx(True)], gen_content="n/a")
+        assert result.success
+        assert "code_verified" not in ctx.scratch
+        assert ctx.core.tools.invoke.await_count == 1
+
+    # --- deterministic repair + convergence guard (BPR D) ---------------
+
+    @pytest.mark.asyncio
+    async def test_deterministic_repair_avoids_llm_round(self):
+        """Indentation error repaired statically → no LLM round is burned."""
+        ctx = self._make_ctx()
+        indented = "    print('hi')"
+        result, added_in, added_out = await self._run(
+            ctx,
+            [self._sbx(False, error="IndentationError"), self._sbx(True)],
+            gen_content="n/a",
+            code=indented,
+        )
+        assert result.success
+        assert ctx.scratch["code_fix_deterministic"] is True
+        assert ctx.scratch["code_fix_iterations"] == 0
+        assert added_in == 0 and added_out == 0
+        assert ctx.core.tools.invoke.await_count == 2
+        assert ctx.core.llm.generate.await_count == 0
+        assert ctx.scratch["code_fix_output"] == "print('hi')"
+
+    @pytest.mark.asyncio
+    async def test_stops_early_on_stagnation(self):
+        """Identical code + identical error for 2 rounds → early exit."""
+        ctx = self._make_ctx()
+        always_fail = [self._sbx(False, error="boom")] * 4
+        result, _, _ = await self._run(
+            ctx,
+            always_fail,
+            gen_content="```python\nx = 1\n```",
+            code="x = 1",
+        )
+        assert not result.success
+        assert ctx.scratch["code_fix_stagnant"] is True
+        assert ctx.scratch["code_fix_iterations"] == 2
+        assert ctx.core.llm.generate.await_count == 2
+        assert ctx.core.tools.invoke.await_count == 3
+        converged = [
+            c for c in ctx.core.audit.log.call_args_list
+            if c.kwargs.get("action") == "code_fix_converged"
+        ]
+        assert len(converged) == 1
+
+    def test_deterministic_fix_leaves_valid_code_unchanged(self):
+        assert ExecutionLayer._deterministic_fix("print('x')") == "print('x')"
+        assert ExecutionLayer._deterministic_fix("x = 1\nprint(x)") == "x = 1\nprint(x)"
+
+    def test_deterministic_fix_dedents_whole_block(self):
+        code = "    def foo():\n        return 1\n"
+        assert ExecutionLayer._deterministic_fix(code) == "def foo():\n    return 1"
+
+    def test_deterministic_fix_trims_truncation(self):
+        code = "x = 1\nprint(x\n"
+        assert ExecutionLayer._deterministic_fix(code) == "x = 1"
 
 
 # =========================================================================

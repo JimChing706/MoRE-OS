@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from pathlib import Path
 
 from ..core.types import LayerId, TaskType
 from ..core.unicode_utils import detect_language, is_predominantly_cjk
@@ -61,6 +62,10 @@ _MAX_CODE_CONTINUITY_ROUNDS = 3
 # loop.  When sandbox execution fails, the error is fed back to the LLM
 # and a fixed version is regenerated up to this many times.
 _MAX_CODE_FIX_ROUNDS = 3
+
+# Consecutive LLM fix rounds that make no real progress (identical code and
+# identical error) before the loop terminates early — convergence guard.
+_MAX_CODE_STAGNANT_ROUNDS = 2
 
 # Patterns that indicate the LLM is asking a clarification question
 # rather than generating code.  Multi-language support.
@@ -189,6 +194,13 @@ class ExecutionLayer(Layer):
                 "To call a tool wrap the JSON in <tool_call>{...}</tool_call> tags.\n"
                 + json.dumps(tools_json, indent=2, ensure_ascii=False)
             )
+
+        # Repo-aware context for code tasks (repo map injection, BPR B).
+        if is_code_task:
+            repo_ctx = self._build_repo_context(ctx)
+            if repo_ctx:
+                system_prompt += "\n\n" + repo_ctx
+                ctx.scratch["repo_context_injected"] = True
 
         # Inject L3 inference annotations into system_prompt ONLY (single injection).
         # Previously this was double-injected into both effective_prompt and
@@ -320,6 +332,7 @@ class ExecutionLayer(Layer):
             if code:
                 is_safe, violations = self._check_code_safety(code, ctx)
                 if is_safe:
+                    assertions = self._resolve_assertions(req.context)
                     sbx_result, fix_in, fix_out = await self._run_fix_loop(
                         ctx,
                         gen_req,
@@ -327,6 +340,7 @@ class ExecutionLayer(Layer):
                         model,
                         code,
                         scope="code",
+                        assertions=assertions,
                     )
                     total_in += fix_in
                     total_out += fix_out
@@ -368,6 +382,8 @@ class ExecutionLayer(Layer):
             desc_parts.append("tool dispatch")
         if ctx.scratch.get("sandbox_result"):
             desc_parts.append("code executed")
+        if ctx.scratch.get("code_verified"):
+            desc_parts.append("assertions verified")
         if ctx.scratch.get("test_result"):
             desc_parts.append("tests run")
         if ctx.scratch.get("code_blocked") or ctx.scratch.get("test_blocked"):
@@ -375,9 +391,13 @@ class ExecutionLayer(Layer):
         for scope in ("code", "test"):
             iterations = ctx.scratch.get(f"{scope}_fix_iterations", 0)
             if iterations:
-                desc_parts.append(
-                    f"{scope} fix loop ({iterations}/{_MAX_CODE_FIX_ROUNDS})"
-                )
+                desc_parts.append(f"{scope} fix loop ({iterations}/{_MAX_CODE_FIX_ROUNDS})")
+            if ctx.scratch.get(f"{scope}_fix_deterministic"):
+                desc_parts.append(f"{scope} deterministic repair")
+            if ctx.scratch.get(f"{scope}_fix_stagnant"):
+                desc_parts.append(f"{scope} fix stalled")
+        if ctx.scratch.get("repo_context_injected"):
+            desc_parts.append("repo context")
         if ctx.scratch.get("subtasks_executed"):
             desc_parts.append(f"subtask iteration ({ctx.scratch['subtasks_executed']})")
         annotation_guidance = self._build_annotation_guidance(
@@ -639,6 +659,58 @@ class ExecutionLayer(Layer):
 
     @staticmethod
     def _extract_python(text: str) -> str:
+        """Extract runnable Python from LLM output.
+
+        Multi-strategy extraction (frontier structured-output pattern):
+        1. **Structured JSON** — an object like ``{"code": "...", "language": "python"}``.
+        2. **Fenced blocks** (`````python```` / `````py````).
+        3. **Bare code** — a body that reads like a program and compiles.
+
+        Returns ``""`` when no strategy yields runnable code.
+        """
+        if not text:
+            return ""
+        code = ExecutionLayer._extract_json_code(text)
+        if code:
+            return code
+        code = ExecutionLayer._extract_fenced_python(text)
+        if code:
+            return code
+        return ExecutionLayer._extract_bare_python(text)
+
+    @staticmethod
+    def _resolve_assertions(context: dict[str, Any]) -> list[str] | None:
+        """Read and normalise acceptance assertions from the task context.
+
+        Accepts ``context["assertions"]`` as a list of strings (or list items
+        that stringify to a non-empty assertion).  Returns ``None`` when no
+        assertions are provided so the caller keeps the run-only behaviour.
+        """
+        raw = context.get("assertions")
+        if not isinstance(raw, list) or not raw:
+            return None
+        cleaned = [str(item).strip() for item in raw if str(item).strip()]
+        return cleaned or None
+
+    @staticmethod
+    def _extract_json_code(text: str) -> str:
+        """Extract code from a standalone JSON object carrying a ``code`` key."""
+        s = text.strip()
+        if not (s.startswith("{") and s.endswith("}")):
+            return ""
+        try:
+            obj = json.loads(s)
+        except json.JSONDecodeError:
+            return ""
+        if not isinstance(obj, dict):
+            return ""
+        code = obj.get("code") or obj.get("python") or obj.get("source")
+        if isinstance(code, str) and code.strip():
+            return code.strip()
+        return ""
+
+    @staticmethod
+    def _extract_fenced_python(text: str) -> str:
         lower = text.lower()
         for fence in ("```python", "```py"):
             idx = lower.find(fence)
@@ -648,6 +720,19 @@ class ExecutionLayer(Layer):
                 if end > start:
                     return text[start:end].strip()
         return ""
+
+    @staticmethod
+    def _extract_bare_python(text: str) -> str:
+        candidate = text.strip()
+        if not candidate or "```" in candidate:
+            return ""
+        if not _looks_like_python(candidate):
+            return ""
+        try:
+            compile(candidate, "<l0-bare>", "exec")
+        except (SyntaxError, ValueError):
+            return ""
+        return candidate
 
     @staticmethod
     def _extract_test_code(text: str) -> str:
@@ -703,9 +788,24 @@ class ExecutionLayer(Layer):
         code: str,
         *,
         scope: str,
+        assertions: list[str] | None = None,
     ) -> tuple[ToolResult, int, int]:
         """Execute *code* in the sandbox; on failure, feed the error back to
         the LLM and regenerate a fixed version.
+
+        Closed-loop control (BPR D):
+        1. **Deterministic repair first** — syntax-level issues are repaired
+           statically via :meth:`_deterministic_fix` before any LLM round is
+           burned; the LLM only handles semantic errors.
+        2. **Convergence guard** — the loop stops early when consecutive LLM
+           rounds make no real progress (identical code + identical error),
+           surfacing ``ctx.scratch[f"{scope}_fix_stagnant"]``.
+
+        When *assertions* is provided, each iteration runs the generated code
+        with the acceptance assertions appended (TDD-style): a run that exits
+        cleanly but violates an assertion is treated as a failure whose
+        message feeds the fix loop, so "runs without crashing" is no longer
+        the success bar for code that must implement a stated behaviour.
 
         Loops up to ``_MAX_CODE_FIX_ROUNDS`` times.  When the final attempt
         succeeds, the regenerated output is stored under
@@ -714,14 +814,44 @@ class ExecutionLayer(Layer):
 
         Returns ``(last_sandbox_result, added_input_tokens, added_output_tokens)``.
         """
-        sbx_result = await ctx.core.tools.invoke(
-            "python_exec", {"code": code}, user_id=ctx.user_id
-        )
+
+        async def _run(program: str) -> ToolResult:
+            if assertions:
+                program = self._build_verification_program(program, assertions)
+            result: ToolResult = await ctx.core.tools.invoke(
+                "python_exec", {"code": program}, user_id=ctx.user_id
+            )
+            return result
+
+        def _error_key(sbx: ToolResult) -> str:
+            return (sbx.error or str(sbx.output or ""))[:200]
+
+        sbx_result = await _run(code)
         ctx.scratch[f"{scope}_fix_iterations"] = 0
         self._audit_fix_iteration(ctx, scope, round_idx=0, sbx=sbx_result)
         if sbx_result.success:
+            if assertions:
+                ctx.scratch[f"{scope}_verified"] = True
             return sbx_result, 0, 0
 
+        # ── D1: deterministic repair before burning an LLM round ──────────
+        repaired = self._deterministic_fix(code)
+        if repaired != code:
+            ctx.scratch[f"{scope}_fix_deterministic"] = True
+            code = repaired
+            sbx_result = await _run(code)
+            ctx.scratch[f"{scope}_fix_iterations"] = 0
+            self._audit_fix_iteration(ctx, scope, round_idx=0, sbx=sbx_result)
+            if sbx_result.success:
+                ctx.scratch[f"{scope}_fix_output"] = code
+                if assertions:
+                    ctx.scratch[f"{scope}_verified"] = True
+                return sbx_result, 0, 0
+
+        # ── LLM fix loop with convergence guard ───────────────────────────
+        prev_code = code
+        prev_error = _error_key(sbx_result)
+        stagnant = 0
         added_in, added_out = 0, 0
         fixed_output = ""
         for round_idx in range(1, _MAX_CODE_FIX_ROUNDS + 1):
@@ -731,9 +861,7 @@ class ExecutionLayer(Layer):
                 temperature=0.4,
                 max_tokens=gen_req.max_tokens,
             )
-            in_tok, out_tok, fixed_output = await self._do_generate(
-                ctx, fix_req, provider, model
-            )
+            in_tok, out_tok, fixed_output = await self._do_generate(ctx, fix_req, provider, model)
             added_in += in_tok
             added_out += out_tok
             new_code = self._extract_python(fixed_output)
@@ -743,18 +871,130 @@ class ExecutionLayer(Layer):
             if not is_safe:
                 ctx.scratch[f"{scope}_fix_blocked"] = violations
                 break
-            sbx_result = await ctx.core.tools.invoke(
-                "python_exec", {"code": new_code}, user_id=ctx.user_id
-            )
+            repaired_new = self._deterministic_fix(new_code)
+            if repaired_new != new_code:
+                ctx.scratch[f"{scope}_fix_deterministic"] = True
+                new_code = repaired_new
+            sbx_result = await _run(new_code)
             ctx.scratch[f"{scope}_fix_iterations"] = round_idx
             self._audit_fix_iteration(ctx, scope, round_idx=round_idx, sbx=sbx_result)
             code = new_code
             if sbx_result.success:
                 break
+            error_key = _error_key(sbx_result)
+            if new_code == prev_code and error_key == prev_error:
+                stagnant += 1
+            else:
+                stagnant = 0
+            prev_code, prev_error = new_code, error_key
+            if stagnant >= _MAX_CODE_STAGNANT_ROUNDS:
+                ctx.scratch[f"{scope}_fix_stagnant"] = True
+                try:
+                    ctx.core.audit.log(
+                        actor="l0_execution",
+                        action="code_fix_converged",
+                        entity=scope,
+                        task_id=ctx.request.id,
+                        round=round_idx,
+                        error=(sbx_result.error or "")[:300],
+                    )
+                except Exception:
+                    pass
+                break
 
         if sbx_result.success:
             ctx.scratch[f"{scope}_fix_output"] = fixed_output
+            if assertions:
+                ctx.scratch[f"{scope}_verified"] = True
         return sbx_result, added_in, added_out
+
+    @staticmethod
+    def _deterministic_fix(code: str) -> str:
+        """Deterministic syntax repair with no LLM involvement (BPR D1).
+
+        Only touches syntax/encoding, never semantics:
+        1. BOM / CRLF normalization.
+        2. Whole-block de-indent (entire program accidentally indented).
+        3. Truncation trim — drop trailing junk until a compiling prefix remains.
+
+        Returns the repaired code, or the original unchanged when no safe
+        repair applies (semantic errors must go to the LLM).
+        """
+
+        def _compiles(prog: str) -> bool:
+            try:
+                compile(prog, "<l0-deterministic>", "exec")
+                return True
+            except (SyntaxError, ValueError, TypeError):
+                return False
+
+        # 1. BOM / CRLF normalization.
+        normalized = code.lstrip("\ufeff").replace("\r\n", "\n")
+        if normalized != code and _compiles(normalized):
+            return normalized
+
+        # 2. Whole-block de-indent: the entire program is accidentally indented.
+        if not _compiles(normalized):
+            lines = normalized.splitlines()
+            first_idx = next((i for i, ln in enumerate(lines) if ln.strip()), None)
+            if first_idx is not None:
+                lead = lines[first_idx][: len(lines[first_idx]) - len(lines[first_idx].lstrip())]
+                if lead:
+                    dedented = "\n".join(
+                        ln[len(lead) :] if ln.startswith(lead) else ln.lstrip() for ln in lines
+                    )
+                    if _compiles(dedented):
+                        return dedented
+
+        # 3. Truncation trim: drop trailing junk lines until a compiling
+        #    prefix that preserves the program header remains.
+        if not _compiles(normalized):
+            lines = normalized.splitlines()
+            first_line = next((ln.strip() for ln in lines if ln.strip()), "")
+            for drop in range(1, min(len(lines), 40)):
+                candidate = "\n".join(lines[:-drop])
+                if not candidate.strip():
+                    break
+                if _compiles(candidate) and candidate.strip().startswith(first_line):
+                    return candidate
+
+        return code
+
+    @staticmethod
+    def _build_repo_context(ctx: LayerContext) -> str:
+        """Repo-aware context block for code generation (BPR B).
+
+        Injects a compact map of the project's modules, top-level symbols,
+        and HTTP routes so the LLM can reference existing code.  Returns ""
+        when the feature is disabled, the root is unavailable, or the scan
+        finds nothing — callers append it unconditionally.
+        """
+        try:
+            settings = getattr(ctx.core, "settings", None)
+            if getattr(settings, "enable_codegen_context", None) is not True:
+                return ""
+            root = getattr(ctx.core, "project_root", None)
+            if not isinstance(root, (str, Path)):
+                return ""
+            from ..codegen.context import build_repo_context
+
+            return build_repo_context(root)
+        except Exception as exc:  # pragma: no cover - defensive
+            _log.debug("repo context unavailable: %s", exc)
+            return ""
+
+    @staticmethod
+    def _build_verification_program(code: str, assertions: list[str]) -> str:
+        """Wrap *code* with acceptance assertions into a single runnable program.
+
+        The generated code is evaluated first, then each assertion executes in
+        the same namespace.  An ``AssertionError`` marks the whole run failed
+        so the error message can be fed back to the fix loop.
+        """
+        parts = [code.rstrip(), "\n\n# === L0 acceptance assertions ===\n"]
+        for assertion in assertions:
+            parts.append(f"assert ({assertion}), {assertion!r}")
+        return "\n".join(parts)
 
     @staticmethod
     def _build_fix_prompt(
@@ -824,6 +1064,20 @@ class ExecutionLayer(Layer):
 
 
 # ── Continuity directives (injected when LLM asks a question instead of generating) ──
+
+
+def _looks_like_python(text: str) -> bool:
+    """Conservative pre-filter: is *text* likely a Python program?
+
+    Used before attempting ``compile()`` so plain prose is skipped cheaply.
+    The compile gate remains the authoritative check.
+    """
+    lower = text.lower()
+    return any(
+        token in lower
+        for token in ("def ", "class ", "import ", "from ", "print(", "print (", "return ")
+    )
+
 
 _CONTINUITY_DIRECTIVES: dict[str, str] = {
     "zh": (

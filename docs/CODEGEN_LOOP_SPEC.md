@@ -102,3 +102,53 @@ BPR 的 Agentic Loop 已下沉为运行时管道内的**自动闭环**，不依�
 - `test_orchestrator.py::test_self_check_written_to_metadata`
 - `test_benchmark.py`：默认套件种子 + code_fib 命中
 - `make lint` / `make typecheck` 全绿，`make test` → **756 passed**（此前 743）
+
+## 9. 链路系统评估与改进（v0.9.10, 2026-08-06）
+
+### 9.1 评估结论（对标前沿高效代码生成 LLM 链路）
+
+| 环节 | 现状 | 对标标准（AlphaCodium / SWE-agent / TDD codegen） | 差距 |
+|------|------|----------------|------|
+| 任务分类 | 关键词 AUTO→code_generation | 零成本确定性分类 | ✅ 已对齐 |
+| 规划 | L4 难度估计 + LLM/council 子任务 | plan-then-code | ✅ 已对齐 |
+| 生成 | code_primary 链 + 并行竞速 | 任务感知模型路由 | ✅ 已对齐 |
+| 提取 | 仅 ```python 围栏正则 | 结构化输出 JSON | ❌ 脆弱 |
+| 验证 | 沙箱"能跑"即成功 | **行为验证：断言/测试全绿** | ❌ 最大差距 |
+| 自检 | 关键词覆盖启发式 | 任务类型感知 | ❌ 代码任务固定报 0% |
+
+### 9.2 改进（本轮落地）
+
+1. **多策略代码提取**（`l0_execution.py:_extract_python`）— 结构化 JSON `{"code":...}` → 围栏 → 可编译裸代码三级回退，修复"中英文夹杂输出导致漏提取"。
+2. **断言验收（TDD 式行为验证）**（`_run_fix_loop(assertions=...)`）— 请求 `context["assertions"]` 注入验收断言，生成代码与断言合并为单程序执行；断言失败即视为失败并回灌 LLM 修复循环，成功标准从"能跑"升级为"行为正确"。
+3. **任务类型感知自检**（`council/self_check.py:run_pipeline_self_check(task_type=)`）— 代码任务有可执行产物即视为 100% 覆盖，修复旧逻辑对代码输出固定 0% 覆盖的误报。
+
+### 9.3 验证
+
+- `test_l0_execution.py`：新增提取 6 例 + 断言修复循环 4 例
+- `test_self_check.py`：新增文本/代码双分支 10 例
+- `make test` → **818 passed**（此前 799），`make lint` / `make typecheck` 全绿
+- 实跑：`is_even` 任务（auto→code_generation，3 断言全过）L0=`code executed + assertions verified`，conf=0.95，self_check=`100.0 / 代码产物完整`
+
+## 10. 流程再造：仓库上下文注入 + 闭环控制（B/D，2026-08-06）
+
+在 §9 链路改进基础上做流程再造，方向 B（仓库上下文注入）与 D（闭环控制）。
+
+### 10.1 B — 仓库感知生成（`codegen/context.py`）
+
+- `build_repo_context(project_root, max_files=30)`：扫描项目根，产出紧凑仓库地图（模块相对路径 :: 顶层 def/class/路由），输出 `<repo_context>` 块；任何失败/无模块 → 空串，可无条件追加。
+- 注入点：`l0_execution.py:process()` 对 code 类任务，在 tool schemas 之后向 system prompt 追加仓库地图；层描述出现 `repo context`。
+- 开关：`MORE_CODEGEN_CONTEXT`（默认 1）；`Settings.project_root` 默认取 CWD（`make start` 即仓库根），文件工具根固定化，行为与原先 cwd 回退一致。
+- 无项目根（如单测 core fixture）→ 注入跳过，测试零耦合。
+
+### 10.2 D — 闭环控制（`l0_execution.py`）
+
+1. **确定性修复前置**（`_deterministic_fix`）：纯静态修复，仅触碰语法/编码层，绝不改语义——
+   BOM/CRLF 归一、整块去缩进（程序整体意外缩进）、截断修剪（尾部杂文/未闭合截断）。语法类错误零 LLM 轮修复；语义错误仍交给 LLM。
+2. **收敛检测**：`_MAX_CODE_STAGNANT_ROUNDS=2`，连续两轮代码+错误均不变 → 提前终止，置 `{scope}_fix_stagnant`，审计 `code_fix_converged`，层描述出现 `fix stalled`。
+- 修复成功时 `{scope}_fix_output` 替换最终 output；层描述含 `deterministic repair`。
+
+### 10.3 验证
+
+- `test_l0_execution.py`：新增确定性修复 4 例（含零 LLM 轮端到端 + 停滞提前终止）+ `_deterministic_fix` 3 例
+- `test_codegen_context.py`：新增 7 例（空根/模块扫描/噪声目录/文件数上限/L0 注入开关）
+- `make test` → **830 passed**，`make lint` / `make typecheck` 全绿（181 源文件）

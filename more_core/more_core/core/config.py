@@ -97,6 +97,9 @@ class Settings(BaseModel):
     # e.g. {"nlp_task": ["L4", "L0"]} to skip symbolic + orchestration
     custom_pipelines: dict[str, list[str]] | None = None
 
+    # Code generation — repo-aware context injection (repo map in L0 prompts)
+    enable_codegen_context: bool = True
+
     # Governance
     strict_ontology: bool = True
     audit_log_path: str = "logs/audit.jsonl"
@@ -300,8 +303,10 @@ class Settings(BaseModel):
             == "1",
             enable_metacognition=os.getenv("MORE_ENABLE_METACOGNITION", "0") == "1",
             enable_symbolic=os.getenv("MORE_ENABLE_SYMBOLIC", "1") == "1",
+            enable_codegen_context=os.getenv("MORE_CODEGEN_CONTEXT", "1") == "1",
             strict_ontology=os.getenv("MORE_STRICT_ONTOLOGY", "1") == "1",
             audit_log_path=os.getenv("MORE_AUDIT_LOG", "logs/audit.jsonl"),
             sandbox_timeout_s=int(os.getenv("MORE_SANDBOX_TIMEOUT", "20")),
             sandbox_memory_mb=int(os.getenv("MORE_SANDBOX_MEM_MB", "512")),
+            project_root=os.getenv("MORE_PROJECT_ROOT") or str(Path.cwd().resolve()),
         )
