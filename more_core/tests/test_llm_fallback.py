@@ -177,12 +177,32 @@ def test_dynamic_router_resolves_alias():
     assert "qwen" in alias.model.lower()
 
 
-def test_dynamic_router_get_binding_default():
+def test_dynamic_router_get_binding_default(monkeypatch):
+    # Isolate from env overrides (MORE_TASK_MODEL_*) so the static default is tested.
+    monkeypatch.delenv("MORE_TASK_MODEL_CODE_GENERATION", raising=False)
     mgr = _FakeLLMManagerForRouting()
     router = DynamicModelRouter(mgr)
     binding = router.get_binding(TaskType.CODE_GENERATION)
     assert binding.provider == "lmstudio"
     assert binding.model == "gemma-4-coder"  # 27B 家族的 coder 变体
+
+
+def test_dynamic_router_env_override(monkeypatch):
+    monkeypatch.setenv("MORE_TASK_MODEL_CODE_GENERATION", "ollama:qwen2.5:7b")
+    mgr = _FakeLLMManagerForRouting()
+    router = DynamicModelRouter(mgr)
+    binding = router.get_binding(TaskType.CODE_GENERATION)
+    assert binding.provider == "ollama"
+    assert binding.model == "qwen2.5:7b"
+
+
+def test_code_primary_chain_is_ollama_first(monkeypatch):
+    monkeypatch.delenv("MORE_TASK_MODEL_CODE_GENERATION", raising=False)
+    mgr = _FakeLLMManagerForRouting({"ollama": True, "lmstudio": True})
+    router = DynamicModelRouter(mgr)
+    chain = router.get_fallback_chain(TaskType.CODE_GENERATION)
+    assert chain[0].provider == "ollama"
+    assert chain[0].model == "qwen2.5:7b"
 
 
 def test_dynamic_router_select_provider():

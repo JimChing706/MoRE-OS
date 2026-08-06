@@ -90,12 +90,12 @@ FALLBACK_CHAINS: dict[str, list[ModelBinding]] = {
         ModelBinding(provider="lmstudio", model=DEFAULT_LM_FALLBACK_MODEL),
         ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL),
     ],
-    # 代码任务 → coder + 通用 27B race
+    # 代码任务 → ollama 兜底优先（快、稳定），LM Studio 27B 变体兜底
     "code_primary": [
+        ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL),
         ModelBinding(provider="lmstudio", model=DEFAULT_LM_CODER_MODEL),
         ModelBinding(provider="lmstudio", model=DEFAULT_LM_MODEL),
         ModelBinding(provider="lmstudio", model=DEFAULT_LM_FALLBACK_MODEL),
-        ModelBinding(provider="ollama", model=DEFAULT_OLLAMA_MODEL),
     ],
 }
 
