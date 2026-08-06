@@ -80,7 +80,7 @@ class TestExtractPython:
         assert self._method(text) == code
 
     def test_extract_py_fence(self):
-        code = 'x = 1'
+        code = "x = 1"
         text = f"Text\n```py\n{code}\n```\nend"
         assert self._method(text) == code
 
@@ -112,7 +112,9 @@ class TestExtractPython:
         assert self._method(text) == "x = 1"
 
     def test_bare_code_compiles_and_is_extracted(self):
-        assert self._method("def add(a, b):\n    return a + b") == "def add(a, b):\n    return a + b"
+        assert (
+            self._method("def add(a, b):\n    return a + b") == "def add(a, b):\n    return a + b"
+        )
 
     def test_bare_code_import_extracted(self):
         assert self._method("import math\nprint(math.pi)") == "import math\nprint(math.pi)"
@@ -131,27 +133,27 @@ class TestExtractTestCode:
         self._method = staticmethod(ExecutionLayer._extract_test_code).__func__
 
     def test_extract_python_test_fence(self):
-        code = 'def test_hello(): pass'
+        code = "def test_hello(): pass"
         text = f"```python test\n{code}\n```"
         assert self._method(text) == code
 
     def test_extract_python_pytest_fence(self):
-        code = 'def test_foo(): assert 1'
+        code = "def test_foo(): assert 1"
         text = f"```python pytest\n{code}\n```"
         assert self._method(text) == code
 
     def test_extract_python_unittest_fence(self):
-        code = 'class TestFoo(unittest.TestCase): pass'
+        code = "class TestFoo(unittest.TestCase): pass"
         text = f"```python unittest\n{code}\n```"
         assert self._method(text) == code
 
     def test_fallback_to_python_fence_with_test_keyword(self):
-        code = 'def test_something(): assert True'
+        code = "def test_something(): assert True"
         text = f"```python\n{code}\n```"
         assert self._method(text) == code
 
     def test_fallback_with_pytest_import(self):
-        code = 'import pytest\ndef test_x(): pass'
+        code = "import pytest\ndef test_x(): pass"
         text = f"```python\n{code}\n```"
         assert self._method(text) == code
 
@@ -184,12 +186,14 @@ class TestComputeConfidence:
 
     def test_sandbox_success_returns_high_confidence(self):
         from more_core.tools.registry import ToolResult
+
         sbx = ToolResult(tool="python_exec", success=True, output="ok")
         ctx = self._make_ctx({"sandbox_result": sbx})
         assert ExecutionLayer._compute_confidence(ctx) == 0.95
 
     def test_sandbox_failure_returns_low_confidence(self):
         from more_core.tools.registry import ToolResult
+
         sbx = ToolResult(tool="python_exec", success=False, output="fail", error="err")
         ctx = self._make_ctx({"sandbox_result": sbx})
         assert ExecutionLayer._compute_confidence(ctx) == 0.2
@@ -204,6 +208,7 @@ class TestComputeConfidence:
 
     def test_llm_confidence_averaged_with_previous_steps(self):
         from more_core.core.types import ReasoningStep
+
         steps = [
             ReasoningStep(id=1, layer=LayerId.L1, description="x", duration_ms=1.0, confidence=0.9),
             ReasoningStep(id=2, layer=LayerId.L3, description="y", duration_ms=1.0, confidence=0.7),
@@ -214,6 +219,7 @@ class TestComputeConfidence:
 
     def test_no_sandbox_no_llm_conf_falls_back_to_step_average(self):
         from more_core.core.types import ReasoningStep
+
         steps = [
             ReasoningStep(id=1, layer=LayerId.L1, description="x", duration_ms=1.0, confidence=0.8),
             ReasoningStep(id=2, layer=LayerId.L3, description="y", duration_ms=1.0, confidence=0.6),
@@ -279,9 +285,11 @@ class TestCheckCodeSafety:
         if l3_available:
             if l3_has_rule_engine:
                 from more_core.ontology.rule_engine import RuleEngine
+
                 l3 = MagicMock()
                 l3.rule_engine = RuleEngine()
                 from more_core.ontology.rule_engine import default_governance_rules
+
                 for r in default_governance_rules():
                     l3.rule_engine.add_rule(r)
             else:
@@ -422,9 +430,7 @@ class TestRunFixLoop:
     @pytest.mark.asyncio
     async def test_success_on_first_exec_no_fix(self):
         ctx = self._make_ctx()
-        result, added_in, added_out = await self._run(
-            ctx, [self._sbx(True)], gen_content="n/a"
-        )
+        result, added_in, added_out = await self._run(ctx, [self._sbx(True)], gen_content="n/a")
         assert result.success
         assert added_in == 0 and added_out == 0
         assert ctx.scratch["code_fix_iterations"] == 0
@@ -456,9 +462,7 @@ class TestRunFixLoop:
 
         ctx = self._make_ctx()
         always_fail = [self._sbx(False, error="boom")] * (_MAX_CODE_FIX_ROUNDS + 1)
-        result, _, _ = await self._run(
-            ctx, always_fail, gen_content="```python\nx = 1\n```"
-        )
+        result, _, _ = await self._run(ctx, always_fail, gen_content="```python\nx = 1\n```")
         assert not result.success
         assert ctx.scratch["code_fix_iterations"] == _MAX_CODE_FIX_ROUNDS
         assert "code_fix_output" not in ctx.scratch
@@ -494,7 +498,9 @@ class TestRunFixLoop:
             gen_content="```python\nx = 1\n```",
         )
         calls = [
-            c for c in ctx.core.audit.log.call_args_list if c.kwargs.get("action") == "code_fix_iteration"
+            c
+            for c in ctx.core.audit.log.call_args_list
+            if c.kwargs.get("action") == "code_fix_iteration"
         ]
         assert len(calls) == 2
         assert calls[0].kwargs["round"] == 0 and calls[0].kwargs["success"] is False
@@ -506,7 +512,8 @@ class TestRunFixLoop:
         ctx = self._make_ctx()
         ctx.core.audit.log = MagicMock(side_effect=RuntimeError("audit down"))
         result, _, _ = await self._run(
-            ctx, [self._sbx(False, error="boom"), self._sbx(True)],
+            ctx,
+            [self._sbx(False, error="boom"), self._sbx(True)],
             gen_content="```python\nx = 1\n```",
         )
         assert result.success
@@ -608,7 +615,8 @@ class TestRunFixLoop:
         assert ctx.core.llm.generate.await_count == 2
         assert ctx.core.tools.invoke.await_count == 3
         converged = [
-            c for c in ctx.core.audit.log.call_args_list
+            c
+            for c in ctx.core.audit.log.call_args_list
             if c.kwargs.get("action") == "code_fix_converged"
         ]
         assert len(converged) == 1
@@ -624,6 +632,110 @@ class TestRunFixLoop:
     def test_deterministic_fix_trims_truncation(self):
         code = "x = 1\nprint(x\n"
         assert ExecutionLayer._deterministic_fix(code) == "x = 1"
+
+    # --- best-of-k + differential validation (BPR A) ----------------------
+
+    async def _run_k(
+        self,
+        ctx,
+        gen_contents,
+        invoke_results,
+        *,
+        k=2,
+        scope="code",
+        code="x = 1",
+        assertions=None,
+    ):
+        from more_core.llm.provider import LLMRequest
+
+        ctx.core.tools.invoke = AsyncMock(side_effect=invoke_results)
+        ctx.core.llm.generate = AsyncMock(side_effect=[self._llm_response(c) for c in gen_contents])
+        ctx.core.get_layer.side_effect = KeyError("L3 not found")
+        ctx.core.audit.log = MagicMock()
+        gen_req = LLMRequest(prompt="write code", system="sys", temperature=0.7, max_tokens=100)
+        return await ExecutionLayer()._run_fix_loop(
+            ctx,
+            gen_req,
+            provider=None,
+            model=None,
+            code=code,
+            scope=scope,
+            assertions=assertions,
+            num_candidates=k,
+        )
+
+    @pytest.mark.asyncio
+    async def test_best_of_k_picks_passing_candidate(self):
+        """A failing first candidate does not burn a fix round when a sibling passes."""
+        ctx = self._make_ctx()
+        good = "```python\nprint('good')\n```"
+        result, added_in, added_out = await self._run_k(
+            ctx,
+            ["```python\nprint(1 / 0)\n```", good],
+            [self._sbx(False, error="ZeroDivisionError"), self._sbx(True)],
+            code="print(1 / 0)",
+        )
+        assert result.success
+        assert ctx.scratch["code_best_of_k"] is True
+        assert ctx.scratch["code_fix_output"] == good
+        assert ctx.scratch["code_fix_iterations"] == 0
+        assert ctx.core.llm.generate.await_count == 2
+        assert ctx.core.tools.invoke.await_count == 2
+        assert added_in > 0 and added_out > 0
+
+    @pytest.mark.asyncio
+    async def test_best_of_k_differential_disagreement_enters_fix_loop(self):
+        """Clean-but-disagreeing candidates are not trusted; the loop reconciles."""
+        ctx = self._make_ctx()
+        fixed = "```python\nprint('settled')\n```"
+        result, _, _ = await self._run_k(
+            ctx,
+            ["```python\nprint('a')\n```", "```python\nprint('b')\n```", fixed],
+            [
+                ToolResult(tool="python_exec", success=True, output="output-A"),
+                ToolResult(tool="python_exec", success=True, output="output-B"),
+                ToolResult(tool="python_exec", success=True, output="settled"),
+            ],
+        )
+        assert result.success
+        assert ctx.scratch["code_best_of_k"] is True
+        assert ctx.scratch["code_differential"] is True
+        assert ctx.core.llm.generate.await_count == 3
+        fix_prompt = ctx.core.llm.generate.await_args.args[0].prompt
+        assert "differential" in fix_prompt
+
+    @pytest.mark.asyncio
+    async def test_best_of_k_no_usable_candidate_falls_back(self):
+        """Candidates that yield no code fall back to the original single path."""
+        ctx = self._make_ctx()
+        fixed = "```python\ny = 2\n```"
+        result, _, _ = await self._run_k(
+            ctx,
+            ["just prose", "more prose", fixed],
+            [self._sbx(False, error="boom"), self._sbx(True)],
+        )
+        assert result.success
+        assert ctx.scratch["code_best_of_k"] is True
+        assert ctx.scratch["code_fix_output"] == fixed
+        assert ctx.core.llm.generate.await_count == 3
+        assert ctx.core.tools.invoke.await_count == 2
+
+    def test_candidate_k_resolution(self):
+        from more_core.layers.l0_execution import _MAX_CODE_CANDIDATES
+
+        req = MagicMock()
+        req.id = "k-res"
+        req.type = TaskType.CODE_GENERATION
+        req.context = {}
+        core = MagicMock()
+        core.settings = type("S", (), {"codegen_candidates": 2})()
+        ctx = LayerContext(core=core, request=req)
+        assert ExecutionLayer._candidate_k(ctx) == 2
+        req.context = {"candidates": 99}
+        assert ExecutionLayer._candidate_k(ctx) == _MAX_CODE_CANDIDATES
+        req.context = {}
+        core.settings = type("S", (), {"codegen_candidates": 1})()
+        assert ExecutionLayer._candidate_k(ctx) == 1
 
 
 # =========================================================================
@@ -652,7 +764,9 @@ class TestBuildFixPrompt:
         from more_core.layers.l0_execution import ExecutionLayer
         from more_core.tools.registry import ToolResult
 
-        req = LLMRequest(prompt="write fibonacci in python", system="sys", temperature=0.4, max_tokens=200)
+        req = LLMRequest(
+            prompt="write fibonacci in python", system="sys", temperature=0.4, max_tokens=200
+        )
         sbx = ToolResult(tool="python_exec", success=False, output="", error="SyntaxError")
         prompt = ExecutionLayer._build_fix_prompt(req, "def f", sbx)
         assert "code fix enforcement" in prompt

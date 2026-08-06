@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..core.types import LayerId, TaskType
@@ -66,6 +67,10 @@ _MAX_CODE_FIX_ROUNDS = 3
 # Consecutive LLM fix rounds that make no real progress (identical code and
 # identical error) before the loop terminates early — convergence guard.
 _MAX_CODE_STAGNANT_ROUNDS = 2
+
+# Upper bound for best-of-k candidate validation (A). Config default is 1 (off);
+# enable via settings.codegen_candidates or per-request context["candidates"].
+_MAX_CODE_CANDIDATES = 2
 
 # Patterns that indicate the LLM is asking a clarification question
 # rather than generating code.  Multi-language support.
@@ -160,6 +165,18 @@ _SYSTEM_PROMPTS = {
         "self-assessed confidence (0.0–1.0) in the answer."
     ),
 }
+
+
+@dataclass
+class _CodeCandidate:
+    """Result of generating + executing one code candidate (best-of-k, A)."""
+
+    output: str = ""  # full LLM output (delivered on success)
+    code: str = ""  # extracted, safety-checked code
+    sbx: ToolResult | None = None  # sandbox result (assertions already merged)
+    ok: bool = False  # passed the objective bar
+    differential: bool = False  # disagrees with a sibling clean candidate
+    diff_outputs: tuple[str, ...] = field(default_factory=tuple)
 
 
 class ExecutionLayer(Layer):
@@ -341,6 +358,7 @@ class ExecutionLayer(Layer):
                         code,
                         scope="code",
                         assertions=assertions,
+                        num_candidates=self._candidate_k(ctx),
                     )
                     total_in += fix_in
                     total_out += fix_out
@@ -364,6 +382,7 @@ class ExecutionLayer(Layer):
                         model,
                         test_code,
                         scope="test",
+                        num_candidates=self._candidate_k(ctx),
                     )
                     total_in += fix_in
                     total_out += fix_out
@@ -396,6 +415,10 @@ class ExecutionLayer(Layer):
                 desc_parts.append(f"{scope} deterministic repair")
             if ctx.scratch.get(f"{scope}_fix_stagnant"):
                 desc_parts.append(f"{scope} fix stalled")
+            if ctx.scratch.get(f"{scope}_best_of_k"):
+                desc_parts.append(f"{scope} best-of-k selection")
+            if ctx.scratch.get(f"{scope}_differential"):
+                desc_parts.append(f"{scope} differential check")
         if ctx.scratch.get("repo_context_injected"):
             desc_parts.append("repo context")
         if ctx.scratch.get("subtasks_executed"):
@@ -789,15 +812,20 @@ class ExecutionLayer(Layer):
         *,
         scope: str,
         assertions: list[str] | None = None,
+        num_candidates: int = 1,
     ) -> tuple[ToolResult, int, int]:
         """Execute *code* in the sandbox; on failure, feed the error back to
         the LLM and regenerate a fixed version.
 
-        Closed-loop control (BPR D):
-        1. **Deterministic repair first** — syntax-level issues are repaired
+        Validation + closed-loop control (BPR A/D):
+        1. **Best-of-k selection** (*num_candidates* > 1) — generate k
+           candidates, run them all, pick the best by objective score; a
+           differential agreement check distrusts "runs clean" when sibling
+           candidates disagree on output.
+        2. **Deterministic repair first** — syntax-level issues are repaired
            statically via :meth:`_deterministic_fix` before any LLM round is
            burned; the LLM only handles semantic errors.
-        2. **Convergence guard** — the loop stops early when consecutive LLM
+        3. **Convergence guard** — the loop stops early when consecutive LLM
            rounds make no real progress (identical code + identical error),
            surfacing ``ctx.scratch[f"{scope}_fix_stagnant"]``.
 
@@ -826,13 +854,45 @@ class ExecutionLayer(Layer):
         def _error_key(sbx: ToolResult) -> str:
             return (sbx.error or str(sbx.output or ""))[:200]
 
-        sbx_result = await _run(code)
-        ctx.scratch[f"{scope}_fix_iterations"] = 0
-        self._audit_fix_iteration(ctx, scope, round_idx=0, sbx=sbx_result)
-        if sbx_result.success:
-            if assertions:
-                ctx.scratch[f"{scope}_verified"] = True
-            return sbx_result, 0, 0
+        added_in, added_out = 0, 0
+
+        # ── A: best-of-k candidate selection (optional, >1) ────────────────
+        if num_candidates > 1:
+            picked, cand_in, cand_out = await self._select_best_candidate(
+                ctx, gen_req, provider, model, assertions=assertions, k=num_candidates
+            )
+            added_in += cand_in
+            added_out += cand_out
+            ctx.scratch[f"{scope}_best_of_k"] = True
+            if picked.sbx is not None and picked.ok:
+                ctx.scratch[f"{scope}_fix_iterations"] = 0
+                ctx.scratch[f"{scope}_fix_output"] = picked.output
+                if assertions:
+                    ctx.scratch[f"{scope}_verified"] = True
+                return picked.sbx, added_in, added_out
+            if picked.sbx is not None:
+                # best candidate becomes the base; its failure feeds the loop
+                code = picked.code or code
+                sbx_result = picked.sbx
+                if picked.differential:
+                    ctx.scratch[f"{scope}_differential"] = True
+            else:
+                # no usable candidate — fall back to the original code
+                sbx_result = await _run(code)
+            ctx.scratch[f"{scope}_fix_iterations"] = 0
+            self._audit_fix_iteration(ctx, scope, round_idx=0, sbx=sbx_result)
+            if sbx_result.success:
+                if assertions:
+                    ctx.scratch[f"{scope}_verified"] = True
+                return sbx_result, added_in, added_out
+        else:
+            sbx_result = await _run(code)
+            ctx.scratch[f"{scope}_fix_iterations"] = 0
+            self._audit_fix_iteration(ctx, scope, round_idx=0, sbx=sbx_result)
+            if sbx_result.success:
+                if assertions:
+                    ctx.scratch[f"{scope}_verified"] = True
+                return sbx_result, 0, 0
 
         # ── D1: deterministic repair before burning an LLM round ──────────
         repaired = self._deterministic_fix(code)
@@ -846,13 +906,12 @@ class ExecutionLayer(Layer):
                 ctx.scratch[f"{scope}_fix_output"] = code
                 if assertions:
                     ctx.scratch[f"{scope}_verified"] = True
-                return sbx_result, 0, 0
+                return sbx_result, added_in, added_out
 
         # ── LLM fix loop with convergence guard ───────────────────────────
         prev_code = code
         prev_error = _error_key(sbx_result)
         stagnant = 0
-        added_in, added_out = 0, 0
         fixed_output = ""
         for round_idx in range(1, _MAX_CODE_FIX_ROUNDS + 1):
             fix_req = LLMRequest(
@@ -907,6 +966,109 @@ class ExecutionLayer(Layer):
             if assertions:
                 ctx.scratch[f"{scope}_verified"] = True
         return sbx_result, added_in, added_out
+
+    @staticmethod
+    def _candidate_k(ctx: LayerContext) -> int:
+        """Resolve the best-of-k count for this task.
+
+        Per-request ``context["candidates"]`` wins; otherwise the
+        ``settings.codegen_candidates`` config. Capped at ``_MAX_CODE_CANDIDATES``.
+        """
+        try:
+            req_k = ctx.request.context.get("candidates")
+            if isinstance(req_k, int) and req_k > 1:
+                return min(req_k, _MAX_CODE_CANDIDATES)
+        except (AttributeError, TypeError):
+            pass
+        try:
+            settings = getattr(ctx.core, "settings", None)
+            k = getattr(settings, "codegen_candidates", 1)
+            if isinstance(k, int) and k > 1:
+                return min(k, _MAX_CODE_CANDIDATES)
+        except Exception:
+            pass
+        return 1
+
+    async def _select_best_candidate(
+        self,
+        ctx: LayerContext,
+        gen_req: LLMRequest,
+        provider: str | None,
+        model: str | None,
+        *,
+        assertions: list[str] | None,
+        k: int,
+    ) -> tuple[_CodeCandidate, int, int]:
+        """Generate *k* code candidates, run them all, pick the best.
+
+        Objective scoring:
+        - with *assertions*: a candidate is *ok* iff all assertions pass;
+        - without: *ok* iff it runs clean — unless passing candidates disagree
+          on output, in which case nothing is trusted (differential flag) and
+          the fix loop is entered with the disagreement noted.
+
+        Returns ``(best_candidate, input_tokens, output_tokens)``.
+        """
+        total_in, total_out = 0, 0
+        results: list[_CodeCandidate] = []
+        for _ in range(k):
+            in_tok, out_tok, content = await self._do_generate(ctx, gen_req, provider, model)
+            total_in += in_tok
+            total_out += out_tok
+            results.append(await self._run_candidate(ctx, content, assertions))
+
+        passing = [r for r in results if r.sbx is not None and r.sbx.success]
+
+        def _sbx(r: _CodeCandidate) -> ToolResult:
+            assert r.sbx is not None
+            return r.sbx
+
+        if passing:
+            outs = {_sbx(r).output for r in passing}
+            if assertions is None and len(outs) > 1:
+                # Differential disagreement — nothing is trusted; the fix loop
+                # is entered with a synthetic failure that names the conflict.
+                base = passing[0]
+                base.differential = True
+                base.ok = False
+                base.diff_outputs = tuple(sorted(outs))
+                shown = ", ".join(repr(o)[:80] for o in sorted(outs))
+                base.sbx = ToolResult(
+                    tool="python_exec",
+                    success=False,
+                    output="",
+                    error=f"differential outputs disagree: {shown}",
+                )
+                return base, total_in, total_out
+            return passing[0], total_in, total_out
+
+        usable = [r for r in results if r.sbx is not None]
+        if usable:
+            return (
+                max(usable, key=lambda r: (_sbx(r).success, bool(_sbx(r).output))),
+                total_in,
+                total_out,
+            )
+        return _CodeCandidate(), total_in, total_out
+
+    async def _run_candidate(
+        self,
+        ctx: LayerContext,
+        content: str,
+        assertions: list[str] | None,
+    ) -> _CodeCandidate:
+        """Extract, safety-check, and execute one best-of-k candidate."""
+        code = self._extract_python(content)
+        if not code:
+            return _CodeCandidate(output=content)
+        is_safe, _ = self._check_code_safety(code, ctx)
+        if not is_safe:
+            return _CodeCandidate(output=content, code=code)
+        program = self._build_verification_program(code, assertions) if assertions else code
+        sbx: ToolResult = await ctx.core.tools.invoke(
+            "python_exec", {"code": program}, user_id=ctx.user_id
+        )
+        return _CodeCandidate(output=content, code=code, sbx=sbx, ok=sbx.success)
 
     @staticmethod
     def _deterministic_fix(code: str) -> str:

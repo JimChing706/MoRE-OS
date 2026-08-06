@@ -100,6 +100,11 @@ class Settings(BaseModel):
     # Code generation — repo-aware context injection (repo map in L0 prompts)
     enable_codegen_context: bool = True
 
+    # Code generation — best-of-k candidate validation. 1 = single generation
+    # (default); >1 generates k candidates, runs all, picks the best and runs a
+    # differential agreement check. Per-request override: context["candidates"].
+    codegen_candidates: int = 1
+
     # Governance
     strict_ontology: bool = True
     audit_log_path: str = "logs/audit.jsonl"
@@ -304,6 +309,7 @@ class Settings(BaseModel):
             enable_metacognition=os.getenv("MORE_ENABLE_METACOGNITION", "0") == "1",
             enable_symbolic=os.getenv("MORE_ENABLE_SYMBOLIC", "1") == "1",
             enable_codegen_context=os.getenv("MORE_CODEGEN_CONTEXT", "1") == "1",
+            codegen_candidates=int(os.getenv("MORE_CODEGEN_CANDIDATES", "1")),
             strict_ontology=os.getenv("MORE_STRICT_ONTOLOGY", "1") == "1",
             audit_log_path=os.getenv("MORE_AUDIT_LOG", "logs/audit.jsonl"),
             sandbox_timeout_s=int(os.getenv("MORE_SANDBOX_TIMEOUT", "20")),

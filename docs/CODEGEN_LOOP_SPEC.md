@@ -152,3 +152,25 @@ BPR 的 Agentic Loop 已下沉为运行时管道内的**自动闭环**，不依�
 - `test_l0_execution.py`：新增确定性修复 4 例（含零 LLM 轮端到端 + 停滞提前终止）+ `_deterministic_fix` 3 例
 - `test_codegen_context.py`：新增 7 例（空根/模块扫描/噪声目录/文件数上限/L0 注入开关）
 - `make test` → **830 passed**，`make lint` / `make typecheck` 全绿（181 源文件）
+
+## 11. 流程再造：验证环节 best-of-k + 差分（A，2026-08-06）
+
+在 §10 闭环控制之上补齐验证环节再造。
+
+### 11.1 Best-of-k 候选生成与选择
+
+- `_select_best_candidate(ctx, gen_req, provider, model, assertions, k)`：生成 k 个候选 → 逐一带断言/安全校验跑沙箱 → 客观打分选择。
+- 有断言：候选 *ok* ⇔ 全部断言通过（TDD 标杆）；无断言：运行干净即 *ok*。
+- 选中即交付（`{scope}_fix_output`，零修复轮）；失败候选作为修复循环的最优基座。
+- 开关：`settings.codegen_candidates`（`MORE_CODEGEN_CANDIDATES`，默认 1=关）或请求级 `context["candidates"]`；上限 `_MAX_CODE_CANDIDATES=2`。层描述出现 `best-of-k selection`。
+
+### 11.2 差分验证（Differential check）
+
+- 无断言时若 ≥2 个"运行干净"的候选输出互不一致 → **谁也不可信**：合成失败信息 `differential outputs disagree: ...` 回灌修复循环，置 `{scope}_differential`，层描述出现 `differential check`。
+- 有断言时断言即 oracle，不做差分怀疑（输出合法差异如 print 文案不计）。
+
+### 11.3 验证
+
+- `test_l0_execution.py`：新增 best-of-k 4 例（命中最优候选/差分分歧进入修复/无可用候选回退/候选数解析）
+- `make test` → **834 passed**，`make lint` / `make typecheck` 全绿（181 源文件）
+- 实跑：`context.candidates=2` 触发 best-of-k，L0 描述含 `best-of-k selection`
