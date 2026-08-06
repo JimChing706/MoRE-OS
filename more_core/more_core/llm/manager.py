@@ -540,7 +540,7 @@ class LLMManager:
                         t.cancel()
                     await _aio.gather(*pending, return_exceptions=True)
                     return resp
-                except Exception as exc:
+                except BaseException as exc:
                     self._record_failure(pair.provider, pair.model)
                     errors.append((pair.provider, pair.model, str(exc)))
                     _logger.warning(
@@ -551,51 +551,54 @@ class LLMManager:
                     )
 
             # If we get here, first-completed tasks all failed.
-            # We still have pending tasks — wait for them.
-            if pending:
-                _logger.debug(
-                    "generate_parallel: first batch failed, waiting for %d remaining", len(pending)
+            # We still have pending tasks — keep waiting until a success,
+            # all fail, or the remaining budget runs out.  A failure from
+            # one candidate must NOT cancel still-running candidates that
+            # could succeed (e.g. a slow-but-healthy fallback provider).
+            deadline2 = time.monotonic() + max(0.1, timeout_s - 10)
+            while pending:
+                remaining2 = deadline2 - time.monotonic()
+                if remaining2 <= 0:
+                    break
+                done2, pending = await _aio.wait(
+                    pending,
+                    timeout=remaining2,
+                    return_when=_aio.FIRST_COMPLETED,
                 )
-                try:
-                    done2, pending = await _aio.wait(
-                        pending,
-                        timeout=max(0.1, timeout_s - 10),
-                        return_when=_aio.FIRST_COMPLETED,
-                    )
-                    for task in done2:
-                        pair = tasks[task]
-                        try:
-                            resp = task.result()
-                            self._record_success(pair.provider, pair.model)
-                            if use_cache:
-                                key = self._cache_key(
-                                    self._create_request_with_model(request, pair.model),
-                                    pair.provider,
-                                    pair.model,
-                                )
-                                async with self._cache_lock:
-                                    self._cache.put(key, resp)
-                            _logger.info(
-                                "generate_parallel: won race (later) [%s/%s]",
+                if not done2:
+                    break
+                for task in done2:
+                    pair = tasks[task]
+                    try:
+                        resp = task.result()
+                        self._record_success(pair.provider, pair.model)
+                        if use_cache:
+                            key = self._cache_key(
+                                self._create_request_with_model(request, pair.model),
                                 pair.provider,
                                 pair.model,
                             )
-                            for t in pending:
-                                t.cancel()
-                            await _aio.gather(*pending, return_exceptions=True)
-                            return resp
-                        except Exception as exc:
-                            self._record_failure(pair.provider, pair.model)
-                            errors.append((pair.provider, pair.model, str(exc)))
-                except Exception:
-                    pass
+                            async with self._cache_lock:
+                                self._cache.put(key, resp)
+                        _logger.info(
+                            "generate_parallel: won race (later) [%s/%s]",
+                            pair.provider,
+                            pair.model,
+                        )
+                        for t in pending:
+                            t.cancel()
+                        await _aio.gather(*pending, return_exceptions=True)
+                        return resp
+                    except BaseException as exc:
+                        self._record_failure(pair.provider, pair.model)
+                        errors.append((pair.provider, pair.model, str(exc)))
 
             # All failed
             for t in pending:
                 t.cancel()
                 try:
                     await t
-                except Exception:
+                except BaseException:
                     pass
 
         except _aio.TimeoutError:
