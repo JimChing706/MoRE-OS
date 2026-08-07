@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -736,6 +737,177 @@ class TestRunFixLoop:
         req.context = {}
         core.settings = type("S", (), {"codegen_candidates": 1})()
         assert ExecutionLayer._candidate_k(ctx) == 1
+
+    # --- multi-agent review gate (BPR C) ----------------------------------
+
+    def _review_ctx(self, review_enabled: bool = True, query: str = "sum two numbers"):
+        req = MagicMock()
+        req.id = "review-test"
+        req.type = TaskType.CODE_GENERATION
+        req.context = {"review": review_enabled}
+        req.query = query
+        core = MagicMock()
+        core.settings = type("S", (), {"codegen_review": review_enabled})()
+        return LayerContext(core=core, request=req)
+
+    async def _run_with_review(
+        self,
+        ctx,
+        invoke_results,
+        *,
+        review_side_effect,
+        code="x = 1",
+        scope="code",
+    ):
+        from more_core.llm.provider import LLMRequest
+
+        ctx.core.tools.invoke = AsyncMock(side_effect=invoke_results)
+        ctx.core.llm.generate = AsyncMock(side_effect=review_side_effect)
+        ctx.core.get_layer.side_effect = KeyError("L3 not found")
+        ctx.core.audit.log = MagicMock()
+        gen_req = LLMRequest(prompt="write code", system="sys", temperature=0.7, max_tokens=100)
+        return await ExecutionLayer()._run_fix_loop(
+            ctx,
+            gen_req,
+            provider=None,
+            model=None,
+            code=code,
+            scope=scope,
+        )
+
+    def _review_gen(self, fix_content: str, reject_rounds: int = 1) -> Any:
+        """LLM side-effect for the review-in-loop tests.
+
+        Review prompts are recognised by the ``=== 评审者:`` banner.  The
+        security reviewer rejects for the first *reject_rounds* panel passes,
+        then every reviewer approves; any non-review prompt (a fix round)
+        returns *fix_content*.
+        """
+
+        def _side_effect(request, *args, **kwargs):
+            prompt = request.prompt
+            if "=== 评审者:" in prompt:
+                if "=== 评审者: security ===" in prompt and state["rejections"] < reject_rounds:
+                    state["rejections"] += 1
+                    return self._llm_response(
+                        '{"verdict": "reject", "severity": "P1", '
+                        '"findings": ["code evaluates untrusted input"], '
+                        '"suggestion": "remove eval"}'
+                    )
+                return self._llm_response(
+                    '{"verdict": "approve", "severity": "P3", "findings": []}'
+                )
+            return self._llm_response(fix_content)
+
+        state = {"rejections": 0}
+        return _side_effect
+
+    @pytest.mark.asyncio
+    async def test_review_rejection_feeds_fix_loop(self):
+        """A P1 review finding turns a sandbox-green run into a fix round."""
+        ctx = self._review_ctx()
+        fixed = "```python\nx = 2\n```"
+        result, added_in, added_out = await self._run_with_review(
+            ctx,
+            [self._sbx(True), self._sbx(True)],
+            review_side_effect=self._review_gen(fixed),
+        )
+        assert result.success
+        assert ctx.scratch["code_review"] is True
+        assert ctx.scratch["code_review_rejected"] is True
+        assert ctx.scratch["code_review_approved"] is True
+        assert ctx.scratch["code_fix_iterations"] == 1
+        assert ctx.scratch["code_fix_output"] == fixed
+        assert ctx.core.llm.generate.await_count == 7  # 3 review + 1 fix + 3 review
+        assert ctx.core.tools.invoke.await_count == 2
+        assert added_in > 0 and added_out > 0
+        fix_prompts = [
+            c.args[0].prompt
+            for c in ctx.core.llm.generate.call_args_list
+            if "code review rejected" in c.args[0].prompt
+        ]
+        assert fix_prompts
+        assert "code evaluates untrusted input" in fix_prompts[0]
+
+    @pytest.mark.asyncio
+    async def test_review_approved_passes_through(self):
+        """Panel approval delivers the sandbox-green artifact without a fix round."""
+        ctx = self._review_ctx()
+
+        def _approve_all(request, *args, **kwargs):
+            return self._llm_response('{"verdict": "approve", "severity": "P3", "findings": []}')
+
+        result, added_in, added_out = await self._run_with_review(
+            ctx,
+            [self._sbx(True)],
+            review_side_effect=_approve_all,
+        )
+        assert result.success
+        assert ctx.scratch["code_review"] is True
+        assert ctx.scratch["code_review_approved"] is True
+        assert "code_review_rejected" not in ctx.scratch
+        assert ctx.scratch["code_fix_iterations"] == 0
+        assert ctx.core.llm.generate.await_count == 3
+        assert ctx.core.tools.invoke.await_count == 1
+        assert added_in > 0 and added_out > 0
+
+    @pytest.mark.asyncio
+    async def test_review_disabled_passes_through(self):
+        """Default (review off) never invokes the panel."""
+        ctx = self._review_ctx(review_enabled=False)
+        result, added_in, added_out = await self._run_with_review(
+            ctx,
+            [self._sbx(True)],
+            review_side_effect=self._review_gen("```python\nx = 2\n```"),
+        )
+        assert result.success
+        assert "code_review" not in ctx.scratch
+        assert ctx.core.llm.generate.await_count == 0
+        assert ctx.core.tools.invoke.await_count == 1
+        assert added_in == 0 and added_out == 0
+
+    @pytest.mark.asyncio
+    async def test_review_persistent_rejection_fails_closed(self):
+        """Review keeps rejecting → the task is reported as failed, not delivered."""
+        from more_core.layers.l0_execution import _MAX_CODE_FIX_ROUNDS
+
+        ctx = self._review_ctx()
+
+        def _reject_all(request, *args, **kwargs):
+            if "=== 评审者:" in request.prompt:
+                return self._llm_response(
+                    '{"verdict": "reject", "severity": "P1", '
+                    '"findings": ["unresolved design flaw"], "suggestion": "redesign"}'
+                )
+            return self._llm_response("```python\nx = 2\n```")
+
+        result, _, _ = await self._run_with_review(
+            ctx,
+            [self._sbx(True)] * 4,
+            review_side_effect=_reject_all,
+        )
+        assert not result.success
+        assert ctx.scratch["code_review_rejected"] is True
+        assert "code_fix_output" not in ctx.scratch
+        assert ctx.scratch["code_fix_iterations"] == _MAX_CODE_FIX_ROUNDS
+
+    def test_review_enabled_resolution(self):
+        req = MagicMock()
+        req.id = "review-res"
+        req.type = TaskType.CODE_GENERATION
+        req.context = {}
+        core = MagicMock()
+        core.settings = type("S", (), {"codegen_review": True})()
+        ctx = LayerContext(core=core, request=req)
+        assert ExecutionLayer._review_enabled(ctx) is True
+        req.context = {"review": False}
+        assert ExecutionLayer._review_enabled(ctx) is False
+        core.settings = type("S", (), {"codegen_review": False})()
+        req.context = {"review": True}
+        assert ExecutionLayer._review_enabled(ctx) is True
+        core.settings = type("S", (), {"codegen_review": False})()
+        req.context = {}
+        assert ExecutionLayer._review_enabled(ctx) is False
 
 
 # =========================================================================

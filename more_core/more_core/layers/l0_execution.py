@@ -175,8 +175,18 @@ class _CodeCandidate:
     code: str = ""  # extracted, safety-checked code
     sbx: ToolResult | None = None  # sandbox result (assertions already merged)
     ok: bool = False  # passed the objective bar
+    deterministic: bool = False  # code was repaired by _deterministic_fix
     differential: bool = False  # disagrees with a sibling clean candidate
     diff_outputs: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass
+class _ReviewResponse:
+    """LLM response adapter for the code review panel (`codegen/review.py`)."""
+
+    content: str = ""
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
 
 
 class ExecutionLayer(Layer):
@@ -419,6 +429,10 @@ class ExecutionLayer(Layer):
                 desc_parts.append(f"{scope} best-of-k selection")
             if ctx.scratch.get(f"{scope}_differential"):
                 desc_parts.append(f"{scope} differential check")
+            if ctx.scratch.get(f"{scope}_review"):
+                desc_parts.append(f"{scope} review panel")
+            if ctx.scratch.get(f"{scope}_review_rejected"):
+                desc_parts.append(f"{scope} review rejected")
         if ctx.scratch.get("repo_context_injected"):
             desc_parts.append("repo context")
         if ctx.scratch.get("subtasks_executed"):
@@ -828,6 +842,11 @@ class ExecutionLayer(Layer):
         3. **Convergence guard** — the loop stops early when consecutive LLM
            rounds make no real progress (identical code + identical error),
            surfacing ``ctx.scratch[f"{scope}_fix_stagnant"]``.
+        4. **Self-Audit review gate** (when enabled) — a sandbox-passing
+           artifact is run through the multi-agent review panel
+           (``codegen/review.py``); P1/P2 findings turn the success into a
+           synthetic failure whose message feeds the fix loop, so "runs
+           clean" is no longer the success bar when review is on.
 
         When *assertions* is provided, each iteration runs the generated code
         with the acceptance assertions appended (TDD-style): a run that exits
@@ -865,34 +884,59 @@ class ExecutionLayer(Layer):
             added_out += cand_out
             ctx.scratch[f"{scope}_best_of_k"] = True
             if picked.sbx is not None and picked.ok:
-                ctx.scratch[f"{scope}_fix_iterations"] = 0
-                ctx.scratch[f"{scope}_fix_output"] = picked.output
-                if assertions:
-                    ctx.scratch[f"{scope}_verified"] = True
-                return picked.sbx, added_in, added_out
-            if picked.sbx is not None:
-                # best candidate becomes the base; its failure feeds the loop
+                # candidate passed the objective bar → gate through review
+                gated, g_in, g_out = await self._gate_review(
+                    ctx, gen_req, provider, model, scope, picked.code or code, picked.sbx
+                )
+                added_in += g_in
+                added_out += g_out
+                if gated.success:
+                    ctx.scratch[f"{scope}_fix_iterations"] = 0
+                    ctx.scratch[f"{scope}_fix_output"] = picked.output
+                    if assertions:
+                        ctx.scratch[f"{scope}_verified"] = True
+                    return gated, added_in, added_out
+                # P1/P2 review findings — the findings feed the fix loop
                 code = picked.code or code
-                sbx_result = picked.sbx
-                if picked.differential:
-                    ctx.scratch[f"{scope}_differential"] = True
+                sbx_result = gated
+                ctx.scratch[f"{scope}_fix_iterations"] = 0
+                self._audit_fix_iteration(ctx, scope, round_idx=0, sbx=sbx_result)
             else:
-                # no usable candidate — fall back to the original code
-                sbx_result = await _run(code)
-            ctx.scratch[f"{scope}_fix_iterations"] = 0
-            self._audit_fix_iteration(ctx, scope, round_idx=0, sbx=sbx_result)
-            if sbx_result.success:
-                if assertions:
-                    ctx.scratch[f"{scope}_verified"] = True
-                return sbx_result, added_in, added_out
+                if picked.sbx is not None:
+                    # best candidate becomes the base; its failure feeds the loop
+                    code = picked.code or code
+                    sbx_result = picked.sbx
+                    if picked.differential:
+                        ctx.scratch[f"{scope}_differential"] = True
+                else:
+                    # no usable candidate — fall back to the original code
+                    sbx_result = await _run(code)
+                ctx.scratch[f"{scope}_fix_iterations"] = 0
+                self._audit_fix_iteration(ctx, scope, round_idx=0, sbx=sbx_result)
+                if sbx_result.success:
+                    gated, g_in, g_out = await self._gate_review(
+                        ctx, gen_req, provider, model, scope, code, sbx_result
+                    )
+                    added_in += g_in
+                    added_out += g_out
+                    if gated.success:
+                        if assertions:
+                            ctx.scratch[f"{scope}_verified"] = True
+                        return gated, added_in, added_out
+                    sbx_result = gated
         else:
             sbx_result = await _run(code)
             ctx.scratch[f"{scope}_fix_iterations"] = 0
             self._audit_fix_iteration(ctx, scope, round_idx=0, sbx=sbx_result)
             if sbx_result.success:
-                if assertions:
-                    ctx.scratch[f"{scope}_verified"] = True
-                return sbx_result, 0, 0
+                gated, g_in, g_out = await self._gate_review(
+                    ctx, gen_req, provider, model, scope, code, sbx_result
+                )
+                if gated.success:
+                    if assertions:
+                        ctx.scratch[f"{scope}_verified"] = True
+                    return gated, g_in, g_out
+                sbx_result = gated
 
         # ── D1: deterministic repair before burning an LLM round ──────────
         repaired = self._deterministic_fix(code)
@@ -903,10 +947,17 @@ class ExecutionLayer(Layer):
             ctx.scratch[f"{scope}_fix_iterations"] = 0
             self._audit_fix_iteration(ctx, scope, round_idx=0, sbx=sbx_result)
             if sbx_result.success:
-                ctx.scratch[f"{scope}_fix_output"] = code
-                if assertions:
-                    ctx.scratch[f"{scope}_verified"] = True
-                return sbx_result, added_in, added_out
+                gated, g_in, g_out = await self._gate_review(
+                    ctx, gen_req, provider, model, scope, code, sbx_result
+                )
+                added_in += g_in
+                added_out += g_out
+                if gated.success:
+                    ctx.scratch[f"{scope}_fix_output"] = code
+                    if assertions:
+                        ctx.scratch[f"{scope}_verified"] = True
+                    return gated, added_in, added_out
+                sbx_result = gated
 
         # ── LLM fix loop with convergence guard ───────────────────────────
         prev_code = code
@@ -939,7 +990,15 @@ class ExecutionLayer(Layer):
             self._audit_fix_iteration(ctx, scope, round_idx=round_idx, sbx=sbx_result)
             code = new_code
             if sbx_result.success:
-                break
+                # sandbox green → gate through review before declaring success
+                gated, g_in, g_out = await self._gate_review(
+                    ctx, gen_req, provider, model, scope, code, sbx_result
+                )
+                added_in += g_in
+                added_out += g_out
+                sbx_result = gated
+                if sbx_result.success:
+                    break
             error_key = _error_key(sbx_result)
             if new_code == prev_code and error_key == prev_error:
                 stagnant += 1
@@ -988,6 +1047,79 @@ class ExecutionLayer(Layer):
         except Exception:
             pass
         return 1
+
+    # ── Code review gate (Self-Audit, BPR C) ──────────────────────────────
+
+    @staticmethod
+    def _review_enabled(ctx: LayerContext) -> bool:
+        """Resolve whether the code review panel is on for this task.
+
+        Per-request ``context["review"]`` wins; otherwise the
+        ``settings.codegen_review`` config.
+        """
+        try:
+            req_flag = ctx.request.context.get("review")
+            if isinstance(req_flag, bool):
+                return req_flag
+        except (AttributeError, TypeError):
+            pass
+        try:
+            settings = getattr(ctx.core, "settings", None)
+            value = getattr(settings, "codegen_review", False)
+            return value if isinstance(value, bool) else False
+        except Exception:
+            return False
+
+    async def _gate_review(
+        self,
+        ctx: LayerContext,
+        gen_req: LLMRequest,
+        provider: str | None,
+        model: str | None,
+        scope: str,
+        code: str,
+        sbx: ToolResult,
+    ) -> tuple[ToolResult, int, int]:
+        """Run the multi-agent review panel over a sandbox-passing artifact.
+
+        Review disabled → pass through unchanged.  Panel approved (no P1/P2
+        defects) → pass through unchanged.  Panel rejected → returns a
+        *synthetic failed* ToolResult whose error carries the P1/P2 findings,
+        so the caller's fix loop regenerates with the findings as input
+        (BPR C Self-Audit).  Reviewer calls reuse the task's provider chain
+        with a low temperature; their tokens are accounted.
+        """
+        if not self._review_enabled(ctx):
+            return sbx, 0, 0
+        try:
+            from ..codegen.review import REVIEW_SYSTEM, run_code_review
+        except Exception as exc:  # pragma: no cover - defensive
+            _log.debug("code review unavailable: %s", exc)
+            return sbx, 0, 0
+
+        async def _complete(prompt: str) -> _ReviewResponse:
+            rev_req = LLMRequest(
+                prompt=prompt,
+                system=REVIEW_SYSTEM,
+                temperature=0.2,
+                max_tokens=800,
+            )
+            in_tok, out_tok, content = await self._do_generate(ctx, rev_req, provider, model)
+            return _ReviewResponse(content=content, prompt_tokens=in_tok, completion_tokens=out_tok)
+
+        result, r_in, r_out = await run_code_review(_complete, ctx.request.query, code)
+        ctx.scratch[f"{scope}_review"] = True
+        ctx.scratch[f"{scope}_review_summary"] = result.summary
+        if result.approved:
+            ctx.scratch[f"{scope}_review_approved"] = True
+            return sbx, r_in, r_out
+        ctx.scratch[f"{scope}_review_rejected"] = True
+        _log.info("code review rejected (scope=%s): %s", scope, result.summary)
+        return (
+            ToolResult(tool="python_exec", success=False, output="", error=result.as_error()),
+            r_in,
+            r_out,
+        )
 
     async def _select_best_candidate(
         self,

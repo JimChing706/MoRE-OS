@@ -174,3 +174,28 @@ BPR 的 Agentic Loop 已下沉为运行时管道内的**自动闭环**，不依�
 - `test_l0_execution.py`：新增 best-of-k 4 例（命中最优候选/差分分歧进入修复/无可用候选回退/候选数解析）
 - `make test` → **834 passed**，`make lint` / `make typecheck` 全绿（181 源文件）
 - 实跑：`context.candidates=2` 触发 best-of-k，L0 描述含 `best-of-k selection`
+
+## 12. 流程再造：Self-Audit 多智能体评审面板（C，2026-08-07）
+
+在 §11 验证再造之上补齐 Self-Audit 环节，对应 BPR 角色表中 **Self-Audit**（安全/质量/一致性评审，产出缺陷清单）。
+
+### 12.1 评审面板（`codegen/review.py`）
+
+- **并行专职评审者**：`REVIEWER_ROLES` 定义 3 个角色（correctness 正确性 / security 安全 / quality 质量），`asyncio.gather(..., return_exceptions=True)` 并行评审；单角色失败不阻断整场（其余裁决照常聚合）。
+- **结构化裁决**：`REVIEW_SCHEMA` 约束输出 `verdict / severity / findings / suggestion`；`parse_review` 健壮解析（裸 JSON → 围栏/花括号提取 → 无法解析降级为 reject 占位）。
+- **聚合语义**：无 P1/P2 缺陷 → `approved`；P3 带说明放行；**零裁决（全员失败）→ 不通过（fail closed）**，杜绝"评审瘫痪却放行"。
+- **交付物**：`CodeReviewResult.approved / findings / verdicts / errors`；`summary` 一行摘要，`as_error()` 合成失败信息供修复循环消费。
+
+### 12.2 评审闸门（`l0_execution.py:_gate_review`）
+
+- 开启条件：`settings.codegen_review`（`MORE_CODEGEN_REVIEW`，默认 0=关）或请求级 `context["review"]`；评审者 LLM 调用走任务提供方链、`temperature=0.2`、token 记账入 L0。
+- **闸门位置**：`_run_fix_loop` 的每个"沙箱全绿"出口（best-of-k 命中 / 单路径首跑 / 确定性修复 / LLM 修复轮）都先过评审闸门。
+- **否决回灌**：P1/P2 缺陷 → 合成失败 `ToolResult`，`error = code review rejected: ...` 作为下一轮修复输入（`_build_fix_prompt` 原样携带缺陷清单）。
+- **不重复加循环**：评审否决复用既有 `_MAX_CODE_FIX_ROUNDS` 修复循环与停滞收敛守卫，回合数有界；持续被否决 → 任务如实报失败（`code_fix_output` 不落盘，conf=0.2）。
+- 层描述出现 `code review panel` / `code review rejected`。
+
+### 12.3 验证
+
+- `test_codegen_review.py`：新增 18 例（parse_review 8 / build_review_prompt 2 / result 3 / run_code_review 聚合 5，含全员失败 fail-closed、单角色失败聚合、token 记账）
+- `test_l0_execution.py`：新增评审闸门 5 例（否决进修复循环 / 通过直交付 / 关闭零调用 / 持续否决如实失败 / 开关解析）
+- `make test` → **857 passed**，`make lint` / `make typecheck` 全绿（182 源文件）
