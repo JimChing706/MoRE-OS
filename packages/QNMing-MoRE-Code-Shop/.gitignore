@@ -16,3 +16,9 @@ more_core/
 **/*.db-shm
 **/*.db-wal
 **/*.jsonl
+
+# 运行/工具缓存（包需自包含，不依赖主仓 .gitignore）
+logs/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
