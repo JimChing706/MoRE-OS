@@ -59,6 +59,7 @@ LLMProviderName = Literal[
     "huggingface",
     "replicate",
     "vllm",
+    "llamacpp",
     "mock",
 ]
 
@@ -100,16 +101,19 @@ class Settings(BaseModel):
     # Code generation — repo-aware context injection (repo map in L0 prompts)
     enable_codegen_context: bool = True
 
-    # Code generation — best-of-k candidate validation. 1 = single generation
-    # (default); >1 generates k candidates, runs all, picks the best and runs a
-    # differential agreement check. Per-request override: context["candidates"].
-    codegen_candidates: int = 1
+    # Code generation — best-of-k candidate validation. Default = 2: generates
+    # two independent LLM generations, runs both through the sandbox, picks
+    # the one that passes cleanly and cross-checks via differential agreement.
+    # 1 = single generation (best-of-k disabled). Per-request override via
+    # context["candidates"]. Capped at layers.l0_execution._MAX_CODE_CANDIDATES.
+    codegen_candidates: int = 2
 
     # Code generation — multi-agent review panel (correctness/security/quality)
-    # over the final code artifact. Off by default (extra LLM tokens); when a
-    # P1/P2 defect is found the fix loop runs with the findings as input.
-    # Per-request override: context["review"].
-    codegen_review: bool = False
+    # over the final code artifact. ON by default since Step-3 (P1 self-audit
+    # gate); when a P1/P2 defect is found the fix loop re-runs with the
+    # findings injected. P3-only findings → "partial" verdict allowed through.
+    # Per-request override via context["review"].
+    codegen_review: bool = True
 
     # Governance
     strict_ontology: bool = True
@@ -131,6 +135,71 @@ class Settings(BaseModel):
     # Project root for file operations (set by BFF / CLI)
     project_root: str | None = None
 
+    # Step-4 P0: BaiLongma fusion (all disabled by default per G4 — opt in).
+    #   bailongma_endpoint:  when non-empty, enables A2A delegation to the
+    #                        chassis sidecar.  Default = empty = disabled.
+    #   bailongma_bridge:    "a2a" (default) only supported transport at P0.
+    #   bailongma_observability_path: SQLite file for the cross-runtime
+    #                                 llm_calls + injection_hits tables.
+    #                                 Defaults to <project_root>/logs/observability.sqlite.
+    #   bailongma_enable_delegation: when True, eligible code-family tasks
+    #                                 are handed off to the chassis.  Default
+    #                                 False — start with telemetry only.
+    bailongma_endpoint: str = ""
+    bailongma_bridge: str = "a2a"
+    bailongma_observability_path: str = ""
+    bailongma_enable_delegation: bool = False
+
+    @staticmethod
+    def feature_register() -> dict[str, dict[str, str]]:
+        """Central feature-flag registry.
+
+        All opt-in flags with gated behaviour must have a row here so
+        ``/api/v1/health`` can print their name/description/state without
+        needing a flag-library dependency.  Keys are dotted paths that
+        match the Settings attribute (or the most relevant one).
+        """
+        return {
+            # Step-4 fusion flags
+            "bailongma.endpoint": {
+                "name": "BaiLongma A2A sidecar endpoint",
+                "desc": "When set, enables chassis handshake (ping/echo) and (if delegation is on) code-family task delegation.  Default '' = disabled.",
+                "default": "",
+            },
+            "bailongma.enable_delegation": {
+                "name": "BaiLongma task delegation gate",
+                "desc": "When True AND bailongma_endpoint is reachable, eligible tasks are delegated.  Default False = telemetry-only sidecar mode.",
+                "default": "False",
+            },
+            # Step-3 codegen gates
+            "codegen.candidates": {
+                "name": "Default best-of-k",
+                "desc": "Number of independent LLM generations tried for code tasks (differential verification).  1 disables best-of-k.  Overridable per-request via context['candidates'].",
+                "default": "2",
+            },
+            "codegen.review": {
+                "name": "Code review panel",
+                "desc": "Enables the correctness/security/quality three-role review panel after every code generation.  P1/P2 defects re-enter the fix loop.",
+                "default": "True",
+            },
+            # L2/L3/L5 meta gates
+            "gates.evolution": {
+                "name": "L2 evolution DGM",
+                "desc": "Runs the Deep-Generalisation Model on task outputs to produce cross-task meta-rules.  Disabled by default (compute-heavy).",
+                "default": "False",
+            },
+            "gates.symbolic": {
+                "name": "L3 ontology/rule engine",
+                "desc": "Injects type-safe symbolic rules into L2 decisions.  Enabled by default (low overhead, correctness impact).",
+                "default": "True",
+            },
+            "gates.metacognition": {
+                "name": "L5 HyperAgent self-modification",
+                "desc": "Allows the meta-orchestrator to rewrite pipeline config.  Disabled by default (requires policy review).",
+                "default": "False",
+            },
+        }
+
     @classmethod
     def from_env(cls) -> "Settings":
         providers: list[LLMProviderConfig] = []
@@ -151,7 +220,7 @@ class Settings(BaseModel):
                     name="lmstudio",
                     provider="lmstudio",
                     endpoint=os.getenv("MORE_LMSTUDIO_ENDPOINT", "http://localhost:1234/v1"),
-                    model=os.getenv("MORE_LMSTUDIO_MODEL", "gemma-4-coder"),
+                    model=os.getenv("MORE_LMSTUDIO_MODEL", "ornith-1.5-35b-a3b"),
                     api_key=os.getenv("MORE_LMSTUDIO_API_KEY"),
                 )
             )
@@ -272,6 +341,18 @@ class Settings(BaseModel):
                     api_key=os.getenv("MORE_VLLM_API_KEY", "EMPTY"),
                 )
             )
+        # llama.cpp (local GGUF server)
+        if os.getenv("MORE_LLAMACPP_ENDPOINT"):
+            providers.append(
+                LLMProviderConfig(
+                    name="llamacpp",
+                    provider="llamacpp",
+                    endpoint=os.getenv("MORE_LLAMACPP_ENDPOINT", "http://localhost:8090/v1"),
+                    model=os.getenv("MORE_LLAMACPP_MODEL", "qwen3.8-27b"),
+                    api_key=os.getenv("MORE_LLAMACPP_API_KEY", "EMPTY"),
+                    timeout_s=int(os.getenv("MORE_LLAMACPP_TIMEOUT", "120")),
+                )
+            )
         # DeepSeek (cloud)
         if os.getenv("MORE_DEEPSEEK_API_KEY"):
             providers.append(
@@ -315,11 +396,16 @@ class Settings(BaseModel):
             enable_metacognition=os.getenv("MORE_ENABLE_METACOGNITION", "0") == "1",
             enable_symbolic=os.getenv("MORE_ENABLE_SYMBOLIC", "1") == "1",
             enable_codegen_context=os.getenv("MORE_CODEGEN_CONTEXT", "1") == "1",
-            codegen_candidates=int(os.getenv("MORE_CODEGEN_CANDIDATES", "1")),
-            codegen_review=os.getenv("MORE_CODEGEN_REVIEW", "0") == "1",
+            codegen_candidates=int(os.getenv("MORE_CODEGEN_CANDIDATES", "2")),
+            codegen_review=os.getenv("MORE_CODEGEN_REVIEW", "1") == "1",
             strict_ontology=os.getenv("MORE_STRICT_ONTOLOGY", "1") == "1",
             audit_log_path=os.getenv("MORE_AUDIT_LOG", "logs/audit.jsonl"),
             sandbox_timeout_s=int(os.getenv("MORE_SANDBOX_TIMEOUT", "20")),
             sandbox_memory_mb=int(os.getenv("MORE_SANDBOX_MEM_MB", "512")),
             project_root=os.getenv("MORE_PROJECT_ROOT") or str(Path.cwd().resolve()),
+            # Step-4 P0 fusion — opt-in via env only.
+            bailongma_endpoint=os.getenv("MORE_BAILONGMA_ENDPOINT", "").strip(),
+            bailongma_bridge=os.getenv("MORE_BAILONGMA_BRIDGE", "a2a"),
+            bailongma_observability_path=os.getenv("MORE_BAILONGMA_OBS_DB", "").strip(),
+            bailongma_enable_delegation=os.getenv("MORE_BAILONGMA_DELEGATION", "0") == "1",
         )

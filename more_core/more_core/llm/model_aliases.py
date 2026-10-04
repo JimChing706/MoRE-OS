@@ -116,8 +116,8 @@ STANDARD_ALIASES: list[ModelAlias] = [
     ModelAlias(
         alias="coder-local",
         provider="lmstudio",
-        model="gemma-4-coder",
-        description="Local coding model",
+        model="ornith-1.5-35b-a3b",
+        description="Local coding model (Ornith-1.5 35B)",
         capabilities=["code"],
     ),
     # Large context
@@ -135,6 +135,23 @@ STANDARD_ALIASES: list[ModelAlias] = [
         model="gpt-4o",
         description="Best multilingual",
         capabilities=["multilingual", "vision"],
+    ),
+    # Local Mac 48GB — Qwen3.8-27B (qwen3_5 arch, fits comfortably)
+    ModelAlias(
+        alias="qwen38-local",
+        provider="llamacpp",
+        model="qwen3.8-27b",
+        description="Qwen3.8-27B GGUF (UD-Q6_K, Mac 48GB, ~20-30 tok/s)",
+        context_length=8192,
+        capabilities=["chat", "code", "vision"],
+    ),
+    ModelAlias(
+        alias="qwen38-ollama",
+        provider="ollama",
+        model="hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q6_K",
+        description="Qwen3.8-27B via Ollama (auto-download)",
+        context_length=8192,
+        capabilities=["chat", "code", "vision"],
     ),
 ]
 

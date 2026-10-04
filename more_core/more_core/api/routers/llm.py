@@ -13,6 +13,14 @@ from ...runtime.orchestrator import MoRECore
 def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["LLM"], dependencies=[Depends(require_api_key)])
 
+    @router.get("/llm/preflight")
+    async def llm_preflight() -> dict[str, Any]:
+        """LLM 链路预检：provider 注册、模型存在性、兜底链完整度。"""
+        from ...llm.preflight import preflight_llm
+
+        report = await preflight_llm(core.llm, list(getattr(core.llm, "_fallback", []) or []))
+        return {"status": "ok", "preflight": report.to_dict()}
+
     @router.get("/llm/health")
     async def llm_health() -> Any:
         return await core.llm.health()
@@ -200,9 +208,29 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     # -- Dynamic Model Routing ----------------------------------------------
 
     @router.get("/llm/routing")
-    async def routing_config() -> Any:
-        """Full routing configuration: bindings, chains, aliases, reasoning stats."""
-        return core.task_model_router.get_routing_config()
+    async def routing_config(
+        tier_transitions_rollup: str | None = None,
+    ) -> Any:
+        """Full routing configuration: bindings, chains, aliases, reasoning stats.
+
+        P1-4 G-3 覃朗：可选 URL query ``?tier_transitions_rollup=1h`` 或 ``24h``
+        返回单窗口计数；默认同时返回 1h / 24h 两桶。运维面板可直接消费。
+        """
+        router = core.task_model_router
+        config = router.get_routing_config()
+        if tier_transitions_rollup is not None:
+            valid = {"1h", "24h"}
+            if tier_transitions_rollup not in valid:
+                from fastapi import HTTPException
+
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid tier_transitions_rollup, expected one of {sorted(valid)}",
+                )
+            config["tier_transitions_rollup"] = router.get_rolling_transition_rollup(
+                window_name=tier_transitions_rollup
+            )
+        return config
 
     @router.post(
         "/llm/routing",
@@ -212,7 +240,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         """Update a task-type binding or fallback chain.
 
         Body format:
-          {"task_type": "code_generation", "provider": "ollama", "model": "qwen2.5:7b"}
+          {"task_type": "code_generation", "provider": "lmstudio", "model": "ornith-1.5-35b-a3b"}
           or
           {"chain": "custom_chain", "pairs": [{"provider":"x","model":"y"}]}
         """

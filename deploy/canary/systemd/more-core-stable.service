@@ -1,0 +1,33 @@
+[Unit]
+Description=MoRE OS Stable (Production) - FastAPI uvicorn on 127.0.0.1:8765 - Read-Only Evolution DB
+Documentation=https://github.com/qnming/more-os
+After=network.target blm-chassis.service
+Wants=network.target blm-chassis.service
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+Group=__SERVICE_GROUP__
+WorkingDirectory=__MORE_CORE_ROOT__
+Environment="PYTHONDONTWRITEBYTECODE=1"
+Environment="MORE_EVOLUTION_READONLY=1"
+Environment="MORE_MODE=stable"
+EnvironmentFile=-__MORE_CORE_ROOT__/more_core/.env
+ExecStart=__PYTHON_BIN__ -m more_core serve --host 127.0.0.1 --port 8765
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=60
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=more-core-stable
+
+# Sandbox hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=__MORE_CORE_ROOT__/more_core/more_core/data
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

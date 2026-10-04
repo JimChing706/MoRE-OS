@@ -29,11 +29,15 @@ CREATE TABLE IF NOT EXISTS tasks (
     description  TEXT NOT NULL DEFAULT '',
     status       TEXT NOT NULL DEFAULT 'pending',
     progress     INTEGER NOT NULL DEFAULT 0,
+    current_step TEXT,
+    artifacts    TEXT NOT NULL DEFAULT '[]',
+    warnings     TEXT NOT NULL DEFAULT '[]',
     result       TEXT,
     error        TEXT,
     created_at   TEXT NOT NULL,
     started_at   TEXT,
-    completed_at TEXT
+    completed_at TEXT,
+    parent_id    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at);
@@ -52,8 +56,19 @@ class SQLiteTaskStore:
         self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
+        self._migrate()
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
+
+    def _migrate(self) -> None:
+        """为既有部署补齐列（幂等）。"""
+        cols = {str(r["name"]) for r in self._conn.execute("PRAGMA table_info(tasks)")}
+        if "parent_id" not in cols:
+            self._conn.execute("ALTER TABLE tasks ADD COLUMN parent_id TEXT")
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id)"
+        )
+        self._conn.commit()
 
     # ------------------------------------------------------------------
     # Public API (mirrors dict interface)
@@ -61,13 +76,18 @@ class SQLiteTaskStore:
 
     def create_task(self, task_id: str, info: dict[str, Any]) -> None:
         """Insert a new task record."""
-        context_json = json.dumps(info.get("context", {}))
+        ctx = info.get("context", {}) or {}
+        context_json = json.dumps(ctx)
+        artifacts_json = json.dumps(info.get("artifacts", []))
+        warnings_json = json.dumps(info.get("warnings", []))
+        parent_id = info.get("parent_id") or (ctx.get("parent_id") if isinstance(ctx, dict) else None)
         self._conn.execute(
             """INSERT OR REPLACE INTO tasks
                (task_id, type, plugin_type, query, context, title,
-                description, status, progress, result, error,
-                created_at, started_at, completed_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                description, status, progress, current_step,
+                artifacts, warnings, result, error,
+                created_at, started_at, completed_at, parent_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 task_id,
                 info.get("type", "nlp_task"),
@@ -78,11 +98,15 @@ class SQLiteTaskStore:
                 info.get("description", ""),
                 info.get("status", "pending"),
                 info.get("progress", 0),
+                info.get("current_step"),
+                artifacts_json,
+                warnings_json,
                 info.get("result"),
                 info.get("error"),
                 info.get("created_at", ""),
                 info.get("started_at"),
                 info.get("completed_at"),
+                parent_id,
             ),
         )
         self._conn.commit()
@@ -104,10 +128,19 @@ class SQLiteTaskStore:
             merged["context"] = json.dumps(updates["context"])
         elif isinstance(merged.get("context"), dict):
             merged["context"] = json.dumps(merged["context"])
+        if "artifacts" in updates and isinstance(updates["artifacts"], list):
+            merged["artifacts"] = json.dumps(updates["artifacts"])
+        elif isinstance(merged.get("artifacts"), list):
+            merged["artifacts"] = json.dumps(merged["artifacts"])
+        if "warnings" in updates and isinstance(updates["warnings"], list):
+            merged["warnings"] = json.dumps(updates["warnings"])
+        elif isinstance(merged.get("warnings"), list):
+            merged["warnings"] = json.dumps(merged["warnings"])
         self._conn.execute(
             """UPDATE tasks SET
                  type=?, plugin_type=?, query=?, context=?, title=?,
-                 description=?, status=?, progress=?, result=?, error=?,
+                 description=?, status=?, progress=?, current_step=?,
+                 artifacts=?, warnings=?, result=?, error=?,
                  created_at=?, started_at=?, completed_at=?
                WHERE task_id=?""",
             (
@@ -119,6 +152,9 @@ class SQLiteTaskStore:
                 merged.get("description", ""),
                 merged.get("status", "pending"),
                 merged.get("progress", 0),
+                merged.get("current_step"),
+                merged.get("artifacts", "[]"),
+                merged.get("warnings", "[]"),
                 merged.get("result"),
                 merged.get("error"),
                 merged.get("created_at", ""),
@@ -128,6 +164,13 @@ class SQLiteTaskStore:
             ),
         )
         self._conn.commit()
+
+    def list_children(self, parent_id: str) -> list[dict[str, Any]]:
+        """返回某父任务下的全部子任务（按 task_id 升序，即 REQ 编号顺序）。"""
+        cur = self._conn.execute(
+            "SELECT * FROM tasks WHERE parent_id = ? ORDER BY task_id ASC", (parent_id,)
+        )
+        return [self._row_to_dict(r) for r in cur.fetchall()]
 
     def list_tasks(self, status: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
         """List tasks, optionally filtered by status."""
@@ -167,4 +210,18 @@ class SQLiteTaskStore:
                 d["context"] = json.loads(raw)
             except (json.JSONDecodeError, TypeError):
                 d["context"] = {}
+        # Deserialize JSON artifacts
+        raw_art = d.get("artifacts", "[]")
+        if isinstance(raw_art, str):
+            try:
+                d["artifacts"] = json.loads(raw_art)
+            except (json.JSONDecodeError, TypeError):
+                d["artifacts"] = []
+        # Deserialize JSON warnings
+        raw_warn = d.get("warnings", "[]")
+        if isinstance(raw_warn, str):
+            try:
+                d["warnings"] = json.loads(raw_warn)
+            except (json.JSONDecodeError, TypeError):
+                d["warnings"] = []
         return d

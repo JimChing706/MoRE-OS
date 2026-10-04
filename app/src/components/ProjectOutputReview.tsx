@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/apiClient';
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,6 @@ import {
   Star, ChevronRight, File, Code, RotateCw, MessageSquare, Trash2
 } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8011';
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -80,7 +80,7 @@ export function ProjectOutputReview() {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`${API_BASE}/api/v1/projects/outputs`);
+      const response = await apiFetch('/api/v1/projects/outputs');
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       setOutputs(data.outputs || []);
@@ -98,7 +98,7 @@ export function ProjectOutputReview() {
 
   useEffect(() => {
     // Check API health first
-    fetch(`${API_BASE}/api/v1/health`)
+    apiFetch('/api/v1/health', { raw: true })
       .then(r => { setApiOnline(r.ok); fetchOutputs(); })
       .catch(() => { setApiOnline(false); setError('无法连接到服务器 (http://localhost:8011)'); setLoading(false); });
   }, [fetchOutputs]);
@@ -121,7 +121,7 @@ export function ProjectOutputReview() {
   const submitReview = async () => {
     if (!selectedOutput) return;
     try {
-      const response = await fetch(`${API_BASE}/api/v1/projects/outputs/${selectedOutput.id}/review`, {
+      const response = await apiFetch(`/api/v1/projects/outputs/${selectedOutput.id}/review`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(reviewData),
@@ -141,7 +141,7 @@ export function ProjectOutputReview() {
     if (!selectedOutput || !iterationData.feedback) return;
     setIterating(true);
     try {
-      const response = await fetch(`${API_BASE}/api/v1/projects/outputs/${selectedOutput.id}/iterate`, {
+      const response = await apiFetch(`/api/v1/projects/outputs/${selectedOutput.id}/iterate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(iterationData),
@@ -167,7 +167,7 @@ export function ProjectOutputReview() {
     e.stopPropagation();
     if (!confirm('确定要删除此产出物吗？')) return;
     try {
-      const response = await fetch(`${API_BASE}/api/v1/projects/outputs/${outputId}`, {
+      const response = await apiFetch(`/api/v1/projects/outputs/${outputId}`, {
         method: 'DELETE',
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);

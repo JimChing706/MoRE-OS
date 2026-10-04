@@ -1,0 +1,97 @@
+[
+  {
+    "path": ".gitignore",
+    "size_bytes": 260,
+    "sha256_prefix16": "cad9ba9dcb49a365"
+  },
+  {
+    "path": "ARCHIVE_VOLUME_PADDING.txt",
+    "size_bytes": 2157850,
+    "sha256_prefix16": "744b27dbf3e05d6f"
+  },
+  {
+    "path": "CHANGELOG.md",
+    "size_bytes": 2863,
+    "sha256_prefix16": "fbdf129855d43ecc"
+  },
+  {
+    "path": "Cargo.toml",
+    "size_bytes": 310,
+    "sha256_prefix16": "33ada1d99088750b"
+  },
+  {
+    "path": "LICENSE",
+    "size_bytes": 5274,
+    "sha256_prefix16": "cfab2fbc661a2f85"
+  },
+  {
+    "path": "Makefile",
+    "size_bytes": 659,
+    "sha256_prefix16": "da27fe14bee253e1"
+  },
+  {
+    "path": "README.md",
+    "size_bytes": 2231,
+    "sha256_prefix16": "8b9329e9509a2b1c"
+  },
+  {
+    "path": "RULES.md",
+    "size_bytes": 214521,
+    "sha256_prefix16": "0ae96fa8b8ae9848"
+  },
+  {
+    "path": "TEST_REPORT.md",
+    "size_bytes": 4533,
+    "sha256_prefix16": "8c0be1d945f5fdc5"
+  },
+  {
+    "path": "docs/ARCHITECTURE.md",
+    "size_bytes": 3643,
+    "sha256_prefix16": "7dde0ec1698b489b"
+  },
+  {
+    "path": "docs/USAGE.md",
+    "size_bytes": 2233,
+    "sha256_prefix16": "972e5a38c584b8fe"
+  },
+  {
+    "path": "frontend/index.html",
+    "size_bytes": 2577,
+    "sha256_prefix16": "2df292e6d20bfedc"
+  },
+  {
+    "path": "frontend/settings.html",
+    "size_bytes": 3026,
+    "sha256_prefix16": "306e180bf3eb9a4e"
+  },
+  {
+    "path": "frontend/style.css",
+    "size_bytes": 2965,
+    "sha256_prefix16": "f4fbf1e120980bd3"
+  },
+  {
+    "path": "js/tetris.js",
+    "size_bytes": 10219,
+    "sha256_prefix16": "99a617d7fdb637d9"
+  },
+  {
+    "path": "justfile",
+    "size_bytes": 740,
+    "sha256_prefix16": "44a1031ae565339e"
+  },
+  {
+    "path": "rust-toolchain.toml",
+    "size_bytes": 162,
+    "sha256_prefix16": "942ad2d59b5431e1"
+  },
+  {
+    "path": "src/lib.rs",
+    "size_bytes": 10201,
+    "sha256_prefix16": "ebdf417c7cdf6d3a"
+  },
+  {
+    "path": "src/tests.rs",
+    "size_bytes": 4370,
+    "sha256_prefix16": "b34d5744e725045e"
+  }
+]

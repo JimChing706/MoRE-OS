@@ -68,10 +68,14 @@ status: ## Show running MoRE OS processes
 	@echo "=== Port Usage ==="
 	@lsof -i :$(API_PORT) -i :$(APP_PORT) 2>/dev/null | grep LISTEN || echo "  (no services listening)"
 
-health: ## Quick health check
-	@$(PYTHON) -c "import httpx; r=httpx.get('http://localhost:$(API_PORT)/api/v1/health', timeout=3); print(r.json())" 2>/dev/null \
-		|| curl -s http://localhost:$(API_PORT)/api/v1/health | $(PYTHON) -m json.tool 2>/dev/null \
-		|| echo "API unreachable on port $(API_PORT)"
+health: ## Quick health check (honours MORE_API_KEY / more_core/.env)
+	@$(PYTHON) -c "import os,httpx,pathlib;\
+key=os.getenv('MORE_API_KEY','');\
+key=key or next((l.split('=',1)[1].strip().strip('\"') for l in pathlib.Path('more_core/.env').read_text().splitlines() if l.startswith('MORE_API_KEY=')), '') if pathlib.Path('more_core/.env').exists() else '';\
+h={'Authorization':'Bearer '+key} if key else {};\
+r=httpx.get('http://localhost:$(API_PORT)/api/v1/health', headers=h, timeout=5);\
+print(r.json())" 2>/dev/null \
+		|| echo "API unreachable or unauthorized on port $(API_PORT)"
 
 # ============================================================
 # Run (foreground)

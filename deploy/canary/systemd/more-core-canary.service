@@ -1,0 +1,37 @@
+[Unit]
+Description=MoRE OS Canary - FastAPI uvicorn on 127.0.0.1:8766 - Read-Write Evolution DB (shared WAL)
+Documentation=https://github.com/qnming/more-os
+After=network.target blm-chassis.service more-core-stable.service
+Wants=network.target blm-chassis.service more-core-stable.service
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+Group=__SERVICE_GROUP__
+WorkingDirectory=__MORE_CORE_ROOT__
+Environment="PYTHONDONTWRITEBYTECODE=1"
+Environment="MORE_MODE=canary"
+EnvironmentFile=-__MORE_CORE_ROOT__/more_core/.env
+# Evolution DB schema_version fail-safe: canary must not raise schema beyond
+# code baseline (set via MORE_EVOLUTION_SCHEMA_CEILING). If actual DB schema
+# version exceeds this integer, canary refuses to start (fail-safe, prevents
+# unapproved DDL poisoning shared stable DB).
+Environment="MORE_EVOLUTION_SCHEMA_CEILING=12"
+ExecStart=__PYTHON_BIN__ -m more_core serve --host 127.0.0.1 --port 8766
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=60
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=more-core-canary
+
+# Sandbox hardening (RW on data dir for evolution bias writes)
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=__MORE_CORE_ROOT__/more_core/more_core/data
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

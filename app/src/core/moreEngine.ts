@@ -10,6 +10,7 @@ import type {
   MetacognitiveCalibration, EngineDefinition,
   EvolvedAgent, EvolutionBranch, Mutation, TaskType, MemoryEntry,
 } from '@/types/morev3';
+import { apiFetch, setApiBase } from '@/lib/apiClient';
 
 interface ReasoningChainStepDto {
   id: number;
@@ -565,7 +566,7 @@ export class MoreV3Engine {
   private listeners: Set<(data: DashboardData) => void> = new Set();
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private useRealAPI: boolean = true;
-  private apiBaseUrl: string = import.meta.env.VITE_API_BASE || 'http://localhost:8011';
+  // R-15：base URL 与鉴权统一由 @/lib/apiClient 管理，这里不再自持副本
 
   constructor() {
     this.state = getSystemState();
@@ -574,7 +575,8 @@ export class MoreV3Engine {
   setRealAPIMode(enabled: boolean, baseUrl?: string) {
     this.useRealAPI = enabled;
     if (baseUrl) {
-      this.apiBaseUrl = baseUrl;
+      // 委托给统一客户端，确保后续所有 apiFetch 都走同一个 base
+      setApiBase(baseUrl);
     }
   }
 
@@ -584,7 +586,7 @@ export class MoreV3Engine {
     }
 
     try {
-      const response = await fetch(`${this.apiBaseUrl}/api/v1/tasks/execute`, {
+      const response = await apiFetch('/api/v1/tasks/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -639,10 +641,10 @@ export class MoreV3Engine {
         try {
           // Fetch core state + evolution + security + memory in parallel
           const [systemRes, evolutionRes, incidentsRes, auditRes] = await Promise.all([
-            fetch(`${this.apiBaseUrl}/api/v1/system/state`),
-            fetch(`${this.apiBaseUrl}/api/v1/evolution/archive`),
-            fetch(`${this.apiBaseUrl}/api/v1/incidents`),
-            fetch(`${this.apiBaseUrl}/api/v1/security/audit?limit=20`).catch(() => null),
+            apiFetch('/api/v1/system/state'),
+            apiFetch('/api/v1/evolution/archive'),
+            apiFetch('/api/v1/incidents'),
+            apiFetch('/api/v1/security/audit?limit=20').catch(() => null),
           ]);
 
           data = getDashboardData();
@@ -762,7 +764,7 @@ export class MoreV3Engine {
     }
 
     try {
-      const response = await fetch(`${this.apiBaseUrl}/api/v1/health`);
+      const response = await apiFetch('/api/v1/health');
       if (response.ok) {
         return response.json();
       }

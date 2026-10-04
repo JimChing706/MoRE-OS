@@ -59,6 +59,12 @@ show_status() {
     else
         echo -e "  ${YELLOW}○${NC} Ollama (offline)"
     fi
+    if curl -s --max-time 2 http://localhost:8090/v1/models >/dev/null 2>&1; then
+        N=$(curl -s http://localhost:8090/v1/models | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null || echo "?")
+        echo -e "  ${GREEN}●${NC} llama.cpp Qwen3.8 ($N models)"
+    else
+        echo -e "  ${YELLOW}○${NC} llama.cpp (offline)"
+    fi
     echo ""
 }
 
@@ -82,6 +88,18 @@ do_start() {
             echo -e " ${RED}FAILED${NC} — check /tmp/more-os-api.log"
         fi
     fi
+
+    # R-19: llama.cpp 默认不再自动拉起 —— 27B 模型会耗尽内存并把 API 一起 OOM 杀掉。
+    # 需要时显式设置 MORE_START_LLAMACPP=1。
+    if [ "${MORE_START_LLAMACPP:-0}" = "1" ] && [ -x "$ROOT_DIR/scripts/llamacpp-server.sh" ]; then
+        LLAMACPP_MODEL_DIR="${LLAMACPP_MODEL_DIR:-$HOME/models}"
+        MODEL_PATH=$(find "$LLAMACPP_MODEL_DIR" -name "*.gguf" -path "*UD-Q6_K*" -print -quit 2>/dev/null)
+        if [ -n "$MODEL_PATH" ]; then
+            bash "$ROOT_DIR/scripts/llamacpp-server.sh" start
+        else
+            echo -e "${YELLOW}  llama.cpp: model not found (run: scripts/llamacpp-server.sh download)${NC}"
+        fi
+    fi
     echo ""
     echo "Services started. Dashboard:"
     echo "  cd app && npm run dev          # frontend (separate terminal)"
@@ -93,6 +111,9 @@ do_stop() {
     echo -n "Stopping MoRE OS API..."
     pkill -f "more_core.cli serve" 2>/dev/null || true
     echo " done."
+    if [ -x "$ROOT_DIR/scripts/llamacpp-server.sh" ]; then
+        bash "$ROOT_DIR/scripts/llamacpp-server.sh" stop
+    fi
 }
 
 # ============================================================
@@ -102,22 +123,40 @@ do_chat() {
     echo ""
 
     # Check available providers
-    USE_LMSTUDIO=false; USE_OLLAMA=false
+    USE_LMSTUDIO=false; USE_OLLAMA=false; USE_LLAMACPP=false
     curl -s --max-time 2 http://localhost:1234/v1/models >/dev/null 2>&1 && USE_LMSTUDIO=true
     curl -s --max-time 2 http://localhost:11434/api/tags >/dev/null 2>&1 && USE_OLLAMA=true
+    curl -s --max-time 2 http://localhost:8090/v1/models >/dev/null 2>&1 && USE_LLAMACPP=true
 
-    if ! $USE_LMSTUDIO && ! $USE_OLLAMA; then
-        echo -e "${RED}No LLM provider available. Start LM Studio or Ollama first.${NC}"
+    if ! $USE_LMSTUDIO && ! $USE_OLLAMA && ! $USE_LLAMACPP; then
+        echo -e "${RED}No LLM provider available. Start LM Studio, Ollama, or llama.cpp first.${NC}"
         return
     fi
 
     # Select provider
-    if $USE_LMSTUDIO && $USE_OLLAMA; then
+    if $USE_LMSTUDIO && $USE_OLLAMA && $USE_LLAMACPP; then
+        echo "Providers: [1] LM Studio  [2] Ollama  [3] llama.cpp Qwen3.8"
+        read -p "Select [1/2/3]: " choice
+        if [ "$choice" = "2" ]; then USE_LMSTUDIO=false; USE_LLAMACPP=false
+        elif [ "$choice" = "3" ]; then USE_LMSTUDIO=false; USE_OLLAMA=false
+        fi
+    elif $USE_LMSTUDIO && $USE_LLAMACPP; then
+        echo "Providers: [1] LM Studio  [2] llama.cpp Qwen3.8"
+        read -p "Select [1/2]: " choice
+        if [ "$choice" = "2" ]; then USE_LMSTUDIO=false; USE_OLLAMA=false; fi
+    elif $USE_OLLAMA && $USE_LLAMACPP; then
+        echo "Providers: [1] Ollama  [2] llama.cpp Qwen3.8"
+        read -p "Select [1/2]: " choice
+        if [ "$choice" = "2" ]; then USE_LMSTUDIO=false; USE_OLLAMA=false; fi
+    elif $USE_LMSTUDIO && $USE_OLLAMA; then
         echo "Providers: [1] LM Studio  [2] Ollama"
         read -p "Select [1/2]: " choice
         if [ "$choice" = "2" ]; then USE_LMSTUDIO=false; fi
     elif $USE_LMSTUDIO; then
         echo "Using LM Studio"
+    elif $USE_LLAMACPP; then
+        echo "Using llama.cpp Qwen3.8"
+        USE_LMSTUDIO=false; USE_OLLAMA=false
     else
         echo "Using Ollama"
     fi
@@ -125,6 +164,8 @@ do_chat() {
     # Run chat
     if [ -f "$SCRIPT_DIR/lmstudio-chat.py" ] && $USE_LMSTUDIO; then
         python3 "$SCRIPT_DIR/lmstudio-chat.py" --interactive
+    elif [ -f "$SCRIPT_DIR/lmstudio-chat.py" ] && $USE_LLAMACPP; then
+        python3 "$SCRIPT_DIR/lmstudio-chat.py" --provider llamacpp --interactive
     elif [ -f "$SCRIPT_DIR/lmstudio-chat.py" ]; then
         python3 "$SCRIPT_DIR/lmstudio-chat.py" --provider ollama --interactive
     else
@@ -171,6 +212,14 @@ for m in json.load(sys.stdin).get('models',[]):
     print(f'  • {m[\"name\"]}')
 " 2>/dev/null
             fi
+            if curl -s --max-time 2 http://localhost:8090/v1/models >/dev/null 2>&1; then
+                echo -e "${GREEN}llama.cpp:${NC}"
+                curl -s http://localhost:8090/v1/models | python3 -c "
+import sys,json
+for m in json.load(sys.stdin).get('data',[]):
+    print(f'  • {m[\"id\"]}')
+" 2>/dev/null
+            fi
             ;;
         7|logs)
             if [ -f /tmp/more-os-api.log ]; then
@@ -199,6 +248,8 @@ case "${1:-}" in
         curl -s --max-time 2 http://localhost:1234/v1/models | python3 -c "import sys,json; [print(f'  • {m[\"id\"]}') for m in json.load(sys.stdin).get('data',[])]" 2>/dev/null || echo "  offline"
         echo -e "\n${GREEN}Ollama:${NC}"
         curl -s --max-time 2 http://localhost:11434/api/tags | python3 -c "import sys,json; [print(f'  • {m[\"name\"]}') for m in json.load(sys.stdin).get('models',[])]" 2>/dev/null || echo "  offline"
+        echo -e "\n${GREEN}llama.cpp:${NC}"
+        curl -s --max-time 2 http://localhost:8090/v1/models | python3 -c "import sys,json; [print(f'  • {m[\"id\"]}') for m in json.load(sys.stdin).get('data',[])]" 2>/dev/null || echo "  offline"
         ;;
     help|-h|--help)
         echo "Usage: ./run-local-ai.sh [command]"

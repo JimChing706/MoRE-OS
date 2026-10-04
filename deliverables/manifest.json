@@ -1,0 +1,57 @@
+{
+  "write_time": "2026-09-29T04:19:26Z",
+  "root_dir": "/Users/qnming/AI_Cample/qnm-os-prev-202605211332/deliverables",
+  "deliveries": [
+    {
+      "delivery_name": "mahjong_suite_v2_task_6078",
+      "task_id": "task_6078d46754a5",
+      "archive_tar_gz": "task_task_6078d46754a5_20260928.tar.gz",
+      "archive_zip": "task_task_6078d46754a5_20260928.zip",
+      "tar_gz_sha256": "574811fd117234d006615a976ada844e2b12b4144d6b173ecbdcfc2ffcd7b999",
+      "zip_sha256": "b21315756aad5efc10d7d1bb7581545b8fe190e6c0ce0c040cdf38bf0f3ce2ee",
+      "tar_gz_size": 303270,
+      "zip_size": 334604,
+      "unpacked_dir": "mahjong_suite_v2_task_6078",
+      "unpacked_file_count": 18,
+      "write_time": "2026-09-29T04:19:26Z",
+      "mirror_paths": [
+        "/Users/qnming/AI_Cample/qnm-os-prev-202605211332/more_core/data/native_runs/task_6078d46754a5",
+        "/tmp/more_os_native_runs/task_6078d46754a5"
+      ]
+    },
+    {
+      "delivery_name": "mahjong_suite_v2_task_241d",
+      "task_id": "task_241d109f525b",
+      "archive_tar_gz": "task_task_241d109f525b_20260928.tar.gz",
+      "archive_zip": "task_task_241d109f525b_20260928.zip",
+      "tar_gz_sha256": "c2223d58541fd33e65dda85a5c03e4031843fb16f8676b83bf55cbb2d86aa48c",
+      "zip_sha256": "b8bb019ec10c1a4af7ee30e367ceefb366a3bac5fb88533c837d80625ad1e3e3",
+      "tar_gz_size": 303049,
+      "zip_size": 334396,
+      "unpacked_dir": "mahjong_suite_v2_task_241d",
+      "unpacked_file_count": 18,
+      "write_time": "2026-09-29T04:19:26Z",
+      "mirror_paths": [
+        "/Users/qnming/AI_Cample/qnm-os-prev-202605211332/more_core/data/native_runs/task_241d109f525b",
+        "/tmp/more_os_native_runs/task_241d109f525b"
+      ]
+    },
+    {
+      "delivery_name": "cs_shooter_suite_task_630f",
+      "task_id": "task_630f3048c9a7",
+      "archive_tar_gz": "task_task_630f3048c9a7_20260929.tar.gz",
+      "archive_zip": "task_task_630f3048c9a7_20260929.zip",
+      "tar_gz_sha256": "8f1d46de2f97cd67d98e2dbcead861641d3bde4ee2ada12a0703f981833fee66",
+      "zip_sha256": "6b626f2999331b9d7efe6392489c8c4c0005ba4c02ef824d7f5291b3a07a5628",
+      "tar_gz_size": 303707,
+      "zip_size": 335127,
+      "unpacked_dir": "cs_shooter_suite_task_630f",
+      "unpacked_file_count": 19,
+      "write_time": "2026-09-29T04:19:26Z",
+      "mirror_paths": [
+        "/Users/qnming/AI_Cample/qnm-os-prev-202605211332/more_core/data/native_runs/task_630f3048c9a7",
+        "/tmp/more_os_native_runs/task_630f3048c9a7"
+      ]
+    }
+  ]
+}

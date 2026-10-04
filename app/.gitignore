@@ -22,3 +22,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment files — NEVER commit secrets
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env.staging
+.env.*.local
+!.env.example
+!.env.template

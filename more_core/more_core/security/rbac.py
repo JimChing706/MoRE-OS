@@ -22,6 +22,7 @@ Usage::
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Awaitable, Callable
@@ -271,8 +272,16 @@ class UnifiedRBAC:
         return False
 
     def check(self, user_id: str, permission: Permission) -> bool:
-        # If no admin users are configured, allow everyone (dev mode)
+        # If no admin users are configured we are in dev mode.  Historically
+        # this allowed everyone; set MORE_RBAC_STRICT=1 to deny instead
+        # (RESIDUAL_RISKS R-03 mitigation).
         if not self._admin_users:
+            if os.getenv("MORE_RBAC_STRICT", "0") == "1":
+                _log.warning(
+                    "RBAC strict mode: denying %s for %s (no admin_users configured)",
+                    permission.value, user_id,
+                )
+                return False
             return True
         if user_id in self._admin_users or self._is_admin(user_id):
             return True

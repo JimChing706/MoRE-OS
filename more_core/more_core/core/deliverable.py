@@ -19,6 +19,129 @@ from enum import Enum
 from typing import Any
 
 
+# ── Deliverable check summary object ──────────────────────────────────────
+
+@dataclass
+class DeliverableCheckResult:
+    """Result bundle returned by :func:`check_deliverable_contract`.
+
+    Designed so callers (e.g. the orchestrator A2A handler) can apply a
+    single check call that tells them: whether to accept the deliverable
+    (``ok``), which rules fired (``violations``), the highest kill
+    severity, and the resulting A2A/execution final state that should be
+    applied.  Never raises; empty/failed inputs produce sensible defaults.
+    """
+
+    ok: bool = True
+    violations: list = field(default_factory=list)
+    kill_severity: Any = None  # DeliverableContract.KillSeverity or None
+    final_state: str = "COMPLETED"
+    output_text: str = ""
+
+    def to_metadata(self) -> dict:
+        """Serialize for embedding into A2ATask.metadata dict."""
+        try:
+            sev_value = (
+                self.kill_severity.value
+                if getattr(self.kill_severity, "value", None) is not None
+                else None
+            )
+        except Exception:
+            sev_value = None
+        return {
+            "ok": bool(self.ok),
+            "violations": [str(v) for v in (self.violations or [])],
+            "kill_severity": sev_value,
+            "final_state": self.final_state,
+            "output_length": len(self.output_text or ""),
+        }
+
+
+def check_deliverable_contract(
+    contract: Any,
+    *,
+    output_text: str = "",
+    step_count: int = 0,
+    elapsed_s: float = 0.0,
+    success_rate: float | None = None,
+    fatal_errors: int = 0,
+    missing_dimensions: list[str] | None = None,
+) -> DeliverableCheckResult:
+    """Check a :class:`DeliverableContract` against a deliverable's observed
+    run signals.
+
+    Evaluation order (matches the contract's own rules):
+      1. ``contract.check_completeness(output_text)`` → missing dimensions
+         become violations.  Callers may also pass pre-computed
+         ``missing_dimensions`` (e.g. from semantic verifiers) and those are
+         *merged* with the completeness check.
+      2. ``contract.should_kill(...)`` → any non-None severity becomes a
+         violation with the built-in description; ``final_state`` is
+         downgraded to ``FAILED`` when severity is FATAL or CRITICAL.
+
+    If ``contract`` is falsy (``None`` / not-a-contract) the function still
+    returns a valid :class:`DeliverableCheckResult` with ``ok=True``
+    (treats missing contract as "nothing to verify").  **Never raises.**
+    """
+    result = DeliverableCheckResult(output_text=output_text or "")
+    try:
+        if contract is None:
+            return result
+        # 1) Completeness + explicit missing dimensions
+        missing: list[str] = []
+        if missing_dimensions:
+            missing.extend(str(m) for m in missing_dimensions if m)
+        try:
+            complete, miss_list = contract.check_completeness(output_text or "")
+        except Exception:
+            complete, miss_list = True, []
+        if miss_list:
+            missing.extend(str(m) for m in miss_list)
+        if missing:
+            result.ok = False
+            result.violations.extend(
+                f"missing_dimension:{m}" for m in dict.fromkeys(missing)
+            )
+        # 2) Kill-switch evaluation
+        try:
+            severity = contract.should_kill(
+                step_count=step_count or 0,
+                elapsed_s=float(elapsed_s or 0.0),
+                success_rate=(
+                    float(success_rate)
+                    if isinstance(success_rate, (int, float)) and not isinstance(success_rate, bool)
+                    else None
+                ),
+                fatal_errors=int(fatal_errors or 0),
+            )
+        except Exception:
+            severity = None
+        result.kill_severity = severity
+        if severity is not None:
+            result.ok = False
+            # Provide a readable violation string for consumers.
+            result.violations.append(
+                f"kill_switch:{severity.value} "
+                f"(steps={step_count or 0}, elapsed={float(elapsed_s or 0.0):.1f}s, "
+                f"rate={success_rate}, fatals={fatal_errors or 0})"
+            )
+            # Downgrade to FAILED on CRITICAL / FATAL (WARNING allows
+            # COMPLETED with annotated violations so observers still see
+            # partial outputs).
+            if severity in (KillSeverity.FATAL, KillSeverity.CRITICAL):
+                result.final_state = "FAILED"
+        # Completeness-only failures keep COMPLETED but mark ok=False; the
+        # caller is responsible for deciding whether to surface an error.
+        return result
+    except Exception:
+        # Final defensive fallback — always emit at least an empty result.
+        return DeliverableCheckResult(
+            ok=False,
+            violations=["deliverable_check_internal_error"],
+            output_text=output_text or "",
+        )
+
+
 class DeliverableKind(str, Enum):
     """产出物类型 — 定义任务完成后应交付什么。"""
 
@@ -85,6 +208,15 @@ class DeliverableContract:
     acceptance_criteria: list[str] = field(default_factory=list)
     # 如 ["所有API端点有测试覆盖", "文档包含回滚方案"]
     description: str = ""
+    # Step-4 P0: kill-switch + rollback contract.
+    #   rollback_id:  when set, a task can be rolled back by its owning
+    #                 orchestrator by reversing files / DB rows that were
+    #                 recorded under this id.  Empty string = no rollback
+    #                 path was defined when the task was authored.
+    #   kill_criteria: inline kill gates evaluated per execution step so a
+    #                  runaway task can be stopped without external API call.
+    rollback_id: str = ""
+    kill_criteria: list[KillCriterion] = field(default_factory=list)
 
     def dimension_count(self) -> int:
         """必须覆盖的维度数。"""
@@ -134,7 +266,55 @@ class DeliverableContract:
             "quality_gates": self.quality_gates,
             "acceptance_criteria": self.acceptance_criteria,
             "description": self.description,
+            "rollback_id": self.rollback_id,
+            "kill_criteria": [kc.to_dict() for kc in self.kill_criteria],
         }
+
+    def should_kill(
+        self,
+        *,
+        step_count: int = 0,
+        elapsed_s: float = 0.0,
+        success_rate: float | None = None,
+        fatal_errors: int = 0,
+    ) -> KillSeverity | None:
+        """Evaluate the inline kill-criteria and return the worst severity triggered.
+
+        The contract ships 4 built-in triggers that map common kill conditions
+        without requiring callers to hand-write :class:`KillCriterion` objects.
+        A caller-supplied list of :class:`KillCriterion` instances is *also*
+        evaluated heuristically: any criterion whose ``trigger`` substring is
+        present in the combined signal counts as fired.
+        """
+        fired: list[KillSeverity] = []
+        # Built-in defaults: fire on runaway iteration count / wall-clock
+        # time / 0%-hit rate over many retries / too many FATAL errors.
+        max_steps = int(self.quality_gates.get("max_steps", 0))
+        if max_steps > 0 and step_count > max_steps:
+            fired.append(KillSeverity.FATAL)
+        timeout_s = float(self.quality_gates.get("timeout_s", 0.0))
+        if timeout_s > 0 and elapsed_s > timeout_s:
+            fired.append(KillSeverity.FATAL)
+        if success_rate is not None and 0.0 <= success_rate < 0.01 and step_count >= 5:
+            fired.append(KillSeverity.CRITICAL)
+        if fatal_errors >= 3:
+            fired.append(KillSeverity.CRITICAL)
+        # Heuristic pass over user-supplied KillCriterion list.
+        signal = " ".join(
+            [
+                f"steps={step_count}",
+                f"elapsed={elapsed_s:.1f}s",
+                f"rate={success_rate if success_rate is not None else -1}",
+                f"fatals={fatal_errors}",
+            ]
+        )
+        for kc in self.kill_criteria:
+            if kc.trigger and kc.trigger in signal:
+                fired.append(kc.severity)
+        if not fired:
+            return None
+        order = {KillSeverity.WARNING: 0, KillSeverity.CRITICAL: 1, KillSeverity.FATAL: 2}
+        return max(fired, key=lambda s: order[s])
 
     # ── 工厂方法: 预定义契约模板 ──────────────────────────────────
 

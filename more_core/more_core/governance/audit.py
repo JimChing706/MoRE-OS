@@ -14,11 +14,28 @@ import queue
 import threading
 import time
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
 _log = logging.getLogger(__name__)
+
+# P1-1 S-4 沈慎：11 项强制一级字段（合规检索零漏报，不得依赖 payload 散存）
+_STRONG_AUDIT_FIELDS: frozenset[str] = frozenset(
+    {
+        "tier_used",          # int: 0..3 (T0..T3), -1 = unknown
+        "fallback_depth",     # int: fallback chain 降级深度，0 = 首调命中
+        "thinking_tokens",    # int: R2-B 剥离后 reasoning_content 估算 token
+        "delegated",          # int 0/1: 是否委派 Rust 底盘
+        "delegation_trigger", # str: evolution_escalation / user_override / default_gate / none
+        "delegation_state",   # str: completed / failed / pending / none
+        "provider",           # str: 实际执行的 provider
+        "model",              # str: 实际执行的模型
+        "prompt_tokens",      # int: 入站 prompt tokens
+        "completion_tokens",  # int: 出站 completion tokens（含 thinking）
+        "total_latency_ms",   # float: 端到端请求延迟
+    }
+)
 
 
 @dataclass(slots=True)
@@ -28,6 +45,19 @@ class AuditRecord:
     actor: str = "system"
     action: str = ""
     entity: str = ""
+    # P1-1 S-4 11 项强类型合规字段（一级，可被 SQL / grep 精确检索）
+    tier_used: int = -1
+    fallback_depth: int = 0
+    thinking_tokens: int = 0
+    delegated: int = 0
+    delegation_trigger: str = "none"
+    delegation_state: str = "none"
+    provider: str = ""
+    model: str = ""
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_latency_ms: float = 0.0
+    # 兼容：非强类型字段继续走 payload dict
     payload: dict[str, object] = field(default_factory=dict)
 
 
@@ -76,12 +106,24 @@ class AuditLogger:
             actor: Who performed the action (user, system, agent)
             action: What was done (create, update, delete, execute)
             entity: What was affected (task, file, config)
-            **payload: Additional context data
+            **payload: Additional context data.  If a key belongs to the
+                P1-1 S-4 11-item strong-audit set it is routed to the
+                corresponding typed field; everything else continues in
+                ``payload`` (backward compatible).
 
         Returns:
             The created AuditRecord
         """
-        record = AuditRecord(actor=actor, action=action, entity=entity, payload=payload)
+        typed: dict[str, object] = {}
+        remainder: dict[str, object] = {}
+        for k, v in payload.items():
+            if k in _STRONG_AUDIT_FIELDS:
+                typed[k] = v
+            else:
+                remainder[k] = v
+        record = AuditRecord(
+            actor=actor, action=action, entity=entity, payload=remainder, **typed
+        )
         self.write(record)
         return record
 

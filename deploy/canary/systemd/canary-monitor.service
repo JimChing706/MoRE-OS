@@ -1,0 +1,35 @@
+[Unit]
+Description=MoRE OS Canary Health Monitor - 5 Red-Light Auto-Rollback (10s sample / 3min sliding window)
+Documentation=https://github.com/qnming/more-os/tree/main/deploy/canary
+After=network.target more-core-stable.service more-core-canary.service blm-chassis.service
+Wants=network.target more-core-stable.service more-core-canary.service blm-chassis.service
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+Group=__SERVICE_GROUP__
+WorkingDirectory=__MORE_CORE_ROOT__/deploy/canary/scripts
+Environment="MORE_CANARY_MON_STABLE=http://127.0.0.1:8765"
+Environment="MORE_CANARY_MON_CANARY=http://127.0.0.1:8766"
+Environment="MORE_CANARY_MON_CHASSIS=http://127.0.0.1:9988"
+Environment="MORE_CANARY_MON_SYSADMIN_API_KEY_FILE=__MORE_CORE_ROOT__/more_core/.env"
+Environment="MORE_CANARY_MON_NGINX_CONF=__MORE_CORE_ROOT__/deploy/canary/nginx/more_os_canary.conf"
+Environment="MORE_CANARY_MON_SLIDING_WINDOW_SECONDS=180"
+Environment="MORE_CANARY_MON_SAMPLE_INTERVAL_SECONDS=10"
+ExecStart=__PYTHON_BIN__ __MORE_CORE_ROOT__/deploy/canary/scripts/canary_monitor.py
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=15
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=canary-monitor
+
+# Sandbox hardening (needs nginx reload capability via passwordless sudo or nginx exec perms)
+NoNewPrivileges=false
+ProtectSystem=strict
+ReadWritePaths=__MORE_CORE_ROOT__/deploy/canary
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -422,3 +422,143 @@ tags: [plugin]
         doc = parser.parse(text)
         assert doc.type == "plugin_defined"
         assert doc.plugin_type == "minesweeper"
+
+
+# ---------------------------------------------------------------------------
+# Mode B & Mode C tests
+# ---------------------------------------------------------------------------
+
+
+class TestModeMulti:
+    def test_mode_b_no_frontmatter_7_steps(self) -> None:
+        text = """# 用户登录模块开发
+
+## REQ-001: 用户注册功能
+**Priority:** HIGH
+**Description:** 支持邮箱和手机号注册，需邮箱验证。
+
+**Acceptance Criteria:**
+- [x] 邮箱格式校验通过
+- [x] 手机号格式校验通过
+- [x] 发送验证邮件接口返回200
+
+## REQ-002: 用户登录功能
+**Priority:** HIGH
+**Description:** 支持账号密码登录和第三方OAuth登录。
+
+**Acceptance Criteria:**
+- [x] 密码错误返回401状态码
+- [x] 登录成功返回JWT token
+- [x] 微信OAuth登录跳转URL正确
+
+## REQ-003: 密码重置
+**Priority:** MEDIUM
+**Description:** 忘记密码通过邮箱重置。
+
+**Acceptance Criteria:**
+- [x] 重置邮件包含有效链接
+- [x] 链接24小时内有效
+- [x] 新密码强度符合规则
+
+## REQ-004: 用户资料修改
+**Priority:** MEDIUM
+**Description:** 用户可修改头像、昵称、个人简介。
+
+**Acceptance Criteria:**
+- [x] 头像上传大小限制5MB
+- [x] 昵称长度2-20字符
+- [x] 修改后立即生效
+
+## REQ-005: 账号安全设置
+**Priority:** HIGH
+**Description:** 支持修改密码、绑定手机、两步验证。
+
+**Acceptance Criteria:**
+- [x] 修改密码需验证旧密码
+- [x] 两步验证使用TOTP算法
+- [x] 安全操作记录审计日志
+
+## REQ-006: 账号注销
+**Priority:** LOW
+**Description:** 用户可申请注销账号，7天冷静期。
+
+**Acceptance Criteria:**
+- [x] 注销申请发送确认邮件
+- [x] 冷静期内可撤销注销
+- [x] 注销后数据匿名化处理
+
+## REQ-007: 登录日志查询
+**Priority:** LOW
+**Description:** 用户可查看最近30天登录记录。
+
+**Acceptance Criteria:**
+- [x] 记录包含IP和设备信息
+- [x] 支持按时间范围筛选
+- [x] 异常登录标红提醒
+"""
+        parser = ImportTaskParser()
+        doc = parser.parse(text)
+
+        warnings = doc._raw_frontmatter.get("_warnings", [])
+        assert len(warnings) >= 1
+        assert warnings[0] == "模式A/B"
+
+        assert doc.title == "用户登录模块开发"
+        assert doc.author == "mode_b_synthesis"
+        assert doc.type == "nlp_task"
+        assert doc.priority == "medium"
+        assert "mode_b" in doc.tags
+
+        assert len(doc.requirements) == 7
+        assert doc.requirements[0].id == "REQ-001"
+        assert doc.requirements[0].title == "用户注册功能"
+        assert len(doc.requirements[0].acceptance_criteria) == 3
+        assert doc.requirements[6].id == "REQ-007"
+        assert doc.requirements[6].title == "登录日志查询"
+        assert len(doc.requirements[6].acceptance_criteria) == 3
+
+        assert "用户登录模块开发" in doc.summary
+
+    def test_mode_c_tetris_nl_prompt_5_reqs(self) -> None:
+        text = (
+            "通过标准任务导入机制启动俄罗斯方块Web游戏开发项目，"
+            "具体执行要求如下：\n"
+            "1、实现经典俄罗斯方块核心游戏逻辑：7种方块(I/O/T/S/Z/J/L)随机生成、下落、旋转、移动、消行、计分和等级提升\n"
+            "2、开发纯HTML5 Canvas渲染引擎，60fps流畅动画，方块阴影效果、消行粒子特效和下一方块预览窗口\n"
+            "3、实现键盘+触屏双控制方案：←→移动↑旋转↓加速Space直落，移动端支持左右滑动和点击旋转\n"
+            "4、集成本地最高分排行榜：localStorage持久化TOP10记录，支持玩家昵称输入和成绩分享截图\n"
+            "5、暂停/继续/重开功能完善：P键暂停ESC菜单，游戏结束弹窗显示分数等级和消行数，一键重开局\n"
+        )
+        parser = ImportTaskParser()
+        doc = parser.parse(text)
+
+        warnings = doc._raw_frontmatter.get("_warnings", [])
+        assert len(warnings) >= 1
+        assert warnings[0] == "模式C"
+
+        assert doc.title.startswith("任务导入自动生成_")
+        assert len(doc.title) == len("任务导入自动生成_") + 6
+        assert doc.author == "mode_c_synthesis"
+        assert doc.type == "nlp_task"
+        assert doc.priority == "medium"
+        assert "mode_c" in doc.tags
+        assert doc.timeout_s == 300.0
+
+        assert len(doc.requirements) == 5
+        assert doc.requirements[0].id == "REQ-001"
+        assert "俄罗斯方块" in doc.requirements[0].description
+        assert "方块" in doc.requirements[0].acceptance_criteria[0]
+        assert doc.requirements[1].id == "REQ-002"
+        assert "HTML5 Canvas" in doc.requirements[1].description
+        assert doc.requirements[2].id == "REQ-003"
+        assert "键盘" in doc.requirements[2].description
+        assert doc.requirements[3].id == "REQ-004"
+        assert "排行榜" in doc.requirements[3].description
+        assert doc.requirements[4].id == "REQ-005"
+        assert "暂停" in doc.requirements[4].description
+
+        assert len(doc.kill_criteria) >= 1
+        assert doc.kill_criteria[0].id == "KC-001"
+        assert doc.kill_criteria[0].severity == "fatal"
+        assert doc.kill_criteria[0].timeline == "immediate"
+        assert "超时" in doc.kill_criteria[0].condition

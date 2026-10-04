@@ -31,6 +31,7 @@ from ..core.types import (
 )
 from ..evolution.archive import EvolutionArchive
 from ..layers.base import Layer, LayerContext
+from ..llm.model_aliases import ModelAliasRegistry
 from ..llm.provider import LLMRequest
 from ..memory.store import MemoryStore
 from ..evolution.benchmark import BenchmarkRunner, SimpleBenchmark
@@ -152,6 +153,7 @@ class MoRECore:
 
         # Reasoning & Model Aliases
         self.reasoning_router = self.task_model_router.reasoning_router
+        self.model_aliases = ModelAliasRegistry()
 
         # ── v3.0: Wire Meta-Orchestrator with LayerRouter ─────────────────
         # Post-bootstrap: MetaOrchestrator was created without router;
@@ -235,6 +237,20 @@ class MoRECore:
     async def start(self) -> None:
         await self.event_bus.start()
         register_builtins(self.tools, self)
+        # 生产效率事故修复：启动即校验 LLM 链路（模型名是否存在、兜底链是否完整）
+        try:
+            from ..llm.preflight import preflight_llm
+
+            _pf = await preflight_llm(self.llm, list(getattr(self.llm, "_fallback", []) or []))
+            self.llm_preflight = _pf.to_dict()
+            for _w in _pf.warnings:
+                self.logger.warning("LLM preflight: %s", _w)
+            if _pf.ok:
+                self.logger.info(
+                    "LLM preflight OK (chain=%s)", ",".join(_pf.chain_registered)
+                )
+        except Exception as exc:  # pragma: no cover - 预检失败不阻断启动
+            self.logger.warning("LLM preflight skipped: %s", exc)
         # Wire benchmark runner into DGM for evaluation loop
         self.benchmark_runner = BenchmarkRunner(self)
         self.benchmark_runner.register(SimpleBenchmark())
@@ -318,10 +334,24 @@ class MoRECore:
         if request.type is TaskType.AUTO:
             self._resolve_auto_type(request)
 
+        # --- R-03: 身份只信任凭证派生的 principal，不信任请求体 actor ---
+        from ..security.principal import get_principal
+
+        _trusted = get_principal()
+        _claimed = str(request.context.get("actor") or "anonymous")
+        if _trusted:
+            if _claimed != _trusted:
+                # 保留调用方自报值仅用于审计，不参与任何权限判断
+                request.context["requested_actor"] = _claimed
+            request.context["actor"] = _trusted
+            actor_effective = _trusted
+        else:
+            actor_effective = _claimed
+
         # --- Correlation context for structured logging ---
         req_ctx = RequestContext(
             task_id=request.id,
-            actor=request.context.get("actor", "anonymous"),
+            actor=actor_effective,
         )
         token = set_context(req_ctx)
 
@@ -337,10 +367,25 @@ class MoRECore:
                 performance=PerformanceMetrics(total_duration_ms=0.0),
             )
 
-        # --- Task-level result cache (skip full pipeline for repeated queries) ---
-        # Full-query hash key avoids collisions from the old first-512-chars key.
-        cache_key = f"{request.type.value}|{hashlib.sha256(request.query.encode('utf-8')).hexdigest()}"
-        cached = await self._request_cache.get(cache_key, "task")
+        # --- Task-level result cache（R-06 修复） ---
+        # 旧键只含 type+query 哈希，导致：
+        #   ① 不同主体（actor）共享同一份输出 → 跨主体数据复用；
+        #   ② 同一需求无法重新生成（永久命中旧结果）；
+        #   ③ 命中分支位于 ZEN/policy 校验之前 → 治理被短路。
+        # 现在：键纳入主体；代码类任务默认禁用整任务缓存（必须可重生成）；
+        # 且允许 context["no_cache"]=True 显式绕过。
+        _code_task = request.type in (
+            TaskType.CODE_GENERATION,
+            TaskType.CODE_DEBUGGING,
+            TaskType.CODE_TESTING,
+        )
+        _no_cache = bool(request.context.get("no_cache")) or _code_task
+        cache_key = (
+            f"{request.type.value}"
+            f"|{hashlib.sha256(request.query.encode('utf-8')).hexdigest()}"
+            f"|{str(request.context.get('actor') or 'anonymous')}"
+        )
+        cached = None if _no_cache else await self._request_cache.get(cache_key, "task")
         if cached is not None:
             clear_context(token)
             self._metrics.record_request(0.0, True)
@@ -394,7 +439,7 @@ class MoRECore:
             else:
                 decision = self.router.route(request, available_providers=available)
 
-            actor = request.context.get("actor", "anonymous")
+            actor = str(request.context.get("actor") or "anonymous")
             ctx = LayerContext(core=self, request=request, user_id=actor)
             await self.event_bus.publish(
                 "task.started",
@@ -420,7 +465,7 @@ class MoRECore:
 
             # --- ZEN Rules enforcement (pre-execution) ---
             zen = get_enforcer()
-            actor = request.context.get("actor", "anonymous")
+            actor = str(request.context.get("actor") or "anonymous")
             if zen.check_violation("ZEN-01", {"actor": actor, "task_id": request.id}):
                 self.audit.log(
                     actor=actor,
@@ -493,6 +538,7 @@ class MoRECore:
                     convergence_tracker=convergence_tracker,
                     expectation=expectation,
                     cache_key=cache_key,
+                    no_cache=_no_cache,
                 )
             except Exception as exc:
                 self.logger.exception("task %s post-processing crashed", request.id)
@@ -524,6 +570,7 @@ class MoRECore:
         convergence_tracker: ConvergenceTracker,
         expectation: TaskExpectation,
         cache_key: str,
+        no_cache: bool = False,
     ) -> TaskResult:
         """Build the final TaskResult and run post-processing.
 
@@ -613,12 +660,138 @@ class MoRECore:
         except Exception as exc:
             self.logger.warning("pipeline self-check failed for task %s: %s", request.id, exc)
 
+        # ── 产出正确性闸门 + 交付可信度台账（P0 修复） ──────────────
+        # 1) 代码类任务：确保"被验证的工件"就是"被交付的工件"。
+        #    过滤器在 L0 沙箱验证之后才改写输出，历史上曾把 key=lambda 改写成
+        #    [ENV_SECRET_REDACTED] 从而交付语法错误的代码（见审计报告 F-01/F-02）。
+        #    这里做一次"过滤前 vs 过滤后"语法对比，若过滤破坏了原本合法的代码，
+        #    则回退到过滤前工件（代码优先），并记录告警与审计事件。
+        gate_report: Any = None
+        metadata_verdict_conflict = False
+        metadata_escalation_cause: dict[str, Any] | None = None
+        delivery_status = "delivered" if status == TaskStatus.SUCCESS else "failed"
+        delivery_reason = ""
+
+        # G1（交付可信度交叉校验）：Codegen Controller 裁决 `escalated` 表示
+        # 成功判据未满足（修复轮次耗尽 / 断言未过 / 评审拒绝）。此时绝不能把
+        # 交付标成 delivered —— 否则台账与控制器结论互相矛盾。
+        from ..codegen.delivery_policy import resolve_delivery_decision
+
+        _verdict_decision = str(
+            (ctx.scratch.get("codegen_verdict") or {}).get("decision", "")
+        )
+        # 仅代码类任务受 Codegen Controller 约束：NLP/数据分析等任务的
+        # verdict 不具业务含义，不能用它阻断交付（否则会大面积误伤）。
+        _is_code_task = request.type in (
+            TaskType.CODE_GENERATION,
+            TaskType.CODE_DEBUGGING,
+            TaskType.CODE_TESTING,
+        )
+        _cause = str(
+            ((ctx.scratch.get("codegen_verdict") or {}).get("artifacts") or {}).get("cause", "")
+        )
+        _decision = resolve_delivery_decision(
+            task_succeeded=(status == TaskStatus.SUCCESS),
+            gates_passed=True,  # 闸门在下方单独校验（需要先跑 gates）
+            verdict=_verdict_decision if _is_code_task else "",
+            cause=_cause,
+        )
+        if _decision.status == "blocked" and delivery_status == "delivered":
+            delivery_status = "blocked"
+            delivery_reason = _decision.reason
+            metadata_escalation_cause = {
+                "cause": _decision.cause,
+                "is_infra": _decision.is_infra,
+                "needs_attention": _decision.needs_attention,
+            }
+            if status == TaskStatus.SUCCESS:
+                status = TaskStatus.FAILED
+            metadata_verdict_conflict = True
+            self.audit.log(
+                actor="system",
+                action="delivery_blocked",
+                entity="task",
+                task_id=request.id,
+                detail=delivery_reason,
+            )
+        if request.type in (TaskType.CODE_GENERATION, TaskType.CODE_DEBUGGING, TaskType.CODE_TESTING):
+            from ..codegen.gates import run_gates
+
+            raw_text = str(output or "")
+            filtered_text = str(filtered_output or "")
+            raw_gates = run_gates(raw_text, query=request.query)
+            filtered_gates = run_gates(filtered_text, query=request.query)
+            if raw_gates.passed and not filtered_gates.passed:
+                self.logger.warning(
+                    "output filter broke code for task %s — delivering pre-filter artifact",
+                    request.id,
+                )
+                self.audit.log(
+                    actor="system",
+                    action="output_filter_corrupted_code",
+                    entity="task",
+                    task_id=request.id,
+                    detail=filtered_gates.summary()[:300],
+                )
+                filtered_output = output
+                filtered_gates = raw_gates
+            gate_report = filtered_gates
+            if not gate_report.passed:
+                delivery_status = "blocked"
+                delivery_reason = gate_report.summary()[:300]
+                # D-1：闸门拦截同样要记录可聚合的原因（此前只记 reason，
+                # 导致看板出现大量 unspecified）
+                _failed_gates = [
+                    f.gate for f in gate_report.blocking_failures
+                ] or ["unknown"]
+                metadata_escalation_cause = {
+                    "cause": f"gate_{_failed_gates[0]}_failed",
+                    "is_infra": False,
+                    "needs_attention": True,
+                    "failed_gates": _failed_gates,
+                }
+                if status == TaskStatus.SUCCESS:
+                    status = TaskStatus.FAILED
+                    self.logger.warning(
+                        "delivery blocked by gates for task %s: %s", request.id, delivery_reason
+                    )
+                    self.audit.log(
+                        actor="system",
+                        action="delivery_blocked",
+                        entity="task",
+                        task_id=request.id,
+                        detail=delivery_reason,
+                    )
+
         metadata: dict[str, Any] = {}
+        # D-4：分段耗时（含占比与总计），供延迟归因
+        _stage_timings = ctx.scratch.get("stage_timings") or {}
+        if _stage_timings:
+            _total = sum(float(v) for v in _stage_timings.values()) or 1.0
+            metadata["stage_timings"] = {
+                "layers_ms": dict(_stage_timings),
+                "total_ms": round(_total, 1),
+                "share_pct": {
+                    k: round(float(v) / _total * 100, 1) for k, v in _stage_timings.items()
+                },
+            }
+        if metadata_escalation_cause:
+            metadata["escalation"] = metadata_escalation_cause
+        if metadata_verdict_conflict:
+            metadata["verdict_conflict"] = {
+                "codegen_verdict": _verdict_decision,
+                "delivery_status": delivery_status,
+                "note": "controller escalated → delivery blocked",
+            }
+        if gate_report is not None:
+            metadata["delivery_gates"] = gate_report.to_dict()
         if self_check_report:
             metadata["self_check"] = self_check_report
         if "auto_resolved_type" in request.context:
             metadata["auto_resolved_type"] = request.context["auto_resolved_type"]
             metadata["auto_confidence"] = request.context["auto_confidence"]
+        if ctx.scratch.get("codegen_verdict"):
+            metadata["codegen_verdict"] = ctx.scratch["codegen_verdict"]
 
         result = TaskResult(
             task_id=request.id,
@@ -633,6 +806,31 @@ class MoRECore:
             convergence_report=convergence_dict,
             metadata=metadata,
         )
+
+        # ── 交付台账：每一次交付留痕（状态/权责/版本/哈希/裁决/闸门） ──
+        try:
+            from ..codegen.delivery_ledger import get_default_ledger
+
+            _ledger = get_default_ledger()
+            _ledger.record(
+                task_id=request.id,
+                status=delivery_status,
+                task_type=request.type.value,
+                reason=delivery_reason,
+                cause=(metadata_escalation_cause or {}).get("cause", ""),
+                is_infra=bool((metadata_escalation_cause or {}).get("is_infra", False)),
+                stage_timings=(metadata.get("stage_timings") or {}).get("layers_ms", {}),
+                artifact=str(filtered_output or ""),
+                verdict=str((ctx.scratch.get("codegen_verdict") or {}).get("decision", "")),
+                gates=(gate_report.to_dict() if gate_report is not None else {}),
+                gates_passed=(gate_report.passed if gate_report is not None else True),
+                actor=str(request.context.get("actor", "anonymous")),
+                provider=str(request.context.get("provider", "")),
+                model=str(request.context.get("model", "")),
+                request_excerpt=str(request.query or ""),
+            )
+        except Exception as exc:  # pragma: no cover - 台账失败不得影响用户链路
+            self.logger.warning("delivery ledger write failed for %s: %s", request.id, exc)
 
         await self.event_bus.publish(
             "task.completed",
@@ -656,7 +854,13 @@ class MoRECore:
 
         self._metrics.record_request(total_ms, status == TaskStatus.SUCCESS)
         # Cache successful results for future identical queries
-        if status == TaskStatus.SUCCESS and output:
+        # （被闸门拦截的产物不进入缓存，避免把坏结果扩散成"可复用"答案）
+        if (
+            status == TaskStatus.SUCCESS
+            and output
+            and delivery_status == "delivered"
+            and not no_cache
+        ):
             await self._request_cache.set(cache_key, "task", str(output))
         return result
 
@@ -749,7 +953,12 @@ class MoRECore:
                 data={"task_id": ctx.request.id, "layer": layer_id.value},
                 source="orchestrator",
             )
+            # D-4：阶段级分段计时 —— 让端到端延迟可归因到具体层
+            _t0 = time.perf_counter()
             result = await self.layers[layer_id].run(ctx)
+            _elapsed_ms = (time.perf_counter() - _t0) * 1000.0
+            _timings = ctx.scratch.setdefault("stage_timings", {})
+            _timings[layer_id.value] = round(_elapsed_ms, 1)
 
             # ── v2: 收敛性追踪 ─────────────────────────────
             if convergence_tracker and result.output:
@@ -813,7 +1022,7 @@ class MoRECore:
 
             available = set(self.llm.list_providers()) if self.llm else set()
             decision = self.router.route(request, available_providers=available)
-            actor_s = request.context.get("actor", "anonymous")
+            actor_s = str(request.context.get("actor") or "anonymous")
             ctx = LayerContext(core=self, request=request, user_id=actor_s)
 
             # Emit pipeline info
@@ -983,22 +1192,187 @@ class MoRECore:
             async def _a2a_handler(task: Any) -> Any:
                 from ..core.types import TaskRequest, TaskType, TaskStatus
 
+                # ── Step-4 P2: task_type from A2A message metadata ──────
+                # BaiLongma bridge sends content = {text, task_type, context}.
+                # Older plain-text agents send just content.text; default
+                # to NLP_TASK in that case to preserve backwards compat.
                 text = ""
+                task_type_hint: str | None = None
+                context: dict[str, Any] = {}
                 for m in task.messages:
-                    t = m.content.get("text", "")
+                    body = m.content or {}
+                    t = body.get("text", "") if isinstance(body, dict) else ""
                     if t:
                         text = t
-                        break
+                    if isinstance(body, dict):
+                        # Prefer explicit task_type from first message that has one.
+                        if task_type_hint is None and body.get("task_type"):
+                            task_type_hint = str(body["task_type"])
+                        if isinstance(body.get("context"), dict) and not context:
+                            context = dict(body["context"])
+                    # Also inspect message.metadata["task_type"] / qnm_origin
+                    # which may be populated by chassis without rewriting body.
+                    meta = m.metadata if isinstance(m.metadata, dict) else {}
+                    if task_type_hint is None and meta.get("qnm_origin") == "delegate_v1":
+                        if meta.get("task_type"):
+                            task_type_hint = str(meta["task_type"])
                 if not text:
                     task.state = A2ATaskState.FAILED
                     return task
-                req = TaskRequest(type=TaskType.NLP_TASK, query=text)
-                result = await self.execute(req)
-                task.state = (
-                    A2ATaskState.COMPLETED
-                    if result.status == TaskStatus.SUCCESS
-                    else A2ATaskState.FAILED
-                )
+                # Resolve TaskType from hint (allow both enum value strings and
+                # raw member names — lenient so future chassis versions work).
+                req_type = TaskType.NLP_TASK
+                if task_type_hint:
+                    for t in TaskType:
+                        if (
+                            t.value == task_type_hint
+                            or t.name.lower() == task_type_hint.lower()
+                            or str(t) == task_type_hint
+                        ):
+                            req_type = t
+                            break
+                req = TaskRequest(type=req_type, query=text, context=context)
+
+                # ── Step-4 P2: background execution avoids HTTP timeout ──
+                # tasks/send returns WORKING immediately; caller polls via
+                # tasks/get.  Final COMPLETED / FAILED state is written back
+                # to task.state + an agent-role message carries the output.
+                task.state = A2ATaskState.WORKING
+
+                async def _runner() -> None:
+                    from ..a2a.client import A2AMessage
+                    from ..core.deliverable import (
+                        DeliverableContract,
+                        DeliverableKind,
+                        check_deliverable_contract,
+                    )
+
+                    try:
+                        result = await self.execute(req)
+                        # ── Step 4 Delivery Contract kill-switch integration ──
+                        # Pick a DeliverableContract template based on task
+                        # type; prefer explicit contract passed by caller
+                        # via context.contract (allows customisation per
+                        # request by a delegating chassis or L0 gate).
+                        # Collect observations (step_count, timing, fatal
+                        # errors) from context if the pipeline wrote them.
+                        try:
+                            ctx_contract = req.context.get("contract") if isinstance(req.context, dict) else None
+                            if isinstance(ctx_contract, DeliverableContract):
+                                contract = ctx_contract
+                            else:
+                                _kmap = {
+                                    TaskType.CODE_GENERATION: DeliverableKind.CODE,
+                                    TaskType.CODE_REVIEW: DeliverableKind.CODE,
+                                    TaskType.ARCHITECTURE_DESIGN: DeliverableKind.ARCHITECTURE,
+                                    TaskType.DATA_ANALYSIS: DeliverableKind.ANALYSIS,
+                                    TaskType.NLP_TASK: DeliverableKind.EXPLANATION,
+                                    TaskType.MATH_REASONING: DeliverableKind.DECISION,
+                                }
+                                _kind = _kmap.get(req_type, DeliverableKind.CUSTOM)
+                                contract = DeliverableContract(kind=_kind)
+                                # If the caller placed quality_gates into
+                                # the context, merge them in so custom
+                                # step/time budgets propagate.
+                                if isinstance(req.context, dict):
+                                    qg = req.context.get("contract_quality_gates")
+                                    if isinstance(qg, dict) and qg:
+                                        contract.quality_gates.update(qg)
+                        except Exception:
+                            contract = DeliverableContract()
+                        try:
+                            elapsed = getattr(result, "elapsed_s", None)
+                            if isinstance(req.context, dict):
+                                elapsed = float(req.context.get("_elapsed_s", elapsed or 0.0))
+                            _step_count = int(
+                                getattr(result, "fix_iterations", 0)
+                                or (
+                                    int(req.context.get("fix_iterations", 0))
+                                    if isinstance(req.context, dict)
+                                    else 0
+                                )
+                            )
+                            _fatal_errors = int(
+                                req.context.get("_fatal_errors", 0)
+                                if isinstance(req.context, dict)
+                                else 0
+                            )
+                            _success_rate = (
+                                req.context.get("_success_rate")
+                                if isinstance(req.context, dict)
+                                else None
+                            )
+                            # Extract output text for completeness check.
+                            _output_text = ""
+                            if isinstance(getattr(result, "data", None), dict):
+                                _output_text = str(result.data.get("output", ""))
+                            if not _output_text:
+                                _data = getattr(result, "data", None)
+                                _output_text = "" if _data is None else str(_data)
+                            check_res = check_deliverable_contract(
+                                contract,
+                                output_text=_output_text,
+                                step_count=_step_count,
+                                elapsed_s=elapsed,
+                                success_rate=_success_rate,
+                                fatal_errors=_fatal_errors,
+                            )
+                            # Apply the contract verdict: override
+                            # final_state and attach metadata.
+                            if check_res.final_state == "FAILED":
+                                final_state = A2ATaskState.FAILED
+                            else:
+                                final_state = (
+                                    A2ATaskState.COMPLETED
+                                    if result.status == TaskStatus.SUCCESS
+                                    else A2ATaskState.FAILED
+                                )
+                            # Serialize contract check for observers.
+                            try:
+                                if not isinstance(task.metadata, dict):
+                                    task.metadata = {}
+                                task.metadata["deliverable_check"] = check_res.to_metadata()
+                            except Exception:
+                                pass
+                        except Exception:
+                            # Contract check is best-effort; never leak an
+                            # error that would mask the real result.
+                            final_state = (
+                                A2ATaskState.COMPLETED
+                                if result.status == TaskStatus.SUCCESS
+                                else A2ATaskState.FAILED
+                            )
+                        task.state = final_state
+                        # Add agent-role message with the final output; if
+                        # the orchestrator returned a dict with `output` use
+                        # that, otherwise just use str(result.data).
+                        output_text = ""
+                        if isinstance(getattr(result, "data", None), dict):
+                            output_text = str(result.data.get("output", ""))
+                        if not output_text:
+                            data = getattr(result, "data", None)
+                            output_text = "" if data is None else str(data)
+                        msg = A2AMessage(
+                            role="agent",
+                            content={"text": output_text},
+                            metadata={
+                                "task_status": getattr(result, "status", TaskStatus.FAILED).value,
+                            },
+                        )
+                        task.messages.append(msg)
+                    except Exception as exc:  # pragma: no cover - defensive
+                        task.state = A2ATaskState.FAILED
+                        task.messages.append(
+                            A2AMessage(
+                                role="agent",
+                                content={"text": f"Internal error: {exc!r}"},
+                                metadata={"error": repr(exc)},
+                            )
+                        )
+
+                import asyncio as _aio
+
+                _aio.create_task(_runner())
                 return task
 
             srv.set_task_handler(_a2a_handler)

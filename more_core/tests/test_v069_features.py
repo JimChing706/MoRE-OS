@@ -58,6 +58,15 @@ def test_get_reasoning_params_claude():
     assert "budget_tokens" in params["thinking"]
 
 
+def test_reasoning_distilled_local_model():
+    # 本地推理蒸馏 (LM Studio) — 名字含 claude 但不应走 claude thinking 分支
+    model = "qwen3.6-35b-a3b-claude-4.6-opus-reasoning-distilled"
+    assert is_reasoning_model(model)
+    params = get_reasoning_params(model)
+    assert params.get("enable_thinking") is True
+    assert "thinking" not in params  # 不走 claude 分支
+
+
 def test_get_reasoning_params_normal_model():
     params = get_reasoning_params("gpt-4o")
     assert params == {}

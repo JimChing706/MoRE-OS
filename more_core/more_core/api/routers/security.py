@@ -126,4 +126,19 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         )
         return {"success": success, "incident_id": incident_id}
 
+    # -- P1-4 G-2 覃朗：前版梯子运行时回滚端点 (内存态 toggle, 重启清零) --------
+    @router.post(
+        "/ops/tier_rollback",
+        dependencies=[
+            Depends(require_api_key),
+            Depends(require_permission(Permission.SYS_ADMIN)),
+        ],
+    )
+    async def tier_rollback() -> dict[str, Any]:
+        """RBAC 受控：SYS_ADMIN 权限。调用路由器 apply_previous_tier_ladder()
+        将 T0~T3 四元组梯子在"当前版 <-> MORE_PREV_TIER_*_MODEL 前版"之间做
+        内存态 toggle。长度不一致 (≠4 tiers) 时拒绝回滚，返回 reason 字段。
+        """
+        return core.task_model_router.apply_previous_tier_ladder()
+
     return router

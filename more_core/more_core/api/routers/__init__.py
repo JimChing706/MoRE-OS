@@ -21,6 +21,8 @@ from .mcp import create_router as create_mcp_router
 from .a2a import create_router as create_a2a_router
 from .import_task import create_router as create_import_task_router
 from .deliberate import create_router as create_deliberate_router
+from .admin_api_key import create_router as create_admin_api_key_router
+from .delivery import create_router as create_delivery_router
 
 __all__ = [
     "create_health_router",
@@ -44,4 +46,6 @@ __all__ = [
     "create_a2a_router",
     "create_import_task_router",
     "create_deliberate_router",
+    "create_admin_api_key_router",
+    "create_delivery_router",
 ]

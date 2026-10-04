@@ -77,7 +77,7 @@ class _FakeLLMProvider:
             provider="fake",
             model="fake-model",
             prompt_tokens=5,
-            completion_tokens=10,
+            completion_tokens=256,
         )
 
     async def stream(self, request):
@@ -106,9 +106,72 @@ def core():
         enable_evolution=False,
         enable_metacognition=False,
         enable_symbolic=True,
+        # Step-3 P1 default gates are ON in production; turn OFF for fast
+        # deterministic unit tests that exercise only the path under test.
+        codegen_candidates=1,
+        codegen_review=False,
     )
     instance = MoRECore(settings)
     # Inject fake LLM so tests that call core.execute() work without real providers
     instance.llm._providers["fake"] = _FakeLLMProvider()
     instance.llm._fallback = ["fake"]
+    # 对齐生产 bootstrap：注册内置工具（含 python_exec）。否则代码类任务
+    # 永远不会进沙箱，Codegen Controller 会因 sandbox=False 判 escalated，
+    # 在 G1 交叉校验下被正确拦截 —— 那是测试夹具缺陷，不是产品缺陷。
+    from more_core.tools.builtins import register_builtins
+
+    register_builtins(instance.tools, instance)
     return instance
+
+
+@pytest.fixture(autouse=True)
+def _isolated_api_key_store(tmp_path, monkeypatch):
+    """Keep every test off the developer's real ``data/api_keys.db``.
+
+    The managed key registry decides whether the API requires authentication at
+    all, so a populated production store would silently flip unrelated tests
+    from "open dev mode" to 401.  Point the singleton at a per-test temp DB.
+    """
+    from more_core.security.api_key_store import set_default_store
+
+    monkeypatch.setenv("MORE_API_KEY_DB", str(tmp_path / "api_keys.db"))
+    monkeypatch.setenv("MORE_API_KEY_PEPPER", "more-os-test-pepper")
+    set_default_store(None)
+    yield
+    set_default_store(None)
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_api_key(monkeypatch):
+    """Never let the developer's ``more_core/.env`` decide test auth behaviour.
+
+    ``core.config`` loads that file at import time, so a machine with a real
+    ``MORE_API_KEY`` turned every unauthenticated TestClient call into a 401.
+    Tests that need a key set it explicitly via ``monkeypatch.setenv``.
+    """
+    monkeypatch.delenv("MORE_API_KEY", raising=False)
+    # 生产 .env 可能开启 MORE_REQUIRE_API_KEY=1（严格模式）；测试需保持
+    # 可复现的"无密钥开发模式"，否则 create_app() 会在启动校验处直接抛错。
+    monkeypatch.setenv("MORE_REQUIRE_API_KEY", "0")
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _isolated_delivery_ledger(tmp_path, monkeypatch):
+    """Keep delivery-ledger writes out of the developer's real data/ ledger."""
+    from more_core.codegen.delivery_ledger import set_default_ledger
+
+    monkeypatch.setenv("MORE_DELIVERY_LEDGER_DB", str(tmp_path / "delivery_ledger.db"))
+    set_default_ledger(None)
+    yield
+    set_default_ledger(None)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_observability(tmp_path, monkeypatch):
+    """Telemetry must never leak between tests (or into the real logs/ DB)."""
+    from more_core.governance import observability as _obs
+
+    _obs.configure(tmp_path / "observability.sqlite")
+    yield
+    _obs.close()

@@ -245,7 +245,22 @@ more_core/
 
 ### 3.3 环境变量驱动配置
 
-`Settings.from_env()` 方法从环境变量自动构造配置（`MoRECore.from_env()` 内部调用）。详见 [附录](#21-附录环境变量速查表)。
+`Settings.from_env()` 方法从环境变量自动构造配置（`MoRECore.from_env()` 内部调用）。详见 [附录](#25-附录环境变量速查表)。
+
+### 3.4 API 认证密钥 `MORE_API_KEY`
+
+未配置时 API 以**不鉴权模式**运行（仅本地开发可用，启动时输出告警）。配置后所有
+`/api/v1/*` 端点与 `/ws/monitor` 均要求 `Authorization: Bearer <key>`。
+
+```bash
+# more_core/.env
+MORE_API_KEY=sk-more-os-<本地生成的密钥>
+MORE_REQUIRE_API_KEY=1   # 密钥缺失/格式不合法时直接阻止启动
+```
+
+**平台不签发该密钥**，需本地生成（`python -c "import secrets; print('sk-more-os-'+secrets.token_urlsafe(32))"`）。
+完整的获取渠道、格式要求、生效前置条件、轮换流程，以及"前端 `app/` 尚未接入
+`Authorization` 头"这一已知约束，见 **[docs/API_KEY.md](../docs/API_KEY.md)**。
 
 ---
 
@@ -1626,7 +1641,18 @@ truncate_display("你好世界测试", max_width=8)  # "你好世…"
 | `MORE_LLM_FALLBACK_CHAIN` | 全局 | (注册顺序) | fallback 优先级 (逗号分隔) |
 | `MORE_OPENAI_API_KEY` | openai | — | OpenAI API Key |
 
-### 25.3 dotenv 配置 (v0.5.1)
+### 25.3 API 认证环境变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `MORE_API_KEY` | (未设置) | HTTP/WS/MCP 通用 Bearer Token。**未设置 = 不鉴权（开发模式，启动告警）** |
+| `MORE_MCP_KEY` | 回退到 `MORE_API_KEY` | MCP 服务端专用密钥，可与 HTTP 密钥解耦轮换 |
+| `MORE_REQUIRE_API_KEY` | `0` | 设为 `1` 时，密钥缺失/格式不合法将**阻止启动**而非降级为不鉴权 |
+
+> 生成方式、格式要求、生效前置条件、轮换步骤、前端接入注意事项
+> 见 **[docs/API_KEY.md](../docs/API_KEY.md)**。
+
+### 25.4 dotenv 配置 (v0.5.1)
 
 MoRE OS 自动加载 `more_core/.env` 文件：
 
@@ -1637,7 +1663,12 @@ MORE_OLLAMA_MODEL=qwen2.5:7b
 MORE_LMSTUDIO_ENDPOINT=http://localhost:1234/v1
 MORE_LMSTUDIO_MODEL=qwen3.6-35b-a3b-claude-4.6-opus-reasoning-distilled
 MORE_LLM_FALLBACK_CHAIN=ollama,lmstudio
+MORE_API_KEY=sk-more-os-<在此填入本地生成的密钥>
 ```
+
+查找规则：从 `more_core/more_core/core/` 向上逐级匹配**字面量 `.env`**，命中第一个即停止。
+项目**不加载** `.env.development` / `.env.production` / `.env.test`（仅已列入 `.gitignore` 以防误提交）。
+`MORE_API_KEY` 等已在 shell / CI 中注入的变量优先级高于 `.env`。
 
 ---
 

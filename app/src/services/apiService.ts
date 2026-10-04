@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/apiClient';
 import type { TaskRequest, TaskResult, SystemState, DashboardData, LayerMetrics } from '@/types/morev3';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE || 'http://localhost:8011';
@@ -102,7 +103,7 @@ class APIService {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetch(url, { ...options, signal: controller.signal });
+      const response = await apiFetch(url, { ...options, signal: controller.signal, raw: true });
       return response;
     } finally {
       clearTimeout(timer);
@@ -180,10 +181,11 @@ class APIService {
       'Content-Type': 'application/json',
     };
 
-    const response = await fetch(`${this.baseUrl}/api/v1/tasks/execute/stream`, {
+    const response = await apiFetch('/api/v1/tasks/execute/stream', {
       method: 'POST',
       body: JSON.stringify(request),
       headers,
+      raw: true,
     });
 
     if (!response.ok) {

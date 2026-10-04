@@ -137,23 +137,31 @@ class SecureSandbox:
     # -- policy checks -------------------------------------------------------
 
     def _check_command(self, full_cmd: str) -> tuple[bool, str]:
+        """命令判定（R-10）：委托给策略层做**全 argv**检查。
+
+        旧实现只取 ``full_cmd.split()[0]`` 比对黑名单，``sudo``、``env LD_PRELOAD=``、
+        ``bash -c``、``python3 -c`` 等都能绕过；现在由
+        :meth:`SandboxPolicy.check_command` 统一判定（含 shell 元字符、
+        解释器内联代码、env 注入、全部 token 的命令名）。
+        """
         if self._config.security_level == SecurityLevel.NONE:
             return True, ""
-        cmd_name = full_cmd.split()[0] if full_cmd.strip() else ""
-        if not cmd_name:
+        if not (full_cmd or "").strip():
             return False, "empty command"
-        cmd_base = os.path.basename(cmd_name) or cmd_name
-        for blocked in self._config.blocked_commands:
-            if cmd_name == blocked or cmd_base == blocked:
-                return False, f"command '{blocked}' is blocked"
-        import re
+        try:
+            from .policy import default_policy
 
-        for pattern in self._config.blocked_patterns:
-            if re.search(pattern, full_cmd):
-                return False, f"command matches blocked pattern: {pattern}"
+            violations = default_policy().check_command(full_cmd)
+        except Exception:  # pragma: no cover - 策略不可用时退回保守判定
+            violations = []
+        if violations:
+            return False, "; ".join(violations)
         if self._config.security_level == SecurityLevel.STRICT:
+            cmd_name = full_cmd.split()[0] if full_cmd.strip() else ""
             restricted = {"python", "python3", "node", "bash", "sh", "zsh"}
-            if cmd_name in restricted and self._process_count >= self._config.max_processes:
+            if os.path.basename(cmd_name) in restricted and (
+                self._process_count >= self._config.max_processes
+            ):
                 return False, f"max processes ({self._config.max_processes}) reached"
         return True, ""
 
@@ -167,7 +175,14 @@ class SecureSandbox:
         try:
             from .policy import default_policy
 
-            return default_policy().scan_python(code)
+            policy = default_policy()
+            violations = list(policy.scan_python(code))
+            # STRICT：额外强制导入白名单（BASIC 不强制，避免误杀代码生成回路）
+            if self._config.security_level == SecurityLevel.STRICT:
+                disallowed = policy.validate_imports(code)
+                if disallowed:
+                    violations.append(f"disallowed imports: {', '.join(disallowed)}")
+            return violations
         except Exception:
             pass
         # Legacy fallback for bootstrap ordering edge-cases
@@ -185,19 +200,46 @@ class SecureSandbox:
         return output
 
     def _check_path(self, path: str | None) -> tuple[bool, str]:
+        """路径白名单校验（R-10）。
+
+        旧实现用 ``resolved.startswith(realpath(ap))``，会把 ``/tmpfoo`` 误判为
+        位于 ``/tmp`` 之下；且当调用方不传 ``cwd`` 时直接放行，使白名单形同虚设。
+        现在：前缀按路径分段比较，并且 ``path=None`` 由调用方替换为默认沙箱目录。
+        """
         if path is None:
-            return True, ""
+            return False, "no cwd supplied (default sandbox dir required)"
         if not self._config.allow_filesystem:
             return False, "filesystem access denied"
         resolved = os.path.realpath(path)
-        allowed = False
         for ap in self._config.allowed_paths:
-            if resolved.startswith(os.path.realpath(ap)):
-                allowed = True
-                break
-        if not allowed:
-            return False, f"path '{resolved}' not in allowed paths"
-        return True, ""
+            root = os.path.realpath(ap)
+            if resolved == root or resolved.startswith(root.rstrip(os.sep) + os.sep):
+                return True, ""
+        return False, f"path '{resolved}' not in allowed paths"
+
+    def _default_cwd(self) -> str:
+        """默认沙箱工作目录 —— **从白名单首个根派生**，保证自身就在白名单内。
+
+        注意：不能用 ``tempfile.gettempdir()``，macOS 上它返回
+        ``/var/folders/…``，不在默认 allowlist（``/tmp``）里，会被自己的路径检查拒绝。
+        """
+        roots = list(self._config.allowed_paths) or ["/tmp"]
+        base = os.path.realpath(roots[0])
+        root = os.path.join(base, "more_os_sbx")
+        os.makedirs(root, exist_ok=True)
+        return root
+
+    @staticmethod
+    def _sanitize_env(env: dict[str, str] | None) -> dict[str, str] | None:
+        """剥离可劫持动态链接/解释器行为的危险环境变量。"""
+        if env is None:
+            return None
+        blocked = {
+            "LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT",
+            "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH",
+            "PYTHONPATH", "PYTHONSTARTUP", "BASH_ENV", "ENV", "IFS",
+        }
+        return {k: v for k, v in env.items() if k not in blocked}
 
     # -- public API (same interface as SubprocessSandbox) --------------------
 
@@ -214,6 +256,9 @@ class SecureSandbox:
         if not allowed:
             self._audit("run", cmd_str, False, reason)
             return SandboxResult(stdout="", stderr=reason, exit_code=-1, duration_ms=0.0)
+        # R-10：未显式指定 cwd 时落到默认沙箱目录，确保白名单始终生效
+        cwd = cwd or self._default_cwd()
+        env = self._sanitize_env(env)
         path_allowed, path_reason = self._check_path(cwd)
         if not path_allowed:
             self._audit("run", cmd_str, False, path_reason, cwd=cwd)

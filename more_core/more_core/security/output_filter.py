@@ -75,7 +75,21 @@ _DEFAULT_RULES = [
     ),
     FilterRule(
         name="env_secret",
-        pattern=re.compile(r"(?:PASSWORD|SECRET|TOKEN|KEY)\s*=\s*\S+", re.IGNORECASE),
+        # 两类"真密钥"才脱敏，避免破坏代码：
+        #  ① 强关键词 + 赋值 + 带引号且长度 >= 12 的字面量；
+        #  ② .env/shell 风格的强关键词 + 超长无引号值（>=16 且不是标识符/调用实参）。
+        # 历史问题：旧规则 `(?:PASSWORD|SECRET|TOKEN|KEY)\s*=\s*\S+` 会把 Python 的
+        # `sorted(key=lambda ...)`、`def f(token=None)` 整段吃掉并破坏语法
+        # （见 CODEGEN_CHAIN_PERFORMANCE_AUDIT_2026-10-04 F-01）。
+        pattern=re.compile(
+            r"(?i)(?:"
+            r"\b(?:PASSWORD|PASSWD|SECRET|TOKEN|API[_-]?KEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY)\b"
+            r"\s*[:=]\s*['\"][^'\"]{12,}['\"]"
+            r"|"
+            r"(?<![A-Za-z0-9_])(?:PASSWORD|PASSWD|PRIVATE[_-]?KEY|ACCESS[_-]?KEY|API[_-]?KEY)"
+            r"\s*=\s*[A-Za-z0-9+/=_.-]{16,}(?![A-Za-z0-9_(),.])"
+            r")"
+        ),
         replacement="[ENV_SECRET_REDACTED]",
     ),
     FilterRule(

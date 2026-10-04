@@ -1,0 +1,33 @@
+# Justfile — 现代 make 替代品（需 just 命令）
+# 安装：brew install just 或 cargo install just
+
+default:
+    just --list
+
+# Build release binary.
+build:
+    cargo build --release
+
+# Run unit tests (release).
+test:
+    cargo test --release -q
+
+# Format + clippy (pre-commit).
+lint:
+    cargo fmt --check
+    cargo clippy --all-targets -- -D warnings
+
+# Serve frontend on :8080.
+serve:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Serving at http://localhost:8080 (Ctrl-C to exit)"
+    python3 -m http.server 8080 --directory frontend
+
+# Coverage report with tarpaulin (install: cargo install cargo-tarpaulin).
+cover:
+    cargo tarpaulin --out Html --output-dir ./coverage
+
+# Clean artifacts.
+clean:
+    cargo clean

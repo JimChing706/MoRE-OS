@@ -14,21 +14,21 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
 
     @router.get("/zen/rules")
     async def zen_rules() -> dict[str, Any]:
-        from ..zen_rules import get_enforcer
+        from ...zen_rules import get_enforcer
 
         enforcer = get_enforcer()
         return {"rules": enforcer.list_rules()}
 
     @router.get("/zen/compliance")
     async def zen_compliance() -> Any:
-        from ..zen_rules import get_enforcer
+        from ...zen_rules import get_enforcer
 
         enforcer = get_enforcer()
         return enforcer.get_compliance_report()
 
     @router.get("/zen/violations")
     async def zen_violations(severity: str | None = None) -> dict[str, Any]:
-        from ..zen_rules import get_enforcer, RuleSeverity
+        from ...zen_rules import get_enforcer, RuleSeverity
 
         enforcer = get_enforcer()
         try:
@@ -56,7 +56,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     async def zen_resolve_violation(
         violation_id: int, resolution: dict[str, str]
     ) -> dict[str, Any]:
-        from ..zen_rules import get_enforcer
+        from ...zen_rules import get_enforcer
 
         enforcer = get_enforcer()
         success = enforcer.resolve_violation(violation_id, resolution.get("resolution", ""))
@@ -78,5 +78,32 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     @router.get("/evolution/archive")
     async def evolution_archive() -> Any:
         return core.evolution_archive.stats()
+
+    @router.get("/evolution/summary")
+    async def evolution_summary(
+        task_type: str | None = None,
+        query_fp: str | None = None,
+    ) -> Any:
+        """Return the evolution signal dashboard snapshot.
+
+        Mirrors :func:`more_core.codegen.evolution_signal.compute_evolution_summary`;
+        accepts optional ``task_type`` and ``query_fp`` filters. Never raises
+        on DB errors — a zeroed default shape is returned instead.
+        """
+        from ...codegen.evolution_signal import compute_evolution_summary
+
+        try:
+            project_root = (
+                getattr(getattr(core, "settings", None), "project_root", None)
+                or None
+            )
+        except Exception:
+            project_root = None
+        summary = compute_evolution_summary(
+            task_type=task_type or "",
+            query_fp=query_fp or "",
+            project_root=project_root,
+        )
+        return summary
 
     return router

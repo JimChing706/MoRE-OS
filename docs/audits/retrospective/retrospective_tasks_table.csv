@@ -1,0 +1,42 @@
+task_id,title,module,is_more_native,execution_carrier,trae_tools,evidence
+TET-001,MoRE OS 系统及核心服务启动验证,system-boot,false,TRAE-agent,Read;RunCommand;LS,topics.md:10
+TET-002,前端 Vite7+React19 界面运行验证,frontend-verification,false,TRAE-agent,RunCommand;Read;agent-browser,topics.md:10
+TET-003,俄罗斯方块任务导入启动,import-task,false,TRAE-agent,Read;RunCommand,topics.md:10
+TET-004,俄罗斯方块 Rust 核心逻辑 SRS 踢墙算法实现,tetris-core,false,TRAE-codegen,Write;Read;RunCommand,topics.md:11
+TET-005,俄罗斯方块 7-bag 随机生成器实现,tetris-core,false,TRAE-codegen,Write;Read;RunCommand,topics.md:11
+TET-006,俄罗斯方块 Hold 暂存机制实现,tetris-core,false,TRAE-codegen,Write;Read;RunCommand,topics.md:11
+TET-007,俄罗斯方块 Ghost 阴影预览实现,tetris-frontend,false,TRAE-codegen,Write;Read;RunCommand,topics.md:11
+TET-008,俄罗斯方块 Lock Delay 锁定延迟实现,tetris-core,false,TRAE-codegen,Write;Read;RunCommand,topics.md:11
+TET-009,俄罗斯方块 Rust 单元测试编写与验证(24个全绿),tetris-test,false,TRAE-agent,RunCommand;Read,topics.md:11
+TET-010,俄罗斯方块 Canvas 前端交互逻辑实现,tetris-frontend,false,TRAE-codegen,Write;Read;RunCommand,topics.md:11
+TET-011,俄罗斯方块响应式布局与移动端适配,tetris-frontend,false,TRAE-codegen,Write;Read;RunCommand,topics.md:11
+TET-012,俄罗斯方块项目打包 tar.gz/zip 落盘,tetris-delivery,false,TRAE-agent,RunCommand;LS;Read,topics.md:11
+MAJ-001,麻将 Rust 后端骨架 Cargo+Axum 入口搭建,server,false,TRAE-codegen,Write;RunCommand;Read,tasks.md:3
+MAJ-002,麻将 primitives 统一 Ruleset trait+胡牌判定 DP,engine,false,TRAE-codegen,Write;RunCommand;Read,tasks.md:14
+MAJ-003,国标 Ruleset 136张8番起胡20+番型实现,rules,false,TRAE-codegen,Write;RunCommand;Read,tasks.md:25
+MAJ-004,四川缺门血战到底 Ruleset 108张实现,rules,false,TRAE-codegen,Write;RunCommand;Read,tasks.md:34
+MAJ-005,广东鸡平胡+国士无双十三幺3番起胡实现,rules,false,TRAE-codegen,Write;RunCommand;Read,tasks.md:43
+MAJ-006,AI 双档算法 Heuristic+MCTS light 实现,ai,false,TRAE-codegen,Write;RunCommand;Read,tasks.md:52
+MAJ-007,GameEngine 4人状态机+房间 DashMap+REST/WS,engine,false,TRAE-codegen,Write;RunCommand;Read,tasks.md:64
+MAJ-008,前端 Canvas 高保真牌桌+拖拽排序+动画,frontend,false,TRAE-codegen,Write;RunCommand;Read,tasks.md:75
+MAJ-009,前端 WebAudio 音频系统7SFX+2BGM+设置面板,audio,false,TRAE-codegen,Write;RunCommand;Read,tasks.md:86
+MAJ-010,玩法选择器+番型列表+移动端9键+联调,frontend,false,TRAE-codegen,Write;RunCommand;Read,tasks.md:97
+MAJ-011,全量单元集成测试≥240 green+测试报告,test,false,TRAE-agent,RunCommand;Read;Write,tasks.md:108
+MAJ-012,README 4大节+10AC+三玩法规则文档三份,docs,false,TRAE-codegen,Write;Read;RunCommand,tasks.md:117
+MAJ-013,3份replay样例+run.sh+mahjongd.example.toml,delivery,false,TRAE-codegen,Write;Read;RunCommand,tasks.md:128
+MAJ-014,staging→tar.gz+zip输出工作根+解包校验,delivery,false,TRAE-agent,RunCommand;LS;Read,tasks.md:140
+MAJ-015,P5人工联调三玩法各1局+体验rubric验证,qa,false,TRAE-agent,agent-browser;RunCommand;Read,tasks.md:150
+MAJ-016,麻将任务导入启动与需求澄清,import-task,false,TRAE-agent,Read;RunCommand,topics.md:12
+MAJ-017,麻将 Rust 洗牌算法+胡牌算法核心实现,engine,false,TRAE-codegen,Write;RunCommand;Read,topics.md:12
+MAJ-018,麻将向听数估算算法实现,engine,false,TRAE-codegen,Write;RunCommand;Read,topics.md:12
+MAJ-019,麻将 AI 决策状态机实现,ai,false,TRAE-codegen,Write;RunCommand;Read,topics.md:12
+MAJ-020,麻将中文解析歧义修复显式Tile构造器引入,fix,false,TRAE-debugger,Read;Write;RunCommand,topics.md:12
+MAJ-021,麻将26个单元测试全绿通过验证,test,false,TRAE-agent,RunCommand;Read,topics.md:12
+MAJ-022,Axum+WebSocket 后端服务集成,server,false,TRAE-codegen,Write;RunCommand;Read,topics.md:13
+MAJ-023,React/Vite/Tailwind/shadcn 前端集成,frontend,false,TRAE-codegen,Write;RunCommand;Read,topics.md:13
+MAJ-024,高保真牌面可视化渲染优化,frontend,false,TRAE-codegen,Write;RunCommand;Read,topics.md:13
+MAJ-025,WebAudio 纯合成音频系统多轮迭代,audio,false,TRAE-codegen,Write;RunCommand;Read,topics.md:13
+MAJ-026,三主流地域玩法完整实现联调,rules,false,TRAE-codegen,Write;RunCommand;Read,topics.md:13
+MAJ-027,双档AI Heuristic与Light MCTS算法落地,ai,false,TRAE-codegen,Write;RunCommand;Read,topics.md:13
+MAJ-028,多轮自主迭代代码质量优化,qa,false,TRAE-agent,Read;RunCommand;Write,topics.md:13
+MAJ-029,完整成果一次性打包交付,delivery,false,TRAE-agent,RunCommand;LS;Read,topics.md:13

@@ -18,9 +18,11 @@ Design principles (per CLAUDE.md):
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
@@ -80,6 +82,21 @@ _QG_TABLE_ROW = re.compile(
 
 # Frontmatter delimiter
 _FM_DELIM = "---"
+
+# Mode B detection: # title + ## REQ-xxx patterns without frontmatter
+_MODE_B_TITLE_PATTERN = re.compile(r"^#\s+(.+?)$", re.MULTILINE)
+_MODE_B_HAS_REQ = re.compile(r"^##\s+REQ-\d{3,}:", re.MULTILINE)
+
+# Mode C detection: natural language prompt matching pattern
+_MODE_C_DETECT_PATTERN = re.compile(
+    r"^通过.*?任务导入.*?启动.*?(?:具体执行要求|五章详细技术要求|以下为五?章|要求如下|详细开发要求).*?"
+    r"(?:(?:\n|.)*?第[1-5]章|(?:\n|.)*?(?:^|\n)\s*[1-5][、.．)])",
+    re.MULTILINE | re.DOTALL,
+)
+_MODE_C_REQ_EXTRACT = re.compile(
+    r"(?:^|\n)\s*([1-5])[、.．)]\s*([^\n]+)",
+    re.MULTILINE,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -343,6 +360,12 @@ class ImportTaskParser:
 
         Raises ImportTaskError on fatal validation failures.
         """
+        mode_id, warning_label = self._detect_mode(text)
+        if mode_id == "B":
+            text = self._synthesize_mode_b_frontmatter(text)
+        elif mode_id == "C":
+            text = self._synthesize_mode_c_frontmatter(text)
+
         frontmatter, body = self._split_frontmatter(text)
 
         doc = ImportTaskDocument()
@@ -417,10 +440,160 @@ class ImportTaskParser:
             self._get_section_text(sections, "Related Documents", ""),
         )
 
+        if "_warnings" not in doc._raw_frontmatter:
+            doc._raw_frontmatter["_warnings"] = []
+        doc._raw_frontmatter["_warnings"].insert(0, warning_label)
+
         # Validate after full parse
         self._validate(doc)
 
         return doc
+
+    # ------------------------------------------------------------------
+    # Multi-mode detection & synthesis
+    # ------------------------------------------------------------------
+
+    def _detect_mode(self, text: str) -> tuple[str, str]:
+        """Detect input mode.
+
+        Returns:
+            tuple: (mode_id, warning_label)
+                mode_id: 'A' | 'B' | 'C'
+                warning_label: '模式A/B' | '模式C'
+        """
+        stripped = text.strip()
+        if stripped.startswith(_FM_DELIM):
+            return ("A", "模式A/B")
+        if _MODE_C_DETECT_PATTERN.search(stripped):
+            return ("C", "模式C")
+        if _MODE_B_HAS_REQ.search(stripped):
+            return ("B", "模式A/B")
+        return ("A", "模式A/B")
+
+    def _synthesize_mode_b_frontmatter(self, text: str) -> str:
+        """Synthesize frontmatter for Mode B: # title + ## REQ-xxx + - [x] AC."""
+        stripped = text.strip()
+        title_match = _MODE_B_TITLE_PATTERN.search(stripped)
+        title = title_match.group(1).strip() if title_match else "Untitled Mode B Task"
+
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        frontmatter_lines = [
+            "---",
+            f"title: {title}",
+            "version: 1.0.0",
+            "author: mode_b_synthesis",
+            f"created: {now_iso}",
+            "type: nlp_task",
+            "priority: medium",
+            "deliverable_kind: custom",
+            "tags: [mode_b, auto_generated]",
+            "target_confidence: 60.0",
+            "max_iterations: 10",
+            "timeout_s: 60.0",
+            "---",
+            "",
+        ]
+
+        body_parts: list[str] = []
+        lines_iter = iter(stripped.split("\n"))
+        h1_consumed = False
+        for line in lines_iter:
+            if not h1_consumed and re.match(r"^#\s+.+$", line.strip()):
+                h1_consumed = True
+                body_parts.append("# Executive Summary")
+                body_parts.append("")
+                body_parts.append(title)
+                body_parts.append("")
+                body_parts.append("# Requirements")
+                body_parts.append("")
+                continue
+            body_parts.append(line)
+
+        merged_body = "\n".join(body_parts)
+        if "# Requirements" not in merged_body:
+            merged_body = merged_body.rstrip() + "\n\n# Requirements\n\n"
+
+        return "\n".join(frontmatter_lines) + merged_body
+
+    def _synthesize_mode_c_frontmatter(self, text: str) -> str:
+        """Synthesize frontmatter and full ITD body for Mode C natural language prompt."""
+        stripped = text.strip()
+        md5_hash = hashlib.md5(stripped.encode("utf-8")).hexdigest()[:6]
+        title = f"任务导入自动生成_{md5_hash}"
+
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        req_matches = _MODE_C_REQ_EXTRACT.findall(stripped)
+        req_texts: list[str] = []
+        for m in req_matches:
+            req_texts.append(m[1].strip())
+
+        requirements_block = ""
+        for idx, rtext in enumerate(req_texts[:5], start=1):
+            req_id = f"REQ-{idx:03d}"
+            ac_text = rtext[:80]
+            requirements_block += (
+                f"## {req_id}: 自动提取需求{idx}\n"
+                f"**Priority:** MEDIUM\n"
+                f"**Description:** {rtext}\n"
+                f"\n"
+                f"**Acceptance Criteria:**\n"
+                f"- [x] {ac_text}\n"
+                f"\n"
+            )
+
+        frontmatter_lines = [
+            "---",
+            f"title: {title}",
+            "version: 1.0.0",
+            "author: mode_c_synthesis",
+            f"created: {now_iso}",
+            "type: nlp_task",
+            "priority: medium",
+            "deliverable_kind: custom",
+            "tags: [mode_c, auto_generated]",
+            "target_confidence: 60.0",
+            "max_iterations: 10",
+            "timeout_s: 300.0",
+            "---",
+            "",
+        ]
+
+        summary = stripped[:200]
+
+        kill_criteria_block = (
+            "# Kill Criteria\n\n"
+            "| ID | Condition | Severity | Timeline | Fallback |\n"
+            "|----|-----------|----------|----------|----------|\n"
+            "| KC-001 | 执行超时超过300秒未返回结果 | fatal | immediate | 终止任务并记录超时日志 |\n\n"
+        )
+
+        contract_block = (
+            "# Deliverable Contract\n\n"
+            "**Kind:** custom\n"
+            "**Required Dimensions:** core_output\n"
+            "**Minimum Output Length:** 100\n\n"
+            "**Acceptance Criteria:**\n"
+            "- [ ] 至少包含5条需求的处理结果\n\n"
+        )
+
+        merged = (
+            "\n".join(frontmatter_lines)
+            + "# Executive Summary\n\n"
+            + summary
+            + "\n\n"
+            + "# Requirements\n\n"
+            + requirements_block
+            + contract_block
+            + kill_criteria_block
+            + "# Resource Budget\n\n"
+            + "**Estimated Tokens:** 5000\n"
+            + "**Estimated Duration:** 15 minutes\n"
+            + "**Max Iterations:** 10\n\n"
+        )
+
+        return merged
 
     # ------------------------------------------------------------------
     # Frontmatter
@@ -852,7 +1025,11 @@ class ImportTaskParser:
             warnings.append("R014: author is recommended")
 
         # Store warnings
-        doc._raw_frontmatter["_warnings"] = warnings
+        existing_warnings = doc._raw_frontmatter.get("_warnings", [])
+        if existing_warnings:
+            doc._raw_frontmatter["_warnings"] = [existing_warnings[0]] + warnings
+        else:
+            doc._raw_frontmatter["_warnings"] = warnings
         doc._raw_frontmatter["_errors"] = errors
 
         if errors:

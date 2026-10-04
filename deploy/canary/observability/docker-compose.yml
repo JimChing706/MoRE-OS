@@ -1,0 +1,74 @@
+services:
+  prometheus:
+    image: prom/prometheus:v2.53.2
+    container_name: more_os_prometheus
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.console.libraries=/usr/share/prometheus/console_libraries
+      - --web.console.templates=/usr/share/prometheus/consoles
+      - --web.enable-lifecycle
+    networks: [more_os_obs]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana-oss:11.2.0
+    container_name: more_os_grafana
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_INSTALL_PLUGINS: ""
+    volumes:
+      - ./grafana/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
+      - ./grafana/dashboards_provider.yml:/etc/grafana/provisioning/dashboards/dashboards_provider.yml:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    networks: [more_os_obs]
+    depends_on: [prometheus]
+
+  more_exporter:
+    image: python:3.12-slim
+    container_name: more_os_exporter
+    restart: unless-stopped
+    working_dir: /app
+    ports:
+      - "127.0.0.1:9400:9400"
+    volumes:
+      - ../../more_core:/app/more_core:ro
+      - ../../more_core/more_core/data:/app/more_core/more_core/data:rw
+      - ../../deploy:/app/deploy:ro
+    environment:
+      MORE_EXPORTER_BIND: 0.0.0.0
+      MORE_EXPORTER_PORT: "9400"
+      MORE_CANARY_MON_STABLE: "http://host.docker.internal:8765"
+      MORE_CANARY_MON_CANARY: "http://host.docker.internal:8766"
+      MORE_CANARY_MON_CHASSIS: "http://host.docker.internal:9988"
+      MORE_CANARY_MON_NGINX_CONF: "/app/deploy/canary/nginx/more_os_canary.conf"
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        pip install --no-cache-dir 2>/dev/null || true
+        exec python3 /app/deploy/canary/scripts/more_prometheus_exporter.py --bind 0.0.0.0 --port 9400
+    networks: [more_os_obs]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  prometheus_data: {}
+  grafana_data: {}
+
+networks:
+  more_os_obs:
+    driver: bridge

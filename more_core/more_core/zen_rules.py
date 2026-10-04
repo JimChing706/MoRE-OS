@@ -77,6 +77,19 @@ _DANGEROUS_FILE_RE = re.compile(
 )
 _FORBIDDEN_OPS = {"rm", "rm -rf", "format", "mkfs", "dd if=", "> /dev/sda"}
 
+# 生产效率事故修复：ZEN-19 原来用 `forbidden in query` 做**子串**匹配，导致
+# `normalize_email(...)`（含 "rm"）、`format_string`（含 "format"）等正常需求
+# 被误判为"禁止操作"，0 token 直接 rejected。
+# 改为带词边界的正则：命令词必须作为独立单词出现。
+_FORBIDDEN_PATTERNS = (
+    re.compile(r"(?<![\w.-])rm(?![\w.-])"),
+    re.compile(r"\brm\s+-rf\b"),
+    re.compile(r"(?<![\w.-])format(?!\w)"),
+    re.compile(r"(?<![\w.-])mkfs(?!\w)"),
+    re.compile(r"\bdd\s+if="),
+    re.compile(r">\s*/dev/sda"),
+)
+
 
 def _check_zero_trust(context: dict[str, Any]) -> bool:
     """ZEN-01: 零信任原则 — verify actor is authenticated."""
@@ -123,8 +136,8 @@ def _check_absolute_prohibition(context: dict[str, Any]) -> bool:
     query = context.get("query", "")
 
     check_text = f"{operation} {command} {query}".lower()
-    for forbidden in _FORBIDDEN_OPS:
-        if forbidden in check_text:
+    for pattern in _FORBIDDEN_PATTERNS:
+        if pattern.search(check_text):
             return False
     return True
 

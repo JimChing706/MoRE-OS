@@ -175,6 +175,8 @@ class TestComputeConfidence:
     def _make_ctx(self, scratch: dict | None = None, steps: list | None = None) -> LayerContext:
         core = MagicMock()
         core.settings = MagicMock()
+        core.settings.codegen_review = False
+        core.settings.codegen_candidates = 1
         req = MagicMock()
         req.query = "test"
         req.type = TaskType.NLP_TASK
@@ -232,6 +234,21 @@ class TestComputeConfidence:
         ctx = self._make_ctx()
         assert ExecutionLayer._compute_confidence(ctx) == 0.85
 
+    def test_escalated_verdict_returns_very_low_confidence(self):
+        ctx = self._make_ctx({"codegen_verdict": {"decision": "escalated"}})
+        assert ExecutionLayer._compute_confidence(ctx) == 0.1
+
+    def test_partial_verdict_returns_mid_confidence(self):
+        ctx = self._make_ctx({"codegen_verdict": {"decision": "partial"}})
+        assert ExecutionLayer._compute_confidence(ctx) == 0.5
+
+    def test_pass_verdict_does_not_override_sandbox_confidence(self):
+        from more_core.tools.registry import ToolResult
+
+        sbx = ToolResult(tool="python_exec", success=True, output="ok")
+        ctx = self._make_ctx({"codegen_verdict": {"decision": "pass"}, "sandbox_result": sbx})
+        assert ExecutionLayer._compute_confidence(ctx) == 0.95
+
 
 # =========================================================================
 # Unit tests — _build_annotation_guidance
@@ -278,6 +295,8 @@ class TestCheckCodeSafety:
     def _make_ctx(self, l3_available: bool = True, l3_has_rule_engine: bool = True) -> LayerContext:
         core = MagicMock()
         core.settings = MagicMock()
+        core.settings.codegen_review = False
+        core.settings.codegen_candidates = 1
         req = MagicMock()
         req.query = "test"
         req.type = TaskType.CODE_GENERATION
@@ -374,9 +393,13 @@ class TestRunFixLoop:
     def _make_ctx(self, core=None, scratch: dict | None = None) -> LayerContext:
         if core is None:
             core = MagicMock()
+            core.settings = MagicMock()
+            core.settings.codegen_review = False
+            core.settings.codegen_candidates = 1
         req = MagicMock()
         req.id = "fix-loop-test"
         req.type = TaskType.CODE_GENERATION
+        req.context = {}
         ctx = LayerContext(core=core, request=req)
         if scratch:
             ctx.scratch.update(scratch)
@@ -950,8 +973,42 @@ class TestBuildFixPrompt:
 
 
 @pytest.mark.asyncio
+class _CodeFakeLLMProvider:
+    """返回**真实可执行代码**的假 provider。
+
+    G1 交叉校验之后，"代码类任务 + 模型只返回文本"会被正确拦截
+    （Controller verdict=escalated）。因此验证代码生成 happy path 的测试
+    必须提供真的能跑通的代码，否则测的其实是旧契约。
+    """
+
+    name = "fake-code"
+
+    async def generate(self, request):  # noqa: ANN001
+        return LLMResponse(
+            content='```python\nprint("hello from fake code")\n```',
+            provider=self.name,
+            model="fake-code-1",
+            # token 数需达到真实量级：L0 的 thinking 预算守卫会拒绝
+            # completion_tokens 过小（疑似空回答）的响应。
+            prompt_tokens=100,
+            completion_tokens=200,
+            latency_ms=1.0,
+        )
+
+    async def health(self):
+        return True
+
+    def list_models(self):
+        return ["fake-code-1"]
+
+    async def close(self):
+        return None
+
+
 async def test_code_generation_extracts_and_runs(core) -> None:
     """L0 should detect code blocks in LLM output for CODE_GENERATION tasks."""
+    core.llm._providers["fake-code"] = _CodeFakeLLMProvider()
+    core.llm._fallback = ["fake-code"]
     req = TaskRequest(type=TaskType.CODE_GENERATION, query="print hello")
     result = await core.execute(req)
     assert result.status == TaskStatus.SUCCESS
@@ -974,6 +1031,8 @@ async def test_tool_call_roundtrip(core) -> None:
 @pytest.mark.asyncio
 async def test_multiple_task_types_produce_output(core) -> None:
     """L0 should produce non-empty output for various task types."""
+    core.llm._providers["fake-code"] = _CodeFakeLLMProvider()
+    core.llm._fallback = ["fake-code"]
     for tt in (TaskType.CODE_DEBUGGING, TaskType.DATA_ANALYSIS, TaskType.MATH_REASONING):
         result = await core.execute(TaskRequest(type=tt, query="test"))
         assert result.status == TaskStatus.SUCCESS, f"failed for {tt}"
@@ -1004,7 +1063,7 @@ class _FailingThenFixedProvider:
             provider=self.name,
             model="fixloop-model",
             prompt_tokens=10,
-            completion_tokens=10,
+            completion_tokens=256,
         )
 
     async def stream(self, request):

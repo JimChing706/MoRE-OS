@@ -25,12 +25,16 @@ L3 coupling note:
 
 from __future__ import annotations
 
+import asyncio
+import copy
 import json
 import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..codegen.controller import adjudicate_codegen
+from ..codegen.evolution_signal import CodegenRunContext, _fingerprint
 from ..core.types import LayerId, TaskType
 from ..core.unicode_utils import detect_language, is_predominantly_cjk
 from ..llm.provider import LLMRequest
@@ -51,6 +55,21 @@ _TOOL_CALL_RE = re.compile(
     re.DOTALL,
 )
 
+@dataclass(slots=True)
+class _DelegationAdvice:
+    """Result of ``_evolution_delegation_advice``.
+
+    ``recommend`` == True when the evolution signal + explicit user intent
+    together say "prefer chassis delegation before burning local best-of-k
+    tokens on a historically-struggling task family".
+    """
+
+    recommend: bool = False
+    trigger: str = "default_gate"   # evolution_escalation | default_gate | user_override
+    rationale: str = ""
+    candidate_k: int = 0
+
+
 _MAX_TOOL_ROUNDS = 5
 
 # Maximum auto-continuity rounds for code generation tasks.
@@ -68,8 +87,8 @@ _MAX_CODE_FIX_ROUNDS = 3
 # identical error) before the loop terminates early — convergence guard.
 _MAX_CODE_STAGNANT_ROUNDS = 2
 
-# Upper bound for best-of-k candidate validation (A). Config default is 1 (off);
-# enable via settings.codegen_candidates or per-request context["candidates"].
+# Upper bound for best-of-k candidate validation (A). Default = 2 with
+# differential agreement; per-request override via context["candidates"].
 _MAX_CODE_CANDIDATES = 2
 
 # Patterns that indicate the LLM is asking a clarification question
@@ -202,6 +221,83 @@ class ExecutionLayer(Layer):
             TaskType.CODE_TESTING,
             TaskType.CODE_REVIEW,
         )
+
+        # Build codegen evolution-signal context (Step-2 P0).  Populated for
+        # all code-family tasks; passed to adjudicate_codegen() so the
+        # verdict + failures + fix patterns persist across restarts.
+        codegen_run_ctx: CodegenRunContext | None = None
+        if is_code_task:
+            try:
+                settings = getattr(ctx.core, "settings", None)
+                project_root = getattr(settings, "project_root", None) if settings else None
+                codegen_run_ctx = CodegenRunContext(
+                    task_id=getattr(req, "id", "") or "",
+                    task_type=str(req.type) if req.type else "",
+                    query_fingerprint=_fingerprint(req.query or "")[:12],
+                    project_root=project_root,
+                )
+            except Exception:  # pragma: no cover - never break mainline
+                codegen_run_ctx = None
+
+        # ── Step-4 fusion (Signal ⇄ Delegation) gate ─────────────────
+        # Two-tier decision, both NEVER RAISE:
+        #
+        #   (1) Evolution-advice: if the task family historically struggles
+        #       (dynamic_k bumped >1) AND chassis is reachable → try
+        #       delegation FIRST with trigger="evolution_escalation".
+        #   (2) Default gate: when no evolution signal pushes us, still try
+        #       delegation if the feature gate is explicitly on (mirrors
+        #       Step-4 P1 behaviour) with trigger="default_gate".
+        #
+        # Either way, if delegation fails (None) we fall through silently
+        # to the local L0 path so user intent is never blocked.
+        if is_code_task:
+            try:
+                advice = ExecutionLayer._evolution_delegation_advice(
+                    ctx, req, codegen_run_ctx=codegen_run_ctx
+                )
+            except Exception:  # pragma: no cover - defensive
+                advice = _DelegationAdvice()
+            # Stash advice in scratch for post-hoc export / audit log.
+            try:
+                if advice.rationale:
+                    ctx.scratch["_l0_delegation_advice"] = (
+                        f"[{advice.trigger}] recommend={advice.recommend} k={advice.candidate_k} — {advice.rationale}"
+                    )
+            except Exception:
+                pass
+            # (1) Evolution-accelerated path
+            if advice.recommend:
+                try:
+                    delegated = await self._try_chassis_delegation(
+                        ctx,
+                        req,
+                        codegen_run_ctx=codegen_run_ctx,
+                        trigger=advice.trigger,
+                    )
+                except Exception:  # pragma: no cover
+                    delegated = None
+                if delegated is not None:
+                    return delegated
+            # (2) Default gate path
+            try:
+                default_enabled = bool(
+                    getattr(getattr(ctx.core, "settings", None), "bailongma_enable_delegation", False)
+                )
+            except Exception:
+                default_enabled = False
+            if default_enabled and not advice.recommend:
+                try:
+                    delegated = await self._try_chassis_delegation(
+                        ctx,
+                        req,
+                        codegen_run_ctx=codegen_run_ctx,
+                        trigger="default_gate",
+                    )
+                except Exception:  # pragma: no cover - defensive
+                    delegated = None
+                if delegated is not None:
+                    return delegated
 
         tools_json = ctx.core.tools.list_schemas() if ctx.core.tools.list_tools() else []
 
@@ -359,7 +455,8 @@ class ExecutionLayer(Layer):
             if code:
                 is_safe, violations = self._check_code_safety(code, ctx)
                 if is_safe:
-                    assertions = self._resolve_assertions(req.context)
+                    assertions = self._resolve_assertions(req.context, req.query)
+                    ctx.scratch["code_assertions_required"] = bool(assertions)
                     sbx_result, fix_in, fix_out = await self._run_fix_loop(
                         ctx,
                         gen_req,
@@ -405,6 +502,7 @@ class ExecutionLayer(Layer):
                     ctx.scratch["test_blocked"] = violations
                     output += "\n\n⚠️ 测试代码被安全检查拦截: " + str(violations)
 
+
         # --- Build dynamic description ---
         desc_parts = ["LLM generation"]
         if _TOOL_CALL_RE.search(output):
@@ -435,6 +533,14 @@ class ExecutionLayer(Layer):
                 desc_parts.append(f"{scope} review rejected")
         if ctx.scratch.get("repo_context_injected"):
             desc_parts.append("repo context")
+        if ctx.scratch.get("codegen_verdict"):
+            decision = ctx.scratch["codegen_verdict"]["decision"]
+            if decision == "escalated":
+                desc_parts.append("controller → P0 escalate")
+            elif decision == "partial":
+                desc_parts.append("controller partial")
+            else:
+                desc_parts.append("controller verdict: pass")
         if ctx.scratch.get("subtasks_executed"):
             desc_parts.append(f"subtask iteration ({ctx.scratch['subtasks_executed']})")
         annotation_guidance = self._build_annotation_guidance(
@@ -444,6 +550,20 @@ class ExecutionLayer(Layer):
             desc_parts.append("L3-guided")
 
         ctx.scratch["_l0_raw_output"] = output
+
+        # --- BPR §4: Controller adjudication (loop metacognition) ---
+        verdict = adjudicate_codegen(
+            ctx.scratch,
+            scope="code",
+            sbx_success=bool(
+                ctx.scratch.get("sandbox_result")
+                and getattr(ctx.scratch["sandbox_result"], "success", False)
+            ),
+            max_rounds=_MAX_CODE_FIX_ROUNDS,
+            assertions_required=bool(ctx.scratch.get("code_assertions_required")),
+            run_ctx=codegen_run_ctx,
+        )
+        ctx.scratch["codegen_verdict"] = verdict.to_dict()
 
         return LayerResult(
             layer=self.layer_id,
@@ -618,7 +738,11 @@ class ExecutionLayer(Layer):
 
         if provider and hasattr(ctx.core, "task_model_router"):
             router = ctx.core.task_model_router
-            chain = router.get_fallback_chain(ctx.request.type)
+            difficulty = ctx.scratch.get("difficulty")
+            # 性能平衡: 按难度 tier 设定 thinking / max_tokens 预算 (只升不降)
+            if difficulty is not None:
+                router.apply_tier_params(gen_req, difficulty)
+            chain = router.get_fallback_chain(ctx.request.type, difficulty=difficulty)
             from ..llm.manager import ProviderModelPair
 
             pairs = [
@@ -627,30 +751,17 @@ class ExecutionLayer(Layer):
                 if p.provider in llm.list_providers()
             ]
             if len(pairs) > 1:
-                # ── 并行策略选择 ─────────────────────────────────────
-                # difficulty >= 5 或 code 类任务 → 多模型并行竞争
-                # 低难度简单任务 → 串行回退（节省计算资源）
-                difficulty = ctx.scratch.get("difficulty", 5)
-                use_parallel = (
-                    difficulty >= 5
-                    or ctx.request.type.value.startswith("code_")
-                    or ctx.request.type
-                    in (
-                        TaskType.MATH_REASONING,
-                        TaskType.ARCHITECTURE_DESIGN,
-                    )
-                )
+                # ── 逐级降智：串行回退，尊重能力层级 ────────────────
+                # 从最高能力 tier 开始，失败时才逐级降智到更弱模型。
+                # （与多同能力模型"并行竞争取最快"不同：跨能力层级并行
+                #   会让弱模型抢先产出次优结果，违背降智层级意图。）
                 try:
-                    if use_parallel and hasattr(llm, "generate_parallel"):
-                        resp = await llm.generate_parallel(gen_req, pairs)
-                    else:
-                        resp = await llm.generate_with_fallback_chain(gen_req, pairs)
+                    resp = await llm.generate_with_fallback_chain(gen_req, pairs)
                     return resp.prompt_tokens, resp.completion_tokens, resp.content
                 except Exception as exc:
                     _log.warning(
-                        "LLM strategy failed for task %s (parallel=%s), trying single provider: %s",
+                        "LLM tiered chain failed for task %s, trying single provider: %s",
                         ctx.request.id,
-                        use_parallel,
                         exc,
                     )
             resp = await llm.generate(gen_req, provider=provider, model_override=model)
@@ -673,6 +784,12 @@ class ExecutionLayer(Layer):
 
     @staticmethod
     def _compute_confidence(ctx: LayerContext) -> float:
+        verdict = ctx.scratch.get("codegen_verdict")
+        if verdict:
+            if verdict.get("decision") == "escalated":
+                return 0.1
+            if verdict.get("decision") == "partial":
+                return 0.5
         sbx = ctx.scratch.get("sandbox_result")
         if sbx is not None:
             return 0.95 if getattr(sbx, "success", False) else 0.2
@@ -716,7 +833,7 @@ class ExecutionLayer(Layer):
         return ExecutionLayer._extract_bare_python(text)
 
     @staticmethod
-    def _resolve_assertions(context: dict[str, Any]) -> list[str] | None:
+    def _resolve_assertions(context: dict[str, Any], query: str = "") -> list[str] | None:
         """Read and normalise acceptance assertions from the task context.
 
         Accepts ``context["assertions"]`` as a list of strings (or list items
@@ -724,10 +841,40 @@ class ExecutionLayer(Layer):
         assertions are provided so the caller keeps the run-only behaviour.
         """
         raw = context.get("assertions")
-        if not isinstance(raw, list) or not raw:
+        if isinstance(raw, list) and raw:
+            cleaned = [str(item).strip() for item in raw if str(item).strip()]
+            if cleaned:
+                return cleaned
+
+        # R-09: 代码类任务默认要求"可验证"。若调用方没有提供断言，但给出了
+        # 明确的期望符号（context["expected_symbols"] 或 query 中的标识符），
+        # 就自动生成最小断言，避免"能跑不报错"被当成通过。
+        if not context.get("require_assertions", True):
             return None
-        cleaned = [str(item).strip() for item in raw if str(item).strip()]
-        return cleaned or None
+        symbols = context.get("expected_symbols")
+        if not isinstance(symbols, list) or not symbols:
+            # D-2：未显式给出时，从任务描述派生"代码式符号"
+            from ..codegen.gates import derive_required_symbols
+
+            derived = derive_required_symbols(query)
+            if derived:
+                symbols = derived
+        if isinstance(symbols, list):
+            cleaned = [str(x).strip() for x in symbols if str(x).strip()]
+            if cleaned:
+                # 只做"存在性 + 可调用性"层面的最小校验，不臆造业务语义
+                checks = []
+                for name in cleaned[:5]:
+                    if not name.isidentifier():
+                        continue
+                    # 产出**表达式**而非完整语句：拼接器会负责加 assert 与提示语，
+                    # 若这里再写 `assert ...` 会导致二次包裹（见上）。
+                    checks.append(
+                        f"callable(globals().get('{name}')) or '{name}' in globals()"
+                    )
+                if checks:
+                    return checks
+        return None
 
     @staticmethod
     def _extract_json_code(text: str) -> str:
@@ -964,9 +1111,16 @@ class ExecutionLayer(Layer):
         prev_error = _error_key(sbx_result)
         stagnant = 0
         fixed_output = ""
+        project_root = None
+        try:
+            project_root = getattr(getattr(ctx.core, "settings", None), "project_root", None)
+        except Exception:
+            project_root = None
         for round_idx in range(1, _MAX_CODE_FIX_ROUNDS + 1):
             fix_req = LLMRequest(
-                prompt=self._build_fix_prompt(gen_req, code, sbx_result),
+                prompt=self._build_fix_prompt(
+                    gen_req, code, sbx_result, project_root=project_root
+                ),
                 system=gen_req.system,
                 temperature=0.4,
                 max_tokens=gen_req.max_tokens,
@@ -1026,27 +1180,397 @@ class ExecutionLayer(Layer):
                 ctx.scratch[f"{scope}_verified"] = True
         return sbx_result, added_in, added_out
 
+    # ── Step-4 fusion: Signal ⇄ Delegation decision helpers ───────────
+
+    @staticmethod
+    def _evolution_delegation_advice(
+        ctx: LayerContext,
+        req: Any,
+        *,
+        codegen_run_ctx: Any,
+    ) -> _DelegationAdvice:
+        """Return a delegation recommendation based on evolution signal + intent.
+
+        Decision tree (any exception → empty/default advice, never raises):
+          * Explicit user override (context["prefer_delegation"]=True/False):
+            if True → user_override trigger.
+          * If user disabled best-of-k locally (context["candidates"] <=1,
+            OR settings.codegen_candidates <=1) → don't recommend.
+          * Query ``query_dynamic_k`` for the task_type+query_fp history.
+            If it returns k>1 AND chassis feature-gate is configured
+            (settings.bailongma_enable_delegation=True + endpoint set) →
+            recommend delegation with trigger="evolution_escalation".
+
+        Rationale is returned verbatim so tests / UI can assert on it.
+        """
+        try:
+            settings = getattr(ctx.core, "settings", None)
+        except Exception:
+            settings = None
+
+        def _s(name: str, default: Any = None) -> Any:
+            try:
+                return getattr(settings, name, default)
+            except Exception:
+                return default
+
+        # (1) Explicit per-request user override
+        try:
+            pref = ctx.request.context.get("prefer_delegation")
+            if isinstance(pref, bool):
+                if pref and _s("bailongma_enable_delegation", False) and _s("bailongma_endpoint", ""):
+                    return _DelegationAdvice(
+                        recommend=True,
+                        trigger="user_override",
+                        rationale="per-request context.prefer_delegation=True",
+                        candidate_k=0,
+                    )
+                if not pref:
+                    return _DelegationAdvice(
+                        recommend=False,
+                        trigger="user_override",
+                        rationale="per-request context.prefer_delegation=False",
+                        candidate_k=0,
+                    )
+        except Exception:
+            pass
+
+        # (2) User explicitly turned k off locally → save tokens, don't push
+        try:
+            req_k = ctx.request.context.get("candidates")
+            if isinstance(req_k, int) and 0 < req_k <= 1:
+                return _DelegationAdvice(
+                    recommend=False,
+                    trigger="default_gate",
+                    rationale="explicit context.candidates<=1: local single-gen only",
+                    candidate_k=1,
+                )
+        except Exception:
+            pass
+        cfg_k = _s("codegen_candidates", None)
+        if isinstance(cfg_k, int) and 0 < cfg_k <= 1:
+            return _DelegationAdvice(
+                recommend=False,
+                trigger="default_gate",
+                rationale="settings.codegen_candidates<=1: local single-gen only",
+                candidate_k=1,
+            )
+
+        # (3) Chassis gate must be enabled before we even *consider* recommending
+        chassis_configured = bool(_s("bailongma_enable_delegation", False)) and bool(
+            _s("bailongma_endpoint", "")
+        )
+        if not chassis_configured:
+            return _DelegationAdvice(
+                recommend=False,
+                trigger="default_gate",
+                rationale="bailongma_enable_delegation=False or endpoint empty — no delegation path",
+                candidate_k=0,
+            )
+
+        # (4) Dynamic-k via evolution signal
+        try:
+            from ..codegen.evolution_signal import query_dynamic_k
+        except Exception:  # pragma: no cover
+            return _DelegationAdvice(recommend=False, trigger="default_gate", rationale="signal import failed", candidate_k=0)
+        try:
+            task_type = str(getattr(req, "type", "") or "")
+            q = getattr(req, "query", "") or ""
+            query_fp = _fingerprint(q)[:12]
+            project_root = _s("project_root", None)
+            dyn_k, rationale = query_dynamic_k(
+                task_type=task_type,
+                query_fp=query_fp,
+                project_root=project_root,
+            )
+        except Exception:
+            dyn_k, rationale = 0, ""
+        if dyn_k > 1:
+            # Evolution escalated: prefer chassis to burning local k×tokens.
+            return _DelegationAdvice(
+                recommend=True,
+                trigger="evolution_escalation",
+                rationale=rationale or "evolution dynamic_k escalated → prefer chassis delegation",
+                candidate_k=int(dyn_k),
+            )
+        return _DelegationAdvice(
+            recommend=False,
+            trigger="default_gate",
+            rationale=rationale or "no escalation signal → use default policy",
+            candidate_k=int(dyn_k or 0),
+        )
+
+    # ── Step-4 P1: BaiLongma chassis delegation ───────────────────────
+
+    _CHASSIS_POLL_INTERVAL_S = 0.25
+    _CHASSIS_POLL_TIMEOUT_S = 120.0  # 2 min absolute cap
+
+    @staticmethod
+    async def _try_chassis_delegation(
+        ctx: LayerContext,
+        req: Any,
+        *,
+        codegen_run_ctx: Any,
+        trigger: str = "default_gate",
+    ) -> LayerResult | None:
+        """Attempt code-family task delegation.  Returns None on any miss.
+
+        Conditions (all must pass):
+          - settings.bailongma_enable_delegation == True
+          - settings.bailongma_endpoint non-empty
+          - BaiLongmaBridge.ping() reachable (5s handshake)
+          - bridge.delegate_task accepted the call (state != CANCELED/FAILED)
+
+        ``trigger`` labels why delegation was attempted (``evolution_escalation``
+        / ``default_gate`` / ``user_override``); persisted to SQLite via
+        scratch["_chassis_delegation_trigger"] so evolution can learn which
+        signal actually improves pass-rates.
+
+        When accepted, polls every 250ms up to ``_CHASSIS_POLL_TIMEOUT_S``
+        for a COMPLETED or terminal state, then materialises a LayerResult
+        identical in shape to what the local pipeline would have produced
+        (scratch keys populated so adjudication calls downstream succeed).
+
+        **Semantics: NEVER RAISE.**  Any exception is swallowed and the
+        caller falls through to the local L0 path.
+        """
+        try:
+            from ..a2a.bailongma_bridge import BaiLongmaBridge, A2ATaskState
+        except Exception:
+            return None
+        try:
+            settings = getattr(ctx.core, "settings", None)
+            enabled = bool(getattr(settings, "bailongma_enable_delegation", False))
+            endpoint = str(getattr(settings, "bailongma_endpoint", "") or "")
+        except Exception:
+            return None
+        if not enabled or not endpoint:
+            return None
+        try:
+            bridge = BaiLongmaBridge(endpoint=endpoint)
+            ping = await bridge.ping()
+            if not ping.reachable:
+                return None
+            # Write trigger marker *before* submission so even if poll/persist
+            # fails we still have the origin labelled.
+            try:
+                ctx.scratch["_chassis_delegated"] = True
+                ctx.scratch["_chassis_delegation_trigger"] = trigger
+            except Exception:
+                pass
+            # Submit
+            task_type = str(req.type) if req.type is not None else ""
+            context_dict: dict[str, Any] = getattr(req, "context", None) or {}
+            submitted = await bridge.delegate_task(
+                task_type=task_type,
+                query=str(req.query or ""),
+                context=context_dict,
+            )
+            if submitted is None or submitted.state in (
+                A2ATaskState.CANCELED,
+                A2ATaskState.FAILED,
+            ):
+                # Delegate failed from the start — fall back to local.
+                # Clear scratch markers so export doesn't claim we delegated.
+                try:
+                    ctx.scratch["_chassis_delegated"] = False
+                    ctx.scratch["_chassis_delegation_state"] = submitted.state.value if submitted is not None else "submit_failed"
+                except Exception:
+                    pass
+                return None
+            # Poll loop.
+            import time as _t
+
+            started = _t.monotonic()
+            last_state = submitted.state
+            final_task: Any = submitted
+            while True:
+                elapsed = _t.monotonic() - started
+                if elapsed > ExecutionLayer._CHASSIS_POLL_TIMEOUT_S:
+                    # Global deadline exceeded — delegate considered failed,
+                    # fall back silently.
+                    try:
+                        ctx.scratch["_chassis_delegation_state"] = "timeout"
+                        ctx.scratch["_chassis_delegated"] = False
+                    except Exception:
+                        pass
+                    return None
+                if last_state in (A2ATaskState.COMPLETED, A2ATaskState.FAILED, A2ATaskState.CANCELED):
+                    break  # last_state 已是枚举 final_state；final_task 已是最终 A2ATask 对象
+                await asyncio.sleep(ExecutionLayer._CHASSIS_POLL_INTERVAL_S)
+                polled = await bridge.poll_task(final_task.id)
+                if polled is None:
+                    # Short transient: try one more sleep then give up.
+                    await asyncio.sleep(ExecutionLayer._CHASSIS_POLL_INTERVAL_S)
+                    polled = await bridge.poll_task(final_task.id)
+                    if polled is None:
+                        return None
+                final_task = polled
+                last_state = polled.state
+            # Build output string.
+            output_text: str = ""
+            for msg in final_task.messages:
+                body = msg.content if isinstance(msg.content, dict) else {"text": str(msg.content)}
+                piece = str(body.get("text", "") or "")
+                if piece:
+                    output_text += piece + "\n"
+            output_text = output_text.rstrip()
+            # Persist final delegation state to scratch (before verdict building,
+            # so adjudicate → evolution export sees the real value).
+            try:
+                ctx.scratch["_chassis_delegation_state"] = last_state.value
+            except Exception:
+                pass
+            if last_state != A2ATaskState.COMPLETED:
+                # Task finished but failed/canceled: present chassis error as
+                # a sandbox-failure-like output and let local adjudication
+                # mark it "escalated" / partial-ok.
+                if not output_text:
+                    output_text = (
+                        "⚠️ Chassis delegation failed or was canceled "
+                        f"(state={last_state.value}).  Falling through to local."
+                    )
+            # Populate scratch so the post-delegate adjudicate() is harmless.
+            ctx.scratch["_l0_raw_output"] = output_text
+            ctx.scratch["_chassis_task_id"] = final_task.id
+            verdict_dict: dict[str, Any] = {
+                "decision": "pass" if last_state == A2ATaskState.COMPLETED else "partial",
+                "reasons": [f"chassis_delegation:{last_state.value}:{trigger}"],
+                "checks": {"sandbox": last_state == A2ATaskState.COMPLETED},
+                "artifacts": {"delegated": True, "delegation_trigger": trigger, "delegation_state": last_state.value},
+            }
+            ctx.scratch["codegen_verdict"] = verdict_dict
+            # Also write the codegen evolution signal for cross-run learning,
+            # mirroring what the local pipeline writes on return.
+            try:
+                # Fire-and-forget: we already returned a pass/partial above,
+                # but calling adjudicate writes the verdict row to SQLite so
+                # the next iteration's dynamic_k benefits from the signal.
+                try:
+                    _v = adjudicate_codegen(
+                        ctx.scratch,
+                        scope="code",
+                        sbx_success=(last_state == A2ATaskState.COMPLETED),
+                        max_rounds=_MAX_CODE_FIX_ROUNDS,
+                        assertions_required=False,
+                        run_ctx=codegen_run_ctx,
+                    )
+                    ctx.scratch["codegen_verdict"] = _v.to_dict()
+                except Exception:  # pragma: no cover - defensive
+                    pass
+            except Exception:  # pragma: no cover - defensive
+                pass
+            return LayerResult(
+                layer=LayerId.L0,
+                description="LLM generation + chassis delegated",
+                output=output_text,
+                confidence=0.9 if last_state == A2ATaskState.COMPLETED else 0.4,
+                input_tokens=0,
+                output_tokens=0,
+            )
+        except Exception:  # pragma: no cover - defensive
+            return None
+
     @staticmethod
     def _candidate_k(ctx: LayerContext) -> int:
         """Resolve the best-of-k count for this task.
 
-        Per-request ``context["candidates"]`` wins; otherwise the
-        ``settings.codegen_candidates`` config. Capped at ``_MAX_CODE_CANDIDATES``.
+        Precedence (highest → lowest):
+          1. Per-request ``context["candidates"]`` (explicit user override).
+          2. *Dynamic-k escalation* via Step-2+ evolution signal: if similar
+             tasks historically underperform (< 55% pass), automatically bump
+             to 2 with differential agreement — **only when candidates was
+             not explicitly set to 1 by the user/settings**.
+          3. ``settings.codegen_candidates`` config (default 2 since Step-3).
+          4. Fallback tail return = 2 (baseline best-of-2).
+
+        Any explicit value of 1 (or 0 / <1) disables best-of and skips the
+        dynamic-k escalator so user intent to save tokens is honoured.
         """
+        from ..codegen.evolution_signal import query_dynamic_k
+        from ..codegen.evolution_signal import _fingerprint
+
+        # (1) explicit per-request override wins with no dynamic-k.
         try:
             req_k = ctx.request.context.get("candidates")
-            if isinstance(req_k, int) and req_k > 1:
-                return min(req_k, _MAX_CODE_CANDIDATES)
+            if isinstance(req_k, int):
+                if req_k > 1:
+                    return min(req_k, _MAX_CODE_CANDIDATES)
+                if req_k == 1:
+                    return 1
         except (AttributeError, TypeError):
             pass
+
+        # Pull project_root for evolution DB lookup.
+        project_root: str | None = None
+        try:
+            project_root = getattr(
+                getattr(ctx.core, "settings", None), "project_root", None
+            )
+        except Exception:
+            project_root = None
+
+        # (3) settings config — explicit <=1 → skip dynamic-k.
+        settings_k: int | None = None
         try:
             settings = getattr(ctx.core, "settings", None)
-            k = getattr(settings, "codegen_candidates", 1)
-            if isinstance(k, int) and k > 1:
-                return min(k, _MAX_CODE_CANDIDATES)
+            cfg_k = getattr(settings, "codegen_candidates", None)
+            if isinstance(cfg_k, int):
+                if cfg_k <= 1:
+                    return 1
+                settings_k = cfg_k
+        except Exception:
+            settings_k = None
+
+        # (2) dynamic-k escalation: compute over task_type + query_fp, but
+        # only if explicit user didn't turn k off.  Escalation only *bumps*
+        # (0→2), never reduces k below settings default.
+        task_type = ""
+        query_fp = ""
+        try:
+            task_type = str(ctx.request.type) if hasattr(ctx.request, "type") and ctx.request.type is not None else ""
+            q = getattr(ctx.request, "query", "") or ""
+            query_fp = _fingerprint(q)[:12]
+        except Exception:
+            task_type = ""
+            query_fp = ""
+        dyn_k, rationale = query_dynamic_k(
+            task_type=task_type,
+            query_fp=query_fp,
+            project_root=project_root,
+        )
+        # Stash rationale in scratch for audit log / dashboard tooltip.
+        try:
+            if rationale:
+                ctx.scratch["_l0_dynamic_k_rationale"] = rationale
         except Exception:
             pass
-        return 1
+        # ── Step-4 P0: record dynamic_k injection decision ──────────
+        try:
+            from ..governance.observability import record_injection
+        except Exception:  # pragma: no cover - defensive
+            record_injection = None
+        if record_injection is not None:
+            req_id = ""
+            try:
+                req_id = getattr(ctx.request, "id", "") or ""
+            except Exception:
+                req_id = ""
+            record_injection(
+                origin="dynamic_k",
+                injection_site="l0_candidate_k",
+                key=f"{task_type}|{query_fp}",
+                value_text=rationale,
+                applied=dyn_k > 1,
+                request_id=req_id,
+            )
+        if dyn_k > 1:
+            return min(dyn_k, _MAX_CODE_CANDIDATES)
+
+        # Fallback to configured k or baseline default.
+        if settings_k and settings_k > 1:
+            return min(settings_k, _MAX_CODE_CANDIDATES)
+        return 2 if _MAX_CODE_CANDIDATES >= 2 else 1
 
     # ── Code review gate (Self-Audit, BPR C) ──────────────────────────────
 
@@ -1055,7 +1579,7 @@ class ExecutionLayer(Layer):
         """Resolve whether the code review panel is on for this task.
 
         Per-request ``context["review"]`` wins; otherwise the
-        ``settings.codegen_review`` config.
+        ``settings.codegen_review`` config (default True since Step-3 P1).
         """
         try:
             req_flag = ctx.request.context.get("review")
@@ -1065,10 +1589,10 @@ class ExecutionLayer(Layer):
             pass
         try:
             settings = getattr(ctx.core, "settings", None)
-            value = getattr(settings, "codegen_review", False)
-            return value if isinstance(value, bool) else False
+            value = getattr(settings, "codegen_review", True)
+            return value if isinstance(value, bool) else True
         except Exception:
-            return False
+            return True
 
     async def _gate_review(
         self,
@@ -1110,6 +1634,9 @@ class ExecutionLayer(Layer):
         result, r_in, r_out = await run_code_review(_complete, ctx.request.query, code)
         ctx.scratch[f"{scope}_review"] = True
         ctx.scratch[f"{scope}_review_summary"] = result.summary
+        ctx.scratch[f"{scope}_review_p3"] = [
+            f.message for f in result.findings if f.severity == "P3"
+        ]
         if result.approved:
             ctx.scratch[f"{scope}_review_approved"] = True
             return sbx, r_in, r_out
@@ -1139,16 +1666,93 @@ class ExecutionLayer(Layer):
           on output, in which case nothing is trusted (differential flag) and
           the fix loop is entered with the disagreement noted.
 
+        R-08：k 路候选支持**可选并行**生成与执行，用
+        ``context["candidates_parallel"]=True`` 开启。
+        默认串行 —— 3+3 轮实测显示本地单实例后端会把并发请求排队，
+        并行中位耗时与串行一致（7.0s vs 7.0s），token 也持平；
+        并行能力保留给多 provider / 云端可真正并发的场景。
+        每路使用 ``copy.deepcopy(gen_req)``，因为 ``_do_generate`` 会原地调用
+        ``apply_tier_params`` 修改请求对象，共享同一实例会产生数据竞争。
+        并行整体失败时会自动回退串行，保持原有可用性。
+
         Returns ``(best_candidate, input_tokens, output_tokens)``.
         """
         total_in, total_out = 0, 0
         results: list[_CodeCandidate] = []
-        for _ in range(k):
-            in_tok, out_tok, content = await self._do_generate(ctx, gen_req, provider, model)
-            total_in += in_tok
-            total_out += out_tok
-            results.append(await self._run_candidate(ctx, content, assertions))
 
+        # R-08 实测（best-of-2，同一 LM Studio 单实例，3+3 轮）：
+        #   并行  中位 7.0s / 17,798 token
+        #   串行  中位 7.0s / 17,908 token   → 无差异
+        # 结论：本地单实例后端会把对同一模型的并发请求排队，并行拿不到收益，
+        # 因此**默认串行**；``candidates_parallel=True`` 供多 provider / 云端
+        # 可真正并发的场景显式开启。
+        #
+        # 经验教训（两次踩坑，均已修正）：
+        #   * 曾给候选加温度抖动"提升多样性"→ 人为制造分歧触发 differential
+        #     与额外修复轮次，token 17.6k → 24.3k、耗时最高 89s；扰动已移除。
+        #   * 曾据 2 轮样本判定"并行快 1.58×"，3+3 复测后证实是噪声。
+        parallel = bool(ctx.request.context.get("candidates_parallel", False)) and k > 1
+        if parallel:
+            gathered = await self._generate_candidates_parallel(
+                ctx, gen_req, provider, model, assertions=assertions, k=k
+            )
+            if gathered:
+                for in_tok, out_tok, cand in gathered:
+                    total_in += in_tok
+                    total_out += out_tok
+                    results.append(cand)
+
+        if not results:
+            for _ in range(k):
+                in_tok, out_tok, content = await self._do_generate(
+                    ctx, gen_req, provider, model
+                )
+                total_in += in_tok
+                total_out += out_tok
+                results.append(await self._run_candidate(ctx, content, assertions))
+
+        return self._pick_best_candidate(results, assertions, total_in, total_out)
+
+    async def _generate_candidates_parallel(
+        self,
+        ctx: LayerContext,
+        gen_req: LLMRequest,
+        provider: str | None,
+        model: str | None,
+        *,
+        assertions: list[str] | None,
+        k: int,
+    ) -> list[tuple[int, int, _CodeCandidate]]:
+        """并行生成并执行 k 路候选；单路失败不影响其它路。"""
+
+        async def _one(idx: int) -> tuple[int, int, _CodeCandidate]:
+            # 深拷贝是唯一必要的隔离：``_do_generate`` 会原地调用
+            # ``apply_tier_params`` 修改请求对象。这里刻意**不做参数扰动**，
+            # 保证并行与串行的候选分布完全一致、结果可比。
+            req_i = copy.deepcopy(gen_req)
+            in_tok, out_tok, content = await self._do_generate(ctx, req_i, provider, model)
+            cand = await self._run_candidate(ctx, content, assertions)
+            return in_tok, out_tok, cand
+
+        settled = await asyncio.gather(
+            *(_one(i) for i in range(k)), return_exceptions=True
+        )
+        out: list[tuple[int, int, _CodeCandidate]] = []
+        for item in settled:
+            if isinstance(item, BaseException):
+                _log.warning("best-of-k candidate failed: %s", item)
+                continue
+            out.append(item)  # type: ignore[arg-type]
+        return out
+
+    @staticmethod
+    def _pick_best_candidate(
+        results: list[_CodeCandidate],
+        assertions: list[str] | None,
+        total_in: int,
+        total_out: int,
+    ) -> tuple[_CodeCandidate, int, int]:
+        """从已生成的候选中挑最优（原串行路径的选择语义，保持完全一致）。"""
         passing = [r for r in results if r.sbx is not None and r.sbx.success]
 
         def _sbx(r: _CodeCandidate) -> ToolResult:
@@ -1287,7 +1891,19 @@ class ExecutionLayer(Layer):
         """
         parts = [code.rstrip(), "\n\n# === L0 acceptance assertions ===\n"]
         for assertion in assertions:
-            parts.append(f"assert ({assertion}), {assertion!r}")
+            expr = str(assertion).strip()
+            if not expr:
+                continue
+            # 契约容错（生产事故修复）：
+            #   本函数历史上只会把**表达式**包成 `assert (表达式), 'msg'`。
+            #   但调用方（含 LLM 生成的断言、以及显式传入的断言）经常直接给
+            #   **完整语句** `assert x == 1`，于是被二次包裹成
+            #   `assert (assert x == 1)` —— 语法非法，沙箱直接判 code_error。
+            #   现在：已是完整 assert 语句就原样使用；表达式才包裹。
+            if expr.startswith("assert ") or expr.startswith("assert("):
+                parts.append(expr)
+            else:
+                parts.append(f"assert ({expr}), {expr!r}")
         return "\n".join(parts)
 
     @staticmethod
@@ -1295,17 +1911,46 @@ class ExecutionLayer(Layer):
         gen_req: LLMRequest,
         code: str,
         sbx: ToolResult,
+        *,
+        project_root: str | None = None,
     ) -> str:
-        """Build a fix prompt from the original request + failing code + error."""
+        """Build a fix prompt from the original request + failing code + error.
+
+        When historical evolution signal for the same failure class exists
+        (Step-2+ self-evolution loopback) a bilingual directive is prepended
+        to the fix directive section, biasing the LLM toward the repair
+        strategy that most often succeeded for this failure class historically.
+        """
+        from ..codegen.evolution_signal import get_repair_bias_for_failure
+
         lang = "zh" if is_predominantly_cjk(gen_req.prompt) else "en"
         directive = _FIX_DIRECTIVES.get(lang, _FIX_DIRECTIVES["en"])
         error_text = (sbx.error or "") + "\n" + str(sbx.output or "")
+        bias = get_repair_bias_for_failure(error_text, project_root=project_root) or ""
+        # ── Step-4 P0 observability: record bias injection hit ────────
+        try:
+            from ..governance.observability import record_injection
+        except Exception:  # pragma: no cover - defensive
+            record_injection = None
+        if record_injection is not None:
+            import hashlib as _h
+
+            key_fp = _h.sha1(error_text.encode("utf-8")).hexdigest()[:12]
+            record_injection(
+                origin="evolution_bias",
+                injection_site="l0_build_fix_prompt",
+                key=key_fp,
+                value_text=bias,
+                applied=bool(bias),
+                request_id=getattr(gen_req, "id", "") or "",
+            )
+        bias_block = ("\n" + bias + "\n\n") if bias else ""
         return (
             f"{gen_req.prompt}\n\n"
             "## 代码执行失败，请修复\n\n"
             f"代码:\n```python\n{code}\n```\n\n"
             f"错误信息:\n{error_text[:1500]}\n\n"
-            f"{directive}"
+            f"{bias_block}{directive}"
         )
 
     @staticmethod

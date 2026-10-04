@@ -13,6 +13,7 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { RequirementsImporter } from '@/components/RequirementsImporter';
 import { ImportTaskImporter } from '@/components/ImportTaskImporter';
 import { ProjectOutputReview } from '@/components/ProjectOutputReview';
+import { TelemetryPanel } from '@/components/TelemetryPanel';
 import { moreEngine, getDashboardData } from '@/core/moreEngine';
 import { useApiHealth } from '@/hooks/useApiHealth';
 import { NumberPrecision, formatDuration } from '@/lib/format';
@@ -171,7 +172,8 @@ export default function Home() {
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="overview" className="mt-0">
+              <TabsContent value="overview" className="mt-0 space-y-4">
+                <TelemetryPanel />
                 <SystemDashboard data={data} />
               </TabsContent>
 

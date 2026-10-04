@@ -242,10 +242,26 @@ def test_output_filter_redacts_phone():
 
 
 def test_output_filter_redacts_env_secret():
+    """真密钥字面量仍然脱敏（长值 / 带引号两种形态）。"""
     f = OutputFilter()
-    text = "Set PASSWORD=my_super_secret in env"
-    result = f.filter(text)
-    assert "my_super_secret" not in result
+    for text in (
+        "Set PASSWORD=my_super_secret_value_123 in env",
+        'PASSWORD="my_super_secret"',
+        'API_KEY = "sk-live-abcdef0123456789"',
+    ):
+        assert f.filter(text) != text, text
+
+
+def test_output_filter_preserves_python_keyword_arguments():
+    """回归 F-01：脱敏规则不得破坏生成代码里的 key=/token= 形参。"""
+    f = OutputFilter()
+    for text in (
+        "sorted(items, key=lambda x: x[0])",
+        "def f(key=1, token=None): pass",
+        "redis.set(key=user_id, value=data)",
+        "token = refresh_token",
+    ):
+        assert f.filter(text) == text, text
 
 
 def test_output_filter_scan():

@@ -258,3 +258,94 @@ export interface EvolutionStats {
   activeMutations: number;
   convergenceStatus: 'exploring' | 'converging' | 'converged' | 'diverging';
 }
+
+// ============================================================
+// 麻将类型定义
+// ============================================================
+
+export type Suit = 'Wan' | 'Tiao' | 'Tong';
+export type Wind = 'East' | 'South' | 'West' | 'North';
+export type Dragon = 'Zhong' | 'Fa' | 'Bai';
+export type HonorKind = Wind | Dragon;
+
+export interface Tile {
+  id: string;
+  kind: 'suit' | 'honor';
+  suit?: Suit;
+  value?: number;
+  honor?: HonorKind;
+}
+
+export type MeldKind = 'chow' | 'pung' | 'kong' | 'concealed_kong';
+
+export interface Meld {
+  kind: MeldKind;
+  tiles: Tile[];
+  fromSeat: number;
+}
+
+export type Ruleset = 'guobiao' | 'sichuan_xuemen' | 'guangdong';
+
+export type Phase =
+  | 'waiting'
+  | 'dealing'
+  | 'playing'
+  | 'calling'
+  | 'cascade'
+  | 'ended';
+
+export interface SeatInfo {
+  seatIdx: number;
+  playerUuid: string;
+  playerName: string;
+  score: number;
+  hand: Tile[];
+  discards: Tile[];
+  melds: Meld[];
+  isDealer: boolean;
+  isOnline: boolean;
+  isAI: boolean;
+}
+
+export interface GameState {
+  roomId: string;
+  ruleset: Ruleset;
+  phase: Phase;
+  currentTurn: number;
+  lastActionId: string;
+  lastDiscard: { tile: Tile; seatIdx: number } | null;
+  wallRemaining: number;
+  round: number;
+  dealerSeat: number;
+  seats: SeatInfo[];
+  doraIndicators: Tile[];
+  pendingCalls: Array<{ seatIdx: number; callKind: MeldKind | 'hu'; tile: Tile }>;
+  huResult: HuResult | null;
+}
+
+export interface HuResult {
+  winnerSeat: number;
+  winnerHand: Tile[];
+  fanTypes: string[];
+  fanCount: number;
+  deltaScores: number[];
+  isRon: boolean;
+  discarderSeat: number | null;
+}
+
+export type SfxKind =
+  | 'draw'
+  | 'discard'
+  | 'chow'
+  | 'pung'
+  | 'kong'
+  | 'draw_game'
+  | 'hu'
+  | 'cascade';
+
+export interface AudioCfg {
+  sfx: number;
+  bgm: number;
+  sfxOn: boolean;
+  bgmOn: boolean;
+}

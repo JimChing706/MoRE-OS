@@ -184,7 +184,7 @@ def test_dynamic_router_get_binding_default(monkeypatch):
     router = DynamicModelRouter(mgr)
     binding = router.get_binding(TaskType.CODE_GENERATION)
     assert binding.provider == "lmstudio"
-    assert binding.model == "gemma-4-coder"  # 27B 家族的 coder 变体
+    assert binding.model == "ornith-1.5-35b-a3b"  # Ornith-1.5 coder 变体
 
 
 def test_dynamic_router_env_override(monkeypatch):
@@ -196,20 +196,20 @@ def test_dynamic_router_env_override(monkeypatch):
     assert binding.model == "qwen2.5:7b"
 
 
-def test_code_primary_chain_is_ollama_first(monkeypatch):
+def test_code_primary_chain_is_lmstudio_first(monkeypatch):
     monkeypatch.delenv("MORE_TASK_MODEL_CODE_GENERATION", raising=False)
     mgr = _FakeLLMManagerForRouting({"ollama": True, "lmstudio": True})
     router = DynamicModelRouter(mgr)
     chain = router.get_fallback_chain(TaskType.CODE_GENERATION)
-    assert chain[0].provider == "ollama"
-    assert chain[0].model == "qwen2.5:7b"
+    assert chain[0].provider == "lmstudio"
+    assert chain[0].model == "ornith-1.5-35b-a3b"
 
 
 def test_dynamic_router_select_provider():
-    mgr = _FakeLLMManagerForRouting({"ollama": True})
+    mgr = _FakeLLMManagerForRouting({"lmstudio": True})
     router = DynamicModelRouter(mgr)
     provider = router.select_provider(TaskType.NLP_TASK)
-    assert provider == "ollama"
+    assert provider == "lmstudio"
 
 
 def test_dynamic_router_select_provider_unavailable():
@@ -223,7 +223,7 @@ def test_dynamic_router_select_model():
     mgr = _FakeLLMManagerForRouting()
     router = DynamicModelRouter(mgr)
     model = router.select_model(TaskType.NLP_TASK)
-    assert model == "qwen2.5:7b"
+    assert model == "ornith-ai/ornith-1.5-9b"
 
 
 def test_dynamic_router_update_task_binding():
@@ -275,6 +275,112 @@ def test_dynamic_router_get_routing_config():
     assert "reasoning" in config
     assert "providers" in config
     assert "ollama" in config["providers"]
+
+
+# ---------------------------------------------------------------------------
+# 逐级降智 (tiered capability degradation) — difficulty-aware routing
+# ---------------------------------------------------------------------------
+
+def test_tier_index_maps_difficulty():
+    from more_core.llm.task_router import tier_index_for_difficulty
+    assert tier_index_for_difficulty(None) == 1      # 默认主力
+    assert tier_index_for_difficulty(1) == 2         # 琐碎 → 9b
+    assert tier_index_for_difficulty(3) == 2         # 简单 → 9b
+    assert tier_index_for_difficulty(5) == 1         # 中等 → 35b
+    assert tier_index_for_difficulty(7) == 1         # 中等 → 35b
+    assert tier_index_for_difficulty(9) == 0         # 复杂 → 35b reasoning
+
+
+def test_tier_ladder_has_four_distinct_models():
+    from more_core.llm.task_router import MODEL_TIER_LADDER, TIER_PROVIDERS
+    assert len(MODEL_TIER_LADDER) == 4
+    assert len(set(MODEL_TIER_LADDER)) == 4  # 每级真实模型互不相同 (T0 != T1)
+    assert len(TIER_PROVIDERS) == 4
+
+
+def test_tier_params_balance_thinking_and_budget():
+    mgr = _FakeLLMManagerForRouting({"lmstudio": True, "ollama": True})
+    router = DynamicModelRouter(mgr)
+    # 高难度 → 开 thinking + 大预算
+    hard = router.tier_params(9)
+    assert hard["enable_thinking"] is True
+    assert hard["max_tokens"] >= 4096
+    # 简单任务 → 关 thinking + 小预算 (避开推理 token 开销)
+    easy = router.tier_params(2)
+    assert easy["enable_thinking"] is False
+    assert easy["max_tokens"] <= 2048
+
+
+def test_apply_tier_params_only_raises_budget():
+    mgr = _FakeLLMManagerForRouting({"lmstudio": True, "ollama": True})
+    router = DynamicModelRouter(mgr)
+    # difficulty=None → 不干预
+    req = LLMRequest(prompt="hi")
+    assert router.apply_tier_params(req, None) is req
+    assert req.max_tokens == 1024  # default 不会被 None difficulty 覆写
+    # 高难度 → 提升 max_tokens 下限, 打开 thinking
+    req2 = LLMRequest(prompt="hi", max_tokens=100)
+    router.apply_tier_params(req2, 9)
+    assert req2.enable_thinking is True
+    assert req2.max_tokens >= 4096
+    # 调用方预算更大时不被压低
+    req3 = LLMRequest(prompt="hi", max_tokens=20000)
+    router.apply_tier_params(req3, 9)
+    assert req3.max_tokens == 20000
+
+
+def test_select_model_uses_light_tier_for_easy():
+    mgr = _FakeLLMManagerForRouting({"lmstudio": True, "ollama": True})
+    router = DynamicModelRouter(mgr)
+    assert router.select_model(TaskType.NLP_TASK, difficulty=2) == "ornith-ai/ornith-1.5-9b"
+
+
+def test_select_model_uses_strong_tier_for_hard():
+    mgr = _FakeLLMManagerForRouting({"lmstudio": True, "ollama": True})
+    router = DynamicModelRouter(mgr)
+    # 高难度 reasoning 任务 (R1-B T0 whitelist) 走 T0 推理蒸馏
+    assert (
+        router.select_model(TaskType.MATH_REASONING, difficulty=9)
+        == "qwen3.6-35b-a3b-claude-4.6-opus-reasoning-distilled"
+    )
+    # 非 reasoning 白名单任务 (CODE_GENERATION) 即使 diff=9 也 cap 到 T1 (R1-B 限流加固)
+    assert (
+        router.select_model(TaskType.CODE_GENERATION, difficulty=9)
+        == "ornith-1.5-35b-a3b"
+    )
+
+
+def test_fallback_chain_degrades_tier_by_tier():
+    mgr = _FakeLLMManagerForRouting({"lmstudio": True, "ollama": True})
+    router = DynamicModelRouter(mgr)
+    # 简单任务 → 从 9b 开始逐级降智
+    chain = router.get_fallback_chain(TaskType.NLP_TASK, difficulty=2)
+    assert chain[0].model == "ornith-ai/ornith-1.5-9b"
+    assert chain[-1].provider == "ollama"  # 最终兜底
+    # 复杂 reasoning 任务 (R1-B T0 whitelist) → 从 T0 35b 推理蒸馏开始
+    chain_hard = router.get_fallback_chain(TaskType.MATH_REASONING, difficulty=9)
+    assert chain_hard[0].model == "qwen3.6-35b-a3b-claude-4.6-opus-reasoning-distilled"
+    assert chain_hard[0].provider == "lmstudio"
+    # 非 reasoning 白名单 CODE_GENERATION 即使 9 分也 cap 到 T1 35b 主力 (R1-B)
+    chain_code_hard = router.get_fallback_chain(TaskType.CODE_GENERATION, difficulty=9)
+    assert chain_code_hard[0].model == "ornith-1.5-35b-a3b"
+    assert chain_code_hard[0].provider == "lmstudio"
+
+
+def test_fallback_chain_dedupes_consecutive_duplicates():
+    mgr = _FakeLLMManagerForRouting({"lmstudio": True, "ollama": True})
+    router = DynamicModelRouter(mgr)
+    chain = router.get_fallback_chain(TaskType.CODE_GENERATION, difficulty=9)
+    models = [(p.provider, p.model) for p in chain]
+    assert len(models) == len(set(models))  # 无连续重复
+
+
+def test_reasoning_alias_not_used_when_provider_unavailable():
+    # 只配置本地 provider，reasoning 别名指向 openai/o4-mini → 不应被选中
+    mgr = _FakeLLMManagerForRouting({"lmstudio": True, "ollama": True})
+    router = DynamicModelRouter(mgr)
+    binding = router.get_binding(TaskType.MATH_REASONING, difficulty=9)
+    assert binding.provider in {"lmstudio", "ollama"}
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,30 @@
+[Unit]
+Description=BaiLongma Rust Chassis - Native A2A RPC on 127.0.0.1:9988
+Documentation=https://github.com/qnming/more-os/tree/main/bailongma_chassis
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+Group=__SERVICE_GROUP__
+WorkingDirectory=__MORE_CORE_ROOT__/bailongma_chassis
+Environment="RUST_LOG=info"
+Environment="BLM_BIND=127.0.0.1:9988"
+ExecStart=__MORE_CORE_ROOT__/bailongma_chassis/target/release/bailongma_chassis
+Restart=on-failure
+RestartSec=3
+TimeoutStartSec=15
+TimeoutStopSec=15
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=blm-chassis
+
+# Sandbox hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -8,3 +8,22 @@ build/
 dist/
 logs/
 .venv/
+
+# Environment files — NEVER commit secrets
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env.staging
+.env.*.local
+!.env.example
+!.env.template
+
+# Runtime generated data
+data/*.db
+data/*.db-shm
+data/*.db-wal
+more_core/data/*.db
+more_core/data/*.db-shm
+more_core/data/*.db-wal

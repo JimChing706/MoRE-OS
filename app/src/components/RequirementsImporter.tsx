@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/apiClient';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -121,8 +122,7 @@ export function RequirementsImporter() {
     let cancelled = false;
     async function check() {
       try {
-        const baseUrl = import.meta.env.VITE_API_BASE || 'http://localhost:8011';
-        const res = await fetch(`${baseUrl}/api/v1/health`);
+        const res = await apiFetch('/api/v1/health', { raw: true });
         if (!cancelled) setApiConnected(res.ok);
       } catch {
         if (!cancelled) setApiConnected(false);

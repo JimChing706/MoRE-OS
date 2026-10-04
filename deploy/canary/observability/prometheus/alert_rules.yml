@@ -1,0 +1,64 @@
+groups:
+  - name: more_os_canary_alerts
+    interval: 30s
+    rules:
+      # A1: 5 red lights sustained = canary auto-rollback likely fired or will fire
+      - alert: CANARY_AUTOROLLBACK_TRIGGERED
+        expr: sum by (instance) (more_canary_light) == 5
+        for: 2m
+        labels:
+          severity: CRITICAL
+          runbook: deploy/canary/README-canary.md#incident-response
+        annotations:
+          summary: "All 5 canary red lights ON for 2m — auto-rollback imminent/fired"
+          description: "R1~R5 all red. Confirm canary-monitor.service has run `fire_rollback()` and nginx is 100:0 stable via `/opt/more-core/deploy/canary/scripts/more-rollout.sh status`."
+
+      # A2: pass rate low
+      - alert: EVOLUTION_PASS_RATE_LOW
+        expr: more_canary_r2_overall_pass_rate_pct < 35
+        for: 10m
+        labels:
+          severity: WARNING
+        annotations:
+          summary: "Evolution overall pass rate below 35% for 10m (current={{ $value }}%)"
+          description: "Check /evolution/summary on stable vs canary; may indicate seed drift or a bad canary code path."
+
+      # A3: chassis delegation failing
+      - alert: CHASSIS_DELEGATION_FAIL_HIGH
+        expr: more_canary_r3_delegation_fail_rate_pct > 8
+        for: 5m
+        labels:
+          severity: WARNING
+        annotations:
+          summary: "Chassis delegation fail rate above 8% for 5m"
+          description: "Inspect chassis (blm-chassis.service) logs; may be A2A endpoint down, timeouts, or RBAC key rotation."
+
+      # A4: tier flip flapping
+      - alert: TIER_FLIP_EXCESSIVE
+        expr: more_canary_r4_tier_flips_1h > 5
+        for: 5m
+        labels:
+          severity: WARNING
+        annotations:
+          summary: "LLM tier flips > 5/hour — possible model routing instability"
+          description: "Use `POST canary:/api/v1/ops/tier_rollback reason=TIER_FLIP_EXCESSIVE` if service degrades."
+
+      # A5: big canary share + low pass rate = bad
+      - alert: CANARY_WEIGHT_DANGER
+        expr: (more_nginx_weight{target="canary"} >= 50) and (more_canary_r2_overall_pass_rate_pct < 40)
+        for: 8m
+        labels:
+          severity: CRITICAL
+        annotations:
+          summary: "Canary weight ≥50% AND pass rate <40% for 8m — promote dangerous"
+          description: "Run `deploy/canary/scripts/more-rollout.sh rollback` to drop to T0 100% stable; open RCA."
+
+      # A6: any systemd unit dead
+      - alert: SYSTEMD_SERVICE_DEAD
+        expr: more_systemd_active == 0
+        for: 2m
+        labels:
+          severity: CRITICAL
+        annotations:
+          summary: "MoRE OS service {{ $labels.service }} is INACTIVE for 2m"
+          description: "Run: systemctl restart <unit>; stable=more-core-stable; canary=more-core-canary; chassis=blm-chassis; mon=canary-monitor."

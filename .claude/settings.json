@@ -1,7 +1,50 @@
 {
   "permissions": {
-    "allow": ["read", "write", "execute", "browser"]
+    "allow": [
+      "Read",
+      "Write",
+      "Bash",
+      "WebFetch",
+      "WebSearch",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git add *)",
+      "Bash(make test*)",
+      "Bash(make lint*)",
+      "Bash(make format*)",
+      "Bash(make typecheck*)",
+      "Bash(make health*)",
+      "Bash(make status*)",
+      "Bash(.venv/bin/python -m pytest *)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(rm -r *)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -fd*)",
+      "Bash(git checkout -- *)"
+    ]
   },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_response.filePath // .tool_input.file_path' | { read -r f; case \"$f\" in *.py) .venv/bin/ruff format \"$f\" >/dev/null 2>&1 || true;; esac; }",
+            "timeout": 30,
+            "statusMessage": "ruff format"
+          }
+        ]
+      }
+    ]
+  },
+  "language": "中文",
+  "fileCheckpointingEnabled": true,
   "slashCommands": [
     {
       "name": "test",

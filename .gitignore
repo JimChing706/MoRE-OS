@@ -15,7 +15,10 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# Only ignore a repo-root lib/ (Python packaging artifact).
+# A bare `lib/` also swallowed app/src/lib/ — the frontend's `cn()` helper
+# and format utils — so a fresh clone could not build the dashboard.
+/lib/
 lib64/
 parts/
 sdist/
@@ -46,7 +49,18 @@ Thumbs.db
 .env
 .env.local
 .env.production
+.env.development
+.env.test
+.env.staging
+.env.*.local
 !.env.example
+
+# Secret material outside .env files
+*.pem
+*.key
+!app/public/*.pem
+secrets/
+*.secrets
 
 # Node
 app/node_modules/
@@ -87,3 +101,50 @@ more_core/more_core/data/*.db
 more_core/more_core/data/*.db-shm
 more_core/more_core/data/*.db-wal
 !data/.gitkeep
+
+# ---- 测试/工具临时残留（清理后防止再次入库）----
+MagicMock/
+**/MagicMock/
+.trae/
+.codewhale/
+.kilo/
+docs/superpowers/
+**/superpowers/
+scripts/_compat_output/
+scripts/_last_compat_log_path.txt
+verify_script_path.txt
+
+# ---- 配置备份与运行时密钥 ----
+*.env.bak.*
+.env.bak.*
+data/.api_key_pepper
+**/.api_key_pepper
+
+# ---- 构建产物 ----
+**/target/
+
+# ---- 根目录交付压缩包（大二进制；源码与 deliverables/ 清单仍入库）----
+/*.zip
+/*.tar.gz
+deliverables/**/*.zip
+deliverables/**/*.tar.gz
+
+# ---- 运行时数据库与备份（包内 data/ 也不入库）----
+*.db.bak.*
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+more_core/more_core/data/*.db
+more_core/more_core/data/*.jsonl
+more_core/data/*.db
+more_core/data/*.jsonl
+
+# 运行期数据目录（保留 .gitkeep / 目录占位，产物不入库）
+more_core/data/native_runs/
+more_core/data/hands/
+data/hands/
+data/outputs/
+
+# 归档体积填充文件（审计判定为虚增交付体积，禁止入库）
+ARCHIVE_VOLUME_PADDING.txt
+**/ARCHIVE_VOLUME_PADDING.txt

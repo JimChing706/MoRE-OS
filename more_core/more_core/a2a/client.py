@@ -178,8 +178,50 @@ class A2AServer:
             return await self._handle_cancel_task(params)
         elif method == "agent/card":
             return self._handle_get_card()
+        elif method == "tasks/list":
+            return self._handle_list_tasks(params)
         else:
             return {"error": {"code": -32601, "message": f"Method not found: {method}"}}
+
+    # -- Step-4 P2: stats / monitoring helpers for the health endpoint ---
+
+    def stats(self) -> dict[str, Any]:
+        """Return task counts by state (cheap, O(n) where n = active tasks)."""
+        counts: dict[str, int] = {s.value: 0 for s in A2ATaskState}
+        for task in self._tasks.values():
+            counts[task.state.value] = counts.get(task.state.value, 0) + 1
+        return {
+            "task_count": len(self._tasks),
+            "by_state": counts,
+            "agent_name": self._agent_card.name,
+            "agent_url": self._agent_card.url,
+        }
+
+    def _handle_list_tasks(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Return a compact list of tasks (optionally filtered by state)."""
+        state_filter = str(params.get("state", "")).lower() or None
+        limit = int(params.get("limit", 50))
+        tasks_view: list[dict[str, Any]] = []
+        for task in list(self._tasks.values())[-limit:]:
+            if state_filter and task.state.value != state_filter:
+                continue
+            tasks_view.append(
+                {
+                    "id": task.id,
+                    "state": task.state.value,
+                    "message_count": len(task.messages),
+                    "metadata": task.metadata or {},
+                }
+            )
+        return {
+            "jsonrpc": "2.0",
+            "id": "",
+            "result": {
+                "tasks": tasks_view,
+                "count": len(tasks_view),
+                "total": len(self._tasks),
+            },
+        }
 
     async def _handle_send_task(self, params: dict[str, Any]) -> dict[str, Any]:
         """处理任务发送."""
@@ -187,13 +229,34 @@ class A2AServer:
         task = A2ATask(
             id=task_data.get("id", str(uuid.uuid4())),
             state=A2ATaskState.WORKING,
+            metadata=task_data.get("metadata") or {},
         )
 
         for msg_data in task_data.get("messages", []):
+            # Prefer body.content dict directly for BaiLongma-style messages.
+            raw_content: dict[str, Any] = msg_data.get("content") or {}
+            parts = msg_data.get("parts") or [{}]
+            # Coerce the message-level content dict: accept either the
+            # message-level ``content`` field OR (if absent) the first part's
+            # text as the content.text, with ``task_type`` inherited from
+            # message metadata to preserve chassis-origin fields.
+            if not isinstance(raw_content, dict):
+                raw_content = {"text": str(raw_content)}
+            if not raw_content.get("text"):
+                part_text = parts[0].get("text", "") if parts else ""
+                if part_text:
+                    raw_content.setdefault("text", part_text)
+            # task_type/context fallbacks: message-level content → message metadata
+            meta: dict[str, Any] = msg_data.get("metadata") or {}
+            if not raw_content.get("task_type") and meta.get("task_type"):
+                raw_content["task_type"] = meta["task_type"]
+            if not raw_content.get("context") and isinstance(meta.get("context"), dict):
+                raw_content["context"] = meta["context"]
             message = A2AMessage(
                 message_id=msg_data.get("messageId", str(uuid.uuid4())),
                 role=msg_data.get("role", "user"),
-                content={"text": msg_data.get("parts", [{}])[0].get("text", "")},
+                content=raw_content,
+                metadata=meta,
             )
             task.messages.append(message)
 

@@ -34,6 +34,14 @@ from .rbac import (
 from .taint import TaintTracker, TaintLabel
 from .signing import RequestSigner
 from .output_filter import OutputFilter
+from .api_key_ops import (
+    generate_api_key,
+    validate_api_key_report,
+    inject_api_key_into_env,
+    sign_rotation_proof,
+    verify_rotation_proof,
+    APIKeyReport,
+)
 
 __all__ = [
     "UnifiedRBAC",
@@ -47,4 +55,10 @@ __all__ = [
     "TaintLabel",
     "RequestSigner",
     "OutputFilter",
+    "generate_api_key",
+    "validate_api_key_report",
+    "inject_api_key_into_env",
+    "sign_rotation_proof",
+    "verify_rotation_proof",
+    "APIKeyReport",
 ]

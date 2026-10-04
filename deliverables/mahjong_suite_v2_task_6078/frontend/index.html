@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tetris — SRS / 7-Bag / Hold / Ghost</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; display: flex; justify-content: center; align-items: center;
+           min-height: 100vh; background: #0f172a; color: #e2e8f0;
+           font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+    #app { display: grid; grid-template-columns: 120px 300px 200px; gap: 16px; }
+    canvas { background: #1e293b; border: 2px solid #475569; image-rendering: pixelated; }
+    .panel { background: #1e293b; border: 2px solid #475569; border-radius: 4px;
+             padding: 12px; display: flex; flex-direction: column; gap: 8px;
+             min-height: 560px; }
+    .panel h3 { margin: 0 0 4px 0; font-size: 14px; color: #94a3b8;
+                border-bottom: 1px solid #334155; padding-bottom: 4px; }
+    .stat { display: flex; justify-content: space-between; font-size: 13px; }
+    .stat b { color: #fbbf24; }
+    .keys { font-size: 11px; color: #94a3b8; line-height: 1.5; }
+    .keys span { display: inline-block; background: #334155; padding: 1px 5px;
+                 border-radius: 3px; margin-right: 4px; color: #f8fafc; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="panel">
+      <h3>HOLD</h3>
+      <canvas id="hold" width="100" height="80"></canvas>
+      <h3 style="margin-top:24px">操作说明</h3>
+      <div class="keys">
+        <div><span>←</span><span>→</span> 移动</div>
+        <div><span>↓</span> 软降</div>
+        <div><span>↑</span><span>X</span> 顺时针旋转</div>
+        <div><span>Z</span> 逆时针旋转</div>
+        <div><span>Space</span> 硬降</div>
+        <div><span>C</span><span>Shift</span> Hold</div>
+        <div><span>P</span> 暂停</div>
+        <div><span>R</span> 重开</div>
+      </div>
+    </div>
+    <canvas id="board" width="300" height="600"></canvas>
+    <div class="panel">
+      <h3>NEXT</h3>
+      <canvas id="next" width="180" height="400"></canvas>
+      <div class="stat"><span>分数</span><b id="score">0</b></div>
+      <div class="stat"><span>等级</span><b id="level">1</b></div>
+      <div class="stat"><span>消行</span><b id="lines">0</b></div>
+      <div class="stat"><span>连击</span><b id="combo">0</b></div>
+      <div id="status" style="text-align:center;color:#f87171;margin-top:8px;font-size:12px"></div>
+    </div>
+  </div>
+  <script src="../js/tetris.js"></script>
+</body>
+</html>

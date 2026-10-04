@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tetris · 设置</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <div class="header">
+      <div>
+        <div class="title">俄罗斯方块 · 设置面板</div>
+        <div class="subtitle">调整灵敏度 / 音量 / 主题后，返回主页面开始游戏。</div>
+      </div>
+      <div><a href="index.html" style="color:var(--accent);">← 返回游戏</a></div>
+    </div>
+    <div class="panel" style="max-width: 720px;">
+      <h3>操作灵敏度（毫秒）</h3>
+      <div class="stat-row"><span class="k">DAS（首次横向延迟）</span><span><input type="number" id="das" value="170" min="0" max="500" /> ms</span></div>
+      <div class="stat-row"><span class="k">ARR（连续横向间隔）</span><span><input type="number" id="arr" value="50" min="0" max="200" /> ms</span></div>
+      <div class="stat-row"><span class="k">Soft-Drop（软降每格）</span><span><input type="number" id="sd" value="40" min="0" max="200" /> ms</span></div>
+      <div class="stat-row"><span class="k">Lock Delay（锁定延迟）</span><span><input type="number" id="lock" value="500" min="0" max="2000" /> ms</span></div>
+      <h3 style="margin-top: 18px;">音频</h3>
+      <div class="stat-row"><span class="k">SFX 音量</span><span><input type="range" id="sfx" min="0" max="1" step="0.01" value="0.7" /></span></div>
+      <div class="stat-row"><span class="k">BGM 音量</span><span><input type="range" id="bgm" min="0" max="1" step="0.01" value="0.35" /></span></div>
+      <h3 style="margin-top: 18px;">主题</h3>
+      <div class="stat-row"><span class="k">预设主题</span>
+        <span>
+          <select id="theme">
+            <option value="classic">经典（深色）</option>
+            <option value="neon">霓虹</option>
+            <option value="paper">护眼纸</option>
+          </select>
+        </span>
+      </div>
+      <div class="controls" style="margin-top: 22px;">
+        <button id="save">💾 保存到 localStorage</button>
+        <button id="reset">↺ 恢复默认</button>
+      </div>
+      <div class="status" id="s"></div>
+    </div>
+  </div>
+<script>
+const $ = (id) => document.getElementById(id);
+const FIELDS = ["das","arr","sd","lock","sfx","bgm","theme"];
+function save() {
+  const data = Object.fromEntries(FIELDS.map(k => [k, $(k).value]));
+  localStorage.setItem("tetris.settings", JSON.stringify(data));
+  $("s").textContent = "✅ 已保存（" + new Date().toLocaleTimeString() + "）";
+}
+function load() {
+  const raw = localStorage.getItem("tetris.settings");
+  if (!raw) return;
+  try { Object.entries(JSON.parse(raw)).forEach(([k, v]) => { if ($(k)) $(k).value = v; }); } catch (_) {}
+}
+function reset() {
+  localStorage.removeItem("tetris.settings");
+  location.reload();
+}
+$("save").onclick = save;
+$("reset").onclick = reset;
+load();
+</script>
+</body>
+</html>

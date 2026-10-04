@@ -24,6 +24,8 @@ _REASONING_PATTERNS = [
     re.compile(r"gemini.*thinking", re.IGNORECASE),  # Gemini thinking
     re.compile(r".*-r1", re.IGNORECASE),  # DeepSeek R1
     re.compile(r"marco-o1", re.IGNORECASE),  # Marco-o1
+    re.compile(r"ornith", re.IGNORECASE),  # Ornith-1.5 (thinking on by default)
+    re.compile(r"reasoning.*distilled", re.IGNORECASE),  # 本地推理蒸馏 (thinking 全开)
 ]
 
 # Models that support extended thinking budget
@@ -101,6 +103,10 @@ def get_reasoning_params(
         params["max_completion_tokens"] = config.max_output_tokens
         if supports_budget_tokens(model_name):
             params["reasoning"] = {"effort": "high"}
+
+    # 本地推理蒸馏 (LM Studio) — thinking 全开且无法通过 API 关闭
+    elif "reasoning" in model_name.lower() and "distilled" in model_name.lower():
+        params["enable_thinking"] = config.enable_thinking
 
     # Claude with extended thinking
     elif "claude" in model_name.lower():

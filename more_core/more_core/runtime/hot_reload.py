@@ -177,14 +177,15 @@ class HotReloader:
 
     async def _reload_skills(self, **kwargs: Any) -> ReloadEvent:
         """Reload skill registry."""
-        from ..skills.base import SkillManager
+        from ..skills import create_default_skill_manager
 
         old_count = len(self._core.skill_manager.list_skills())
-        self._core.skill_manager = SkillManager()
+        self._core.skill_manager = create_default_skill_manager()
+        new_count = len(self._core.skill_manager.list_skills())
         return ReloadEvent(
             scope=ReloadScope.SKILLS,
             success=True,
-            changes={"old_skills": old_count, "new_skills": 0},
+            changes={"old_skills": old_count, "new_skills": new_count},
         )
 
     async def _reload_channels(self, **kwargs: Any) -> ReloadEvent:

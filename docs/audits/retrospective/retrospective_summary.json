@@ -1,0 +1,12 @@
+{
+  "tetris_total": 12,
+  "tetris_native": 0,
+  "mahjong_total": 15,
+  "mahjong_native": 0,
+  "overall_native_pct": 0.0,
+  "data_sources": [
+    ".trae/specs/mahjong-suite-v2-multi-ruleset-audio-ui/tasks.md",
+    "/Users/qnming/.trae/memory/projects/-Users-qnming-AI-Cample-qnm-os-prev-202605211332--p2-6d71caf52bbe2a57f4ae/20260927/topics.md"
+  ],
+  "generation_date": "2026-09-27"
+}

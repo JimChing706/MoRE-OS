@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -60,7 +61,7 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
     @router.get("/plugins", dependencies=deps)
     async def plugins() -> dict[str, Any]:
         return {
-            "discovered": [md.__dict__ for md in core.plugins.list()],
+            "discovered": [asdict(md) for md in core.plugins.list()],
             "active": [md.name for md in core.plugins.active()],
         }
 

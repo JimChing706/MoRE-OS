@@ -1,0 +1,17 @@
+[package]
+name = "tetris_core"
+version = "0.1.0"
+edition = "2021"
+description = "Tetris core game logic library with SRS, 7-Bag, Hold, Ghost, Lock Delay."
+license = "Apache-2.0"
+
+[lib]
+name = "tetris_core"
+path = "src/lib.rs"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+[dev-dependencies]

@@ -5,13 +5,14 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import re
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, cast
 
 from ..core.config import LLMProviderConfig
-from ..core.errors import LLMError
+from ..core.errors import LLMError, ThinkingBudgetExhaustedError
 from .provider import LLMProvider, LLMRequest, LLMResponse
 from .providers.ollama import OllamaProvider
 from .providers.lmstudio import LMStudioProvider
@@ -25,6 +26,22 @@ _CACHE_MAX = 256
 # Guards against the pathological case: N providers × 5 retries × 120s timeout
 # with no total bound, which previously could stall a task for ~750s+.
 _FALLBACK_DEADLINE_S = 90.0
+# CLOSEDSPEC P1-3 R4-B 覃朗：把 DeliverableContract.timeout_s 和 LLM fallback deadline 联动绑定。
+# 预留 5s 给上层合约 kill switch 做清理；若 contract 超时极短则兜底 1s 地板。
+_FALLBACK_CONTRACT_HEADROOM_S = 5.0
+_FALLBACK_MIN_EFFECTIVE_S = 1.0
+
+
+def _effective_fallback_deadline(contract_timeout_s: float | None) -> float:
+    """R4-B: 计算 effective fallback deadline。
+
+    ``effective = min(contract_timeout_s - 5s headroom, 90s cap)``
+    若未传 contract 超时则返回默认 90s。结果地板值 = 1s（避免 0 / 负窗口）。
+    """
+    if contract_timeout_s is None or contract_timeout_s <= 0:
+        return _FALLBACK_DEADLINE_S
+    bounded = contract_timeout_s - _FALLBACK_CONTRACT_HEADROOM_S
+    return max(_FALLBACK_MIN_EFFECTIVE_S, min(bounded, _FALLBACK_DEADLINE_S))
 # LLM response cache TTL: stale responses must not be reused indefinitely.
 _CACHE_TTL_S = 300.0
 # Per-provider health-check wall-clock bound.  A hanging endpoint must not
@@ -36,6 +53,122 @@ _HEALTH_CHECK_TIMEOUT_S = 5.0
 _FAILURE_TTL_S = 60.0
 
 _logger = logging.getLogger(__name__)
+
+#: 判定"确定性模型故障"的关键字（加载失败 / 模型不存在 / 路由不存在）
+_HARD_MODEL_FAILURE_HINTS = (
+    "failed to load model",
+    "model not found",
+    "no such model",
+    "unknown model",
+    "does not exist",
+    "failed to load",
+)
+_HARD_FAILURE_THRESHOLD = 3
+
+
+def _is_hard_model_failure(error: str) -> bool:
+    lowered = (error or "").lower()
+    return any(h in lowered for h in _HARD_MODEL_FAILURE_HINTS)
+
+
+# ── Thinking-tag stripping (R2-B) ─────────────────────────────────────────
+# Matches common CoT thinking wrappers.  Case-insensitive and tolerant of
+# whitespace / attributes.  A missing closing tag is treated as "strip
+# everything from opening tag to end of string" so partial thinking payloads
+# never leak (S-3 invariant).
+_STRIP_PATTERNS: list[tuple[re.Pattern[str], re.Pattern[str]]] = [
+    (re.compile(r"<\s*think[^>]*\s*>", re.I | re.S), re.compile(r"<\s*/\s*think\s*>", re.I | re.S)),
+    (
+        re.compile(r"<\s*reasoning[^>]*\s*>", re.I | re.S),
+        re.compile(r"<\s*/\s*reasoning\s*>", re.I | re.S),
+    ),
+    (
+        re.compile(r"<\s*chain[_-]?of[_-]?thought[^>]*\s*>", re.I | re.S),
+        re.compile(r"<\s*/\s*chain[_-]?of[_-]?thought\s*>", re.I | re.S),
+    ),
+    (
+        re.compile(r"<\s*thought[^>]*\s*>", re.I | re.S),
+        re.compile(r"<\s*/\s*thought\s*>", re.I | re.S),
+    ),
+    (re.compile(r"<\|\s*Begin\s+of\s+Thought\s*\|>", re.I | re.S), re.compile(r"<\|\s*End\s+of\s+Thought\s*\|>", re.I | re.S)),
+    (re.compile(r"<\|\s*BOT\s*\|>", re.I | re.S), re.compile(r"<\|\s*EOT\s*\|>", re.I | re.S)),
+    (re.compile(r"<\|\s*thinking_begin\s*\|>", re.I | re.S), re.compile(r"<\|\s*thinking_end\s*\|>", re.I | re.S)),
+]
+
+# Global metrics counters (lightweight; no lock needed for Python int += 1).
+_THINKING_STRIPPED_TOTAL = 0
+_THINKING_STRIPPED_WINDOW = 0
+_THINKING_STRIPPED_WINDOW_START = 0.0
+_THINKING_STRIPPED_ALERT_THRESHOLD = 100  # per-hour WARN threshold (R2-B SRE)
+
+
+def _strip_thinking_tags(content: str) -> tuple[str, int, str]:
+    """Strip known chain-of-thought wrappers from ``content``.
+
+    Returns ``(clean_content, n_tags_stripped, stripped_reasoning_text)``.
+    ``stripped_reasoning_text`` is the concatenation of everything we removed
+    so it can be stowed in ``LLMResponse.reasoning_content`` for token
+    ratio accounting later.  Nothing ever embeds this in an error message.
+    """
+    if not content:
+        return content or "", 0, ""
+    stripped: list[str] = []
+    n = 0
+    result = content
+    for open_re, close_re in _STRIP_PATTERNS:
+        while True:
+            m = open_re.search(result)
+            if not m:
+                break
+            start = m.start()
+            open_end = m.end()
+            mc = close_re.search(result, open_end)
+            if mc:
+                end = mc.end()
+                chunk = result[open_end : mc.start()]
+            else:
+                # Unclosed tag — drop everything from open tag to EOS
+                end = len(result)
+                chunk = result[open_end:]
+            stripped.append(chunk)
+            n += 1
+            result = result[:start] + result[end:]
+    return result, n, "\n".join(stripped)
+
+
+def _bump_stripped_metrics(n_stripped: int) -> None:
+    """Increment counters; emit a WARN log if hourly threshold is breached."""
+    global _THINKING_STRIPPED_TOTAL, _THINKING_STRIPPED_WINDOW, _THINKING_STRIPPED_WINDOW_START
+    if n_stripped <= 0:
+        return
+    now = time.monotonic()
+    if _THINKING_STRIPPED_WINDOW_START == 0.0:
+        _THINKING_STRIPPED_WINDOW_START = now
+    elapsed = now - _THINKING_STRIPPED_WINDOW_START
+    if elapsed >= 3600.0:
+        _THINKING_STRIPPED_WINDOW = 0
+        _THINKING_STRIPPED_WINDOW_START = now
+    _THINKING_STRIPPED_TOTAL += n_stripped
+    _THINKING_STRIPPED_WINDOW += n_stripped
+    if elapsed < 3600.0 and _THINKING_STRIPPED_WINDOW >= _THINKING_STRIPPED_ALERT_THRESHOLD:
+        _logger.warning(
+            "Thinking tags stripped %d times in %.0fs (>=%d/h threshold). "
+            "Provider may be leaking chain-of-thought via content field.",
+            _THINKING_STRIPPED_WINDOW, elapsed, _THINKING_STRIPPED_ALERT_THRESHOLD,
+        )
+
+
+# Approximate token counters used when provider omits explicit prompt /
+# completion / reasoning token counts.  1 token ≈ 4 chars is a conservative
+# English-agnostic heuristic; Chinese text tends toward ~1.8 chars / token so
+# 4 is intentionally safe (over-estimates, meaning R2 fires LESS often).
+_CHARS_PER_TOKEN = 4
+
+
+def _approx_tokens(text: str | None) -> int:
+    if not text:
+        return 0
+    return max(1, (len(text) + _CHARS_PER_TOKEN - 1) // _CHARS_PER_TOKEN)
 
 
 class _LRU:
@@ -96,6 +229,17 @@ def _build_provider(cfg: LLMProviderConfig) -> LLMProvider:
                 endpoint=cfg.endpoint or "https://api.deepseek.com",
                 model=cfg.model or "deepseek-chat",
                 api_key=cfg.api_key or "",
+                timeout=cfg.timeout_s,
+            ),
+        )
+    if cfg.provider == "llamacpp":
+        return cast(
+            "LLMProvider",
+            OpenAICompatProvider(
+                name=cfg.name,
+                endpoint=cfg.endpoint,
+                model=cfg.model,
+                api_key=cfg.api_key or "EMPTY",
                 timeout=cfg.timeout_s,
             ),
         )
@@ -176,6 +320,60 @@ class LLMManager:
         # Health check cache: provider -> (is_healthy, timestamp)
         self._health_cache: dict[str, tuple[bool, float]] = {}
         self._health_cache_ttl: float = 30.0
+
+    # ── Post-processing hook (R2-B: thinking-tag strip, R2: budget enforce) ─
+    def _postprocess_llm_response(self, resp: LLMResponse, req: LLMRequest) -> LLMResponse:
+        """Apply common post-processing to every provider-generated response.
+
+        * Strips chain-of-thought tag wrappers (R2-B).
+        * Raises :class:`ThinkingBudgetExhaustedError` if the usable answer
+          fraction is below the regulated minimum (R2).
+
+        The response object is mutated in place and also returned for chaining
+        convenience.  The error message intentionally contains no raw model
+        output (S-3 safety invariant).
+        """
+        # 1. Strip thinking tags and record them in reasoning_content if empty.
+        clean, n_stripped, reasoning_text = _strip_thinking_tags(resp.content or "")
+        if n_stripped > 0:
+            _bump_stripped_metrics(n_stripped)
+            resp.content = clean
+            if not resp.reasoning_content and reasoning_text:
+                resp.reasoning_content = reasoning_text
+        # Derive usable answer token counts (fall back to char-based approx if provider omits).
+        max_toks = max(int(getattr(req, "max_tokens", 0) or 0), 0)
+        answer_len_chars = len((resp.content or "").strip())
+        completion_explicit = int(resp.completion_tokens) or 0
+        if completion_explicit <= 0:
+            answer_tokens = _approx_tokens(resp.content or "")
+        else:
+            answer_tokens = completion_explicit
+        reasoning_approx_toks = _approx_tokens(resp.reasoning_content or "")
+        thinking_tokens = reasoning_approx_toks if reasoning_approx_toks > 0 else 0
+
+        # 2. 思考预算守卫（生产事故修复）
+        #    原始判据会误杀"答案本来就短"的合法回答：例如 max_tokens=2048、
+        #    回答 47 token、且模型确实产出了 reasoning 时，ratio=2.3%<5% 且 47<=64，
+        #    于是被判定为 thinking_budget_exhausted —— 实测这正是主力模型
+        #    (ornith-1.5-9b/35b) 的常态输出形态，造成大批"假失败"。
+        #    真实故障模式是"思考把预算吃光、答案近乎为空"，因此改为：
+        #      * 答案确实**近乎为空**（<=8 token 或 content 为空白）；
+        #      * 且确实发生过思考（thinking_tokens >= 50）。
+        answer_nearly_empty = answer_tokens <= 8 or answer_len_chars == 0
+        cond_a = answer_nearly_empty and thinking_tokens >= 50
+        cond_b = (resp.completion_tokens or 0) > 0 and answer_len_chars == 0
+        cond_c = False
+        if cond_a or cond_b or cond_c:
+            thinking_ratio = round(thinking_tokens / max(thinking_tokens + answer_tokens, 1), 3)
+            msg = (
+                "thinking_budget_exhausted: "
+                f"answer_tok={answer_tokens} max_tok={max_toks} "
+                f"thinking_tok={thinking_tokens} "
+                f"cond_a={cond_a} cond_b={cond_b} cond_c={cond_c} "
+                f"thinking_ratio={thinking_ratio}"
+            )
+            raise ThinkingBudgetExhaustedError(msg)
+        return resp
 
     async def _check_health_cached(self, name: str) -> bool:
         """Cached health check for a provider (TTL 30s)."""
@@ -258,10 +456,21 @@ class LLMManager:
             return False
         return count >= threshold
 
-    def _record_failure(self, provider: str, model: str | None) -> None:
-        """Record a failure for a provider/model pair."""
+    def _record_failure(
+        self, provider: str, model: str | None, error: str | None = None
+    ) -> None:
+        """Record a failure for a provider/model pair.
+
+        生产事故修复：模型**加载失败**（模型名不存在 / 引擎起不来）属于确定性故障，
+        重试 3 次只会白烧 3 倍延迟。此类错误直接把计数拉到跳过阈值。
+        """
         key = f"{provider}:{model or 'default'}"
         count = self._failure_counts.get(key, (0, 0.0))[0] + 1
+        if error and _is_hard_model_failure(error):
+            count = max(count, _HARD_FAILURE_THRESHOLD)
+            _logger.warning(
+                "Hard model failure for %s (skip until TTL): %s", key, str(error)[:160]
+            )
         self._failure_counts[key] = (count, time.monotonic())
         _logger.warning(f"Failure recorded for {key}: {count}")
 
@@ -276,6 +485,7 @@ class LLMManager:
         provider: str | None = None,
         model_override: str | None = None,
         use_cache: bool = True,
+        contract_timeout_s: float | None = None,
     ) -> LLMResponse:
         """Generate LLM response with fallback chain.
 
@@ -284,9 +494,11 @@ class LLMManager:
             provider: Specific provider to use, or None for fallback chain
             model_override: Override model name for this request
             use_cache: Whether to use response caching
+            contract_timeout_s: P1-3 R4-B: 从 DeliverableContract.timeout_s 透传的
+                任务级总超时；effective deadline = min(timeout - 5s, 90s)。默认 90s。
 
         Returns:
-            LLMResponse with generated content
+            LLMResponse with generated response
 
         Raises:
             LLMError: When all providers in fallback chain fail
@@ -299,7 +511,12 @@ class LLMManager:
 
         chain = [provider] if provider else list(self._fallback)
         last_exc: Exception | None = None
-        deadline = time.monotonic() + _FALLBACK_DEADLINE_S
+        effective_deadline_s = _effective_fallback_deadline(contract_timeout_s)
+        deadline = time.monotonic() + effective_deadline_s
+        # request_id is the stable grouping key across all fallback attempts
+        # in this generate() call; each provider trial bumps attempt +=1.
+        logical_rid = getattr(request, "id", "") or f"gen_{int(time.time()*1e6)}"
+        attempt = 0
 
         for name in chain:
             if name not in self._providers:
@@ -317,7 +534,26 @@ class LLMManager:
                 async with self._cache_lock:
                     cached = self._cache.get(key)
                     if cached is not None:
-                        return LLMResponse(
+                        try:
+                            from ..governance.observability import record_llm_call
+                        except Exception:  # pragma: no cover
+                            record_llm_call = None
+                        if record_llm_call is not None:
+                            record_llm_call(
+                                request_id=logical_rid,
+                                provider=cached.provider or name,
+                                model=cached.model or request.model_override or "",
+                                prompt_chars=len(request.prompt or ""),
+                                prompt_tokens=cached.prompt_tokens,
+                                completion_tokens=cached.completion_tokens,
+                                latency_ms=0.0,
+                                success=True,
+                                cached=True,
+                                attempt=attempt,
+                                temperature=request.temperature,
+                                max_tokens=request.max_tokens,
+                            )
+                        cached_resp = LLMResponse(
                             content=cached.content,
                             provider=cached.provider,
                             model=cached.model,
@@ -325,12 +561,14 @@ class LLMManager:
                             completion_tokens=cached.completion_tokens,
                             latency_ms=0.0,
                             cached=True,
+                            reasoning_content=cached.reasoning_content,
                         )
+                        return self._postprocess_llm_response(cached_resp, request)
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                _logger.error("Fallback chain total timeout exceeded (%ss)", _FALLBACK_DEADLINE_S)
+                _logger.error("Fallback chain total timeout exceeded (%ss)", effective_deadline_s)
                 raise LLMError(
-                    f"fallback chain total timeout exceeded after {_FALLBACK_DEADLINE_S}s"
+                    f"fallback chain total timeout exceeded after {effective_deadline_s}s"
                 ) from last_exc
             try:
                 start = time.perf_counter()
@@ -338,23 +576,125 @@ class LLMManager:
                     self._providers[name].generate(request), timeout=remaining
                 )
                 resp.latency_ms = (time.perf_counter() - start) * 1000
+                resp = self._postprocess_llm_response(resp, request)
                 self._record_success(name, request.model_override)
                 if use_cache:
                     async with self._cache_lock:
                         self._cache.put(key, resp)
+                try:
+                    from ..governance.observability import record_llm_call
+                except Exception:  # pragma: no cover
+                    record_llm_call = None
+                if record_llm_call is not None:
+                    record_llm_call(
+                        request_id=logical_rid,
+                        provider=resp.provider or name,
+                        model=resp.model or request.model_override or "",
+                        prompt_chars=len(request.prompt or ""),
+                        prompt_tokens=resp.prompt_tokens,
+                        completion_tokens=resp.completion_tokens,
+                        latency_ms=resp.latency_ms,
+                        success=True,
+                        cached=False,
+                        attempt=attempt,
+                        temperature=request.temperature,
+                        max_tokens=request.max_tokens,
+                    )
                 return resp
+            except asyncio.CancelledError:
+                # R-11: 请求被外层 wait_for 取消（任务级超时）时也要留痕，
+                # 否则超时故障在指标里表现为"没有调用"。
+                self._emit_llm_call(
+                    request_id=logical_rid, provider=name,
+                    model=request.model_override or "",
+                    prompt_chars=len(request.prompt or ""), prompt_tokens=0,
+                    completion_tokens=0, latency_ms=0.0, success=False,
+                    error="cancelled (task timeout / client disconnect)",
+                    attempt=attempt, temperature=request.temperature,
+                    max_tokens=request.max_tokens,
+                )
+                raise
             except Exception as exc:
-                self._record_failure(name, request.model_override)
+                self._record_failure(name, request.model_override, str(exc))
+                try:
+                    from ..governance.observability import record_llm_call
+                except Exception:  # pragma: no cover
+                    record_llm_call = None
+                if record_llm_call is not None:
+                    record_llm_call(
+                        request_id=logical_rid,
+                        provider=name,
+                        model=request.model_override or "",
+                        prompt_chars=len(request.prompt or ""),
+                        prompt_tokens=0,
+                        completion_tokens=0,
+                        latency_ms=0.0,
+                        success=False,
+                        cached=False,
+                        error=str(exc)[:4000],
+                        attempt=attempt,
+                        temperature=request.temperature,
+                        max_tokens=request.max_tokens,
+                    )
                 last_exc = exc
                 _logger.warning(f"Provider {name} failed: {exc}")
+                attempt += 1
                 continue
         raise LLMError(f"all providers failed: {last_exc}") from last_exc
+
+    @staticmethod
+    def _emit_llm_call(
+        *,
+        request_id: str,
+        provider: str,
+        model: str,
+        prompt_chars: int,
+        prompt_tokens: int,
+        completion_tokens: int,
+        latency_ms: float,
+        success: bool,
+        cached: bool = False,
+        error: str = "",
+        attempt: int = 0,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> None:
+        """Emit one telemetry row for ANY LLM entry point.
+
+        Historically only ``generate()`` was instrumented, so tasks that went
+        through ``generate_with_fallback_chain`` / ``generate_parallel`` /
+        ``stream`` produced **zero** runtime metrics.  Centralising the emit
+        here keeps every path observable.
+        """
+        try:
+            from ..governance.observability import record_llm_call
+        except Exception:  # pragma: no cover - telemetry must never break the call
+            return
+        try:
+            record_llm_call(
+                request_id=request_id,
+                provider=provider,
+                model=model,
+                prompt_chars=int(prompt_chars),
+                prompt_tokens=int(prompt_tokens),
+                completion_tokens=int(completion_tokens),
+                latency_ms=float(latency_ms),
+                success=bool(success),
+                cached=bool(cached),
+                error=(error or "")[:4000],
+                attempt=int(attempt),
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        except Exception:  # pragma: no cover - defensive
+            pass
 
     async def generate_with_fallback_chain(
         self,
         request: LLMRequest,
         chain: list[ProviderModelPair],
         use_cache: bool = True,
+        contract_timeout_s: float | None = None,
     ) -> LLMResponse:
         """Generate with a complete fallback chain of provider-model pairs.
 
@@ -362,6 +702,8 @@ class LLMManager:
             request: LLM request
             chain: List of (provider, model) pairs to try in order
             use_cache: Whether to use response caching
+            contract_timeout_s: P1-3 R4-B: 从 DeliverableContract.timeout_s 透传。
+                effective = min(timeout - 5s, 90s)。默认 90s。
 
         Returns:
             LLMResponse from first successful pair
@@ -370,7 +712,10 @@ class LLMManager:
             LLMError: When all pairs in chain fail
         """
         last_exc: Exception | None = None
-        deadline = time.monotonic() + _FALLBACK_DEADLINE_S
+        effective_deadline_s = _effective_fallback_deadline(contract_timeout_s)
+        deadline = time.monotonic() + effective_deadline_s
+        chain_rid = f"chain_{int(time.time() * 1e6)}"
+        chain_attempt = 0
 
         for pair in chain:
             if pair.provider not in self._providers:
@@ -389,7 +734,7 @@ class LLMManager:
                 async with self._cache_lock:
                     cached = self._cache.get(key)
                     if cached is not None:
-                        return LLMResponse(
+                        cached_resp = LLMResponse(
                             content=cached.content,
                             provider=cached.provider,
                             model=cached.model,
@@ -397,13 +742,29 @@ class LLMManager:
                             completion_tokens=cached.completion_tokens,
                             latency_ms=0.0,
                             cached=True,
+                            reasoning_content=cached.reasoning_content,
                         )
+                        self._emit_llm_call(
+                            request_id=chain_rid,
+                            provider=cached.provider or pair.provider,
+                            model=cached.model or pair.model or "",
+                            prompt_chars=len(request.prompt or ""),
+                            prompt_tokens=cached.prompt_tokens,
+                            completion_tokens=cached.completion_tokens,
+                            latency_ms=0.0,
+                            success=True,
+                            cached=True,
+                            attempt=chain_attempt,
+                            temperature=request.temperature,
+                            max_tokens=request.max_tokens,
+                        )
+                        return self._postprocess_llm_response(cached_resp, req)
 
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                _logger.error("Fallback chain total timeout exceeded (%ss)", _FALLBACK_DEADLINE_S)
+                _logger.error("Fallback chain total timeout exceeded (%ss)", effective_deadline_s)
                 raise LLMError(
-                    f"fallback chain total timeout exceeded after {_FALLBACK_DEADLINE_S}s"
+                    f"fallback chain total timeout exceeded after {effective_deadline_s}s"
                 ) from last_exc
             try:
                 start = time.perf_counter()
@@ -411,14 +772,53 @@ class LLMManager:
                     self._providers[pair.provider].generate(req), timeout=remaining
                 )
                 resp.latency_ms = (time.perf_counter() - start) * 1000
+                resp = self._postprocess_llm_response(resp, req)
                 self._record_success(pair.provider, pair.model)
                 if use_cache:
                     async with self._cache_lock:
                         self._cache.put(key, resp)
+                self._emit_llm_call(
+                    request_id=chain_rid,
+                    provider=resp.provider or pair.provider,
+                    model=resp.model or pair.model or "",
+                    prompt_chars=len(request.prompt or ""),
+                    prompt_tokens=resp.prompt_tokens,
+                    completion_tokens=resp.completion_tokens,
+                    latency_ms=resp.latency_ms,
+                    success=True,
+                    attempt=chain_attempt,
+                    temperature=request.temperature,
+                    max_tokens=request.max_tokens,
+                )
                 return resp
+            except asyncio.CancelledError:
+                self._emit_llm_call(
+                    request_id=chain_rid, provider=pair.provider,
+                    model=pair.model or "", prompt_chars=len(request.prompt or ""),
+                    prompt_tokens=0, completion_tokens=0, latency_ms=0.0,
+                    success=False, error="cancelled (task timeout / client disconnect)",
+                    attempt=chain_attempt, temperature=request.temperature,
+                    max_tokens=request.max_tokens,
+                )
+                raise
             except Exception as exc:
-                self._record_failure(pair.provider, pair.model)
+                self._record_failure(pair.provider, pair.model, str(exc))
+                self._emit_llm_call(
+                    request_id=chain_rid,
+                    provider=pair.provider,
+                    model=pair.model or "",
+                    prompt_chars=len(request.prompt or ""),
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                    latency_ms=0.0,
+                    success=False,
+                    error=str(exc),
+                    attempt=chain_attempt,
+                    temperature=request.temperature,
+                    max_tokens=request.max_tokens,
+                )
                 last_exc = exc
+                chain_attempt += 1
                 _logger.warning(f"{pair.provider}/{pair.model} failed: {exc}")
                 continue
 
@@ -455,6 +855,8 @@ class LLMManager:
         """
         import asyncio as _aio
 
+        par_rid = f"par_{int(time.time() * 1e6)}"
+
         # 1. Filter to healthy, non-skipped candidates
         valid: list[tuple[ProviderModelPair, str]] = []  # (pair, cache_key)
         for pair in candidates:
@@ -484,7 +886,7 @@ class LLMManager:
                         _logger.debug(
                             "generate_parallel: cache hit %s/%s", pair.provider, pair.model
                         )
-                        return LLMResponse(
+                        cached_resp = LLMResponse(
                             content=cached.content,
                             provider=cached.provider,
                             model=cached.model,
@@ -492,7 +894,23 @@ class LLMManager:
                             completion_tokens=cached.completion_tokens,
                             latency_ms=0.0,
                             cached=True,
+                            reasoning_content=cached.reasoning_content,
                         )
+                        req = self._create_request_with_model(request, pair.model)
+                        self._emit_llm_call(
+                            request_id=par_rid,
+                            provider=cached.provider or pair.provider,
+                            model=cached.model or pair.model or "",
+                            prompt_chars=len(request.prompt or ""),
+                            prompt_tokens=cached.prompt_tokens,
+                            completion_tokens=cached.completion_tokens,
+                            latency_ms=0.0,
+                            success=True,
+                            cached=True,
+                            temperature=request.temperature,
+                            max_tokens=request.max_tokens,
+                        )
+                        return self._postprocess_llm_response(cached_resp, req)
 
         # 3. Launch all in parallel, race to first success
         async def _try_one(pair: ProviderModelPair) -> LLMResponse:
@@ -501,7 +919,7 @@ class LLMManager:
             start = time.perf_counter()
             resp = await self._providers[pair.provider].generate(req)
             resp.latency_ms = (time.perf_counter() - start) * 1000
-            return resp
+            return self._postprocess_llm_response(resp, req)
 
         tasks = {_aio.create_task(_try_one(p)): p for p, _ in valid}
         pending: set[_aio.Task[Any]] = set(tasks)
@@ -528,6 +946,18 @@ class LLMManager:
                         )
                         async with self._cache_lock:
                             self._cache.put(key, resp)
+                    self._emit_llm_call(
+                        request_id=par_rid,
+                        provider=resp.provider or pair.provider,
+                        model=resp.model or pair.model or "",
+                        prompt_chars=len(request.prompt or ""),
+                        prompt_tokens=resp.prompt_tokens,
+                        completion_tokens=resp.completion_tokens,
+                        latency_ms=resp.latency_ms,
+                        success=True,
+                        temperature=request.temperature,
+                        max_tokens=request.max_tokens,
+                    )
                     _logger.info(
                         "generate_parallel: won race [%s/%s] in %.0fms",
                         pair.provider,
@@ -541,7 +971,20 @@ class LLMManager:
                     await _aio.gather(*pending, return_exceptions=True)
                     return resp
                 except BaseException as exc:
-                    self._record_failure(pair.provider, pair.model)
+                    self._record_failure(pair.provider, pair.model, str(exc))
+                    self._emit_llm_call(
+                        request_id=par_rid,
+                        provider=pair.provider,
+                        model=pair.model or "",
+                        prompt_chars=len(request.prompt or ""),
+                        prompt_tokens=0,
+                        completion_tokens=0,
+                        latency_ms=0.0,
+                        success=False,
+                        error=str(exc),
+                        temperature=request.temperature,
+                        max_tokens=request.max_tokens,
+                    )
                     errors.append((pair.provider, pair.model, str(exc)))
                     _logger.warning(
                         "generate_parallel: %s/%s failed: %s",
@@ -622,9 +1065,13 @@ class LLMManager:
         """Stream tokens from the best available provider with fallback."""
         chain = [provider] if provider else list(self._fallback)
         deadline = time.monotonic() + _FALLBACK_DEADLINE_S
+        stream_rid = f"stream_{int(time.time() * 1e6)}"
+        stream_attempt = 0
         for name in chain:
             if name not in self._providers or self._should_skip(name, model_override):
                 continue
+            started = time.perf_counter()
+            emitted_chars = 0
             try:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
@@ -638,13 +1085,53 @@ class LLMManager:
                     except StopAsyncIteration:
                         break
                     yield token
+                    emitted_chars += len(token or "")
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
                         raise LLMError("stream fallback chain total timeout exceeded")
                 self._record_success(name, model_override)
+                self._emit_llm_call(
+                    request_id=stream_rid,
+                    provider=name,
+                    model=model_override or "",
+                    prompt_chars=len(request.prompt or ""),
+                    prompt_tokens=0,
+                    completion_tokens=max(1, emitted_chars // 4),
+                    latency_ms=(time.perf_counter() - started) * 1000,
+                    success=True,
+                    attempt=stream_attempt,
+                    temperature=request.temperature,
+                    max_tokens=request.max_tokens,
+                )
                 return
+            except asyncio.CancelledError:
+                self._emit_llm_call(
+                    request_id=stream_rid, provider=name, model=model_override or "",
+                    prompt_chars=len(request.prompt or ""), prompt_tokens=0,
+                    completion_tokens=0,
+                    latency_ms=(time.perf_counter() - started) * 1000,
+                    success=False, error="cancelled (task timeout / client disconnect)",
+                    attempt=stream_attempt, temperature=request.temperature,
+                    max_tokens=request.max_tokens,
+                )
+                raise
             except Exception as exc:
                 self._record_failure(name, model_override)
+                self._emit_llm_call(
+                    request_id=stream_rid,
+                    provider=name,
+                    model=model_override or "",
+                    prompt_chars=len(request.prompt or ""),
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                    latency_ms=(time.perf_counter() - started) * 1000,
+                    success=False,
+                    error=str(exc),
+                    attempt=stream_attempt,
+                    temperature=request.temperature,
+                    max_tokens=request.max_tokens,
+                )
+                stream_attempt += 1
                 _logger.warning(f"Stream from {name} failed: {exc}")
                 continue
         raise LLMError("all providers failed streaming")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Awaitable
@@ -11,6 +12,37 @@ from .scheduler import CronScheduler, JobResult
 from .trigger import TriggerEngine, TriggerEvent, TriggerEventType, EventPattern
 
 _log = logging.getLogger(__name__)
+
+# ── Step-4 P0: global kill-switch registry ────────────────────────────
+# Two levels of kill switch:
+#   1. ``GLOBAL_KILLSWITCH.set(True)`` — *all* cron + trigger tasks stop
+#      firing.  The scheduler itself keeps running so it can be revived;
+#      wrappers simply return without invoking handlers.
+#   2. ``TaskManager.kill_task(task_id)`` / ``rollback_task(task_id)`` —
+#      per-job freeze + rollback hook.
+_GLOBAL_LOCK = threading.Lock()
+_GLOBAL_KILLSWITCH_ON: bool = False
+
+
+def set_global_killswitch(on: bool) -> None:
+    """Flip the global kill-switch.  Threadsafe; idempotent."""
+    global _GLOBAL_KILLSWITCH_ON
+    with _GLOBAL_LOCK:
+        _GLOBAL_KILLSWITCH_ON = bool(on)
+
+
+def get_global_killswitch() -> bool:
+    with _GLOBAL_LOCK:
+        return _GLOBAL_KILLSWITCH_ON
+
+
+@dataclass
+class RollbackRecord:
+    """A single rollback entry — replayed in LIFO order by rollback_task()."""
+
+    name: str
+    rollback_fn: Callable[[], Awaitable[Any]] | Callable[[], Any]
+    created_at: float = field(default_factory=lambda: datetime.now(timezone.utc).timestamp())
 
 
 @dataclass
@@ -38,6 +70,10 @@ class TaskManager:
         self._tasks: dict[str, TaskDefinition] = {}
         self._running = False
         self._delivery_callbacks: list[Callable[[str, Any], Awaitable[None]]] = []
+        # ── Step-4 P0: per-task kill state + rollback stack ────────
+        self._killed: set[str] = set()
+        self._rollbacks: dict[str, list[RollbackRecord]] = {}
+        self._rollback_lock = threading.Lock()
 
     @property
     def scheduler(self) -> CronScheduler:
@@ -185,15 +221,102 @@ class TaskManager:
         return False
 
     async def run_task(self, task_id: str) -> JobResult | None:
-        """Manually run a task."""
+        """Manually run a task.
+
+        Returns ``None`` when the global kill-switch or per-task kill is
+        active (the job is not even scheduled into the handler).
+        """
+        if get_global_killswitch():
+            _log.warning("run_task(%s) blocked by global kill-switch", task_id)
+            return None
         task = self._tasks.get(task_id)
         if not task:
+            return None
+        if task_id in self._killed:
+            _log.warning("run_task(%s) blocked by per-task kill", task_id)
             return None
 
         if task.task_type == "cron":
             return await self._scheduler.run_job(task_id)
 
         return None
+
+    # ── Step-4 P0: kill / rollback APIs ─────────────────────────────
+
+    def kill_task(self, task_id: str) -> bool:
+        """Kill (freeze) a single task by id.  Fires disable + blacklist.
+
+        Already-running executions of this task are not forcibly halted;
+        future invocations return immediately from the wrapper.  Returns
+        True when the task existed and is now disabled.
+        """
+        task = self._tasks.get(task_id)
+        if task is None:
+            return False
+        self._killed.add(task_id)
+        self.disable_task(task_id)
+        _log.warning("Task %s killed", task_id)
+        return True
+
+    def revive_task(self, task_id: str) -> bool:
+        """Reverse :meth:`kill_task`: reinstate and enable.  Returns True when revived."""
+        task = self._tasks.get(task_id)
+        if task is None:
+            return False
+        self._killed.discard(task_id)
+        self.enable_task(task_id)
+        return True
+
+    def add_rollback(
+        self,
+        task_id: str,
+        *,
+        name: str,
+        rollback_fn: Callable[[], Awaitable[Any]] | Callable[[], Any],
+    ) -> None:
+        """Push a rollback function onto the LIFO stack for ``task_id``.
+
+        Rollback functions are idempotently registered; they run only when
+        :meth:`rollback_task` is called, most-recent-first order.
+        """
+        with self._rollback_lock:
+            self._rollbacks.setdefault(task_id, []).append(
+                RollbackRecord(name=name, rollback_fn=rollback_fn)
+            )
+
+    async def rollback_task(self, task_id: str) -> list[tuple[str, bool, str]]:
+        """Execute all registered rollbacks for ``task_id`` in LIFO order.
+
+        Returns a list of ``(rollback_name, succeeded, error)`` tuples so
+        callers can build a remediation UI.  The call **never raises** —
+        individual rollback exceptions are captured as ``(name, False,
+        repr(exc))`` entries.
+        """
+        with self._rollback_lock:
+            stack = list(reversed(self._rollbacks.pop(task_id, [])))
+        result: list[tuple[str, bool, str]] = []
+        import asyncio
+
+        for rec in stack:
+            try:
+                maybe_coro = rec.rollback_fn()
+                if asyncio.iscoroutine(maybe_coro):
+                    await maybe_coro
+                result.append((rec.name, True, ""))
+            except Exception as exc:  # pragma: no cover - defensive
+                result.append((rec.name, False, repr(exc)))
+        return result
+
+    def get_killswitch_state(self) -> dict[str, Any]:
+        """Structured snapshot for /monitor/health endpoints."""
+        return {
+            "global_killed": get_global_killswitch(),
+            "task_count_killed": len(self._killed),
+            "killed_task_ids": sorted(self._killed),
+            "tasks_with_rollbacks": sorted(self._rollbacks.keys()),
+        }
+
+    # ── end Step-4 P0 ────────────────────────────────────────────────
 
     def set_delivery_callback(self, callback: Callable[[str, Any], Awaitable[None]]) -> None:
         """Set callback for task result delivery."""
@@ -211,6 +334,13 @@ class TaskManager:
         """Create wrapper for cron task handler."""
 
         async def wrapper() -> Any:
+            # Step-4 P0 kill-switch short-circuits — both global and per-task.
+            if get_global_killswitch():
+                _log.warning("cron task %s blocked by global kill-switch", task.task_id)
+                return None
+            if task.task_id in self._killed:
+                _log.warning("cron task %s blocked by per-task kill", task.task_id)
+                return None
             try:
                 result = await task.handler(**task.args)
                 await self._deliver_result(task.task_id, result)
@@ -227,6 +357,12 @@ class TaskManager:
         """Create wrapper for trigger task handler."""
 
         async def wrapper(event: TriggerEvent) -> Any:
+            if get_global_killswitch():
+                _log.warning("trigger %s blocked by global kill-switch", task.task_id)
+                return None
+            if task.task_id in self._killed:
+                _log.warning("trigger %s blocked by per-task kill", task.task_id)
+                return None
             try:
                 result = await task.handler(event=event, **task.args)
                 await self._deliver_result(task.task_id, result)

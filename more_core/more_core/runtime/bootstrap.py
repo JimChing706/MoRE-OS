@@ -54,11 +54,20 @@ def init_capabilities(settings: Settings) -> dict[str, Any]:
         complete_fn=_make_council_complete_fn(llm),
     )
 
+    # R-10：沙箱级别可配置。BASIC = AST 危险操作拦截 + 全 argv 命令检查；
+    # STRICT 额外强制导入白名单、并施加进程数上限。默认 basic 以兼容代码生成回路。
+    import os as _os
+
+    _level_name = (_os.getenv("MORE_SANDBOX_LEVEL", "basic") or "basic").strip().lower()
+    try:
+        _level = SecurityLevel(_level_name)
+    except ValueError:
+        _level = SecurityLevel.BASIC
     sandbox = create_secure_sandbox(
         SandboxConfig(
             timeout_s=settings.sandbox_timeout_s,
             memory_mb=settings.sandbox_memory_mb,
-            security_level=SecurityLevel.BASIC,
+            security_level=_level,
         ),
     )
 
@@ -150,7 +159,7 @@ def init_services(settings: Settings) -> dict[str, Any]:
     from ..security.rbac import UnifiedRBAC, set_rbac_instance
     from ..security.taint import TaintTracker
     from .sessions import SessionManager
-    from ..skills.base import SkillManager
+    from ..skills import create_default_skill_manager
     from ..workflows.engine import WorkflowEngine
 
     _admin_raw = _os.environ.get("MORE_ADMIN_USERS", "")
@@ -169,7 +178,7 @@ def init_services(settings: Settings) -> dict[str, Any]:
     return {
         "channels": ChannelManager(),
         "cron": _cron,
-        "skill_manager": SkillManager(),
+        "skill_manager": create_default_skill_manager(),
         "hand_registry": _hand_registry,
         "hands": _hands,
         "commands": CommandRegistry(),

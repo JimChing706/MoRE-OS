@@ -71,14 +71,17 @@ class TestSandboxValidator:
         code = "import os\nos.system('rm -rf /')"
         valid, msg = await sandbox_validator.validate(code)
         assert valid is False
-        assert "blocked keyword" in msg
+        # R-10 后判定改为 AST，诊断更精确（不再依赖子串关键字）
+        assert "blocked" in msg.lower()
+        assert "os.system" in msg
 
     @pytest.mark.asyncio
     async def test_reject_syntax_error(self, sandbox_validator):
         code = "def broken("
         valid, msg = await sandbox_validator.validate(code)
         assert valid is False
-        assert "Syntax error" in msg
+        # R-10：解析失败必须**拦截**（而不是当作"分析器看不懂"放行）
+        assert "cannot parse" in msg.lower() or "syntax" in msg.lower()
 
 
 class TestHyperAgent:

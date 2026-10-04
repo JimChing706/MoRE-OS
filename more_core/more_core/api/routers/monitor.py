@@ -55,6 +55,35 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
             },
         }
 
+    @router.get("/metrics/llm", dependencies=deps)
+    async def llm_metrics(window_s: int = 3600) -> dict[str, Any]:
+        """Core runtime metrics: tokens, latency percentiles, success rate.
+
+        This is the canonical observability surface for "how much did the
+        platform actually do, and how fast" — it reads the ``llm_calls``
+        telemetry table written by ``governance.observability``.
+        """
+        from ...governance import observability as _obs
+
+        return {"status": "ok", "window_s": int(window_s), "metrics": _obs.summary(window_s)}
+
+    @router.get("/metrics/llm/recent", dependencies=deps)
+    async def llm_metrics_recent(limit: int = 50) -> dict[str, Any]:
+        """Recent raw LLM call rows (provider/model/latency/tokens/success)."""
+        from ...governance import observability as _obs
+
+        rows = _obs.query_recent_llm(limit=max(1, min(int(limit), 500)))
+        return {"status": "ok", "count": len(rows), "calls": rows}
+
+    @router.get("/metrics/dashboard", include_in_schema=False)
+    async def metrics_dashboard() -> Any:
+        """自托管实时指标看板（无密钥内嵌；页面内输入 API Key 后轮询）。"""
+        from fastapi.responses import HTMLResponse
+
+        from ..metrics_dashboard import DASHBOARD_HTML
+
+        return HTMLResponse(DASHBOARD_HTML)
+
     @router.websocket("/monitor")
     async def ws_monitor(websocket: WebSocket) -> None:
         """WebSocket endpoint for real-time dashboard updates."""

@@ -8,10 +8,29 @@ import pytest
 pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient
-from more_core.api.server import create_app
+from more_core.api.server import (
+    API_KEY_MIN_LENGTH,
+    API_KEY_PREFIX,
+    APIKeyConfigError,
+    create_app,
+    validate_api_key,
+)
 from more_core.core.config import Settings
 from more_core.core.import_task import ImportTaskGenerator, ImportTaskDocument
 from more_core.runtime.orchestrator import MoRECore
+
+
+@pytest.fixture(autouse=True)
+def _ensure_clean_auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """隔离 API 鉴权环境变量，避免继承宿主机 MORE_API_KEY 影响不期望鉴权的用例。
+
+    背景：T12 向后兼容套件原本通过 monkeypatch.setenv / delenv 单独标记用例；
+    若宿主机 MORE_API_KEY 已在进程启动时注入，则未显式声明 monkeypatch 的用例
+    会继承该值，导致 create_app() 开启 Bearer 401 屏障，所有『未带 token 期望 200』
+    用例均以 401 失败。此 autouse 强制每个测试前置清空两变量，保证用例间相互隔离，
+    需要开启鉴权的用例仍用 monkeypatch.setenv 覆盖即可。"""
+    monkeypatch.delenv("MORE_API_KEY", raising=False)
+    monkeypatch.delenv("MORE_REQUIRE_API_KEY", raising=False)
 
 
 @pytest.fixture
@@ -249,6 +268,78 @@ class TestAPIAuth:
         with caplog.at_level(logging.WARNING):
             create_app(_core)
         assert not any("UNAUTHENTICATED" in r.message for r in caplog.records)
+
+
+class TestValidateApiKey:
+    """Startup validation for MORE_API_KEY — dev mode vs strict mode."""
+
+    def test_returns_empty_and_warns_when_unset(self, monkeypatch, caplog):
+        import logging
+
+        monkeypatch.delenv("MORE_API_KEY", raising=False)
+        monkeypatch.delenv("MORE_REQUIRE_API_KEY", raising=False)
+        with caplog.at_level(logging.WARNING):
+            assert validate_api_key() == ""
+        assert any("UNAUTHENTICATED" in r.message for r in caplog.records)
+
+    def test_returns_stripped_key(self, monkeypatch):
+        monkeypatch.setenv("MORE_API_KEY", "  sk-more-os-abcdefghijklmn  ")
+        assert validate_api_key() == "sk-more-os-abcdefghijklmn"
+
+    def test_whitespace_only_key_counts_as_unset(self, monkeypatch):
+        monkeypatch.setenv("MORE_API_KEY", "   ")
+        monkeypatch.delenv("MORE_REQUIRE_API_KEY", raising=False)
+        assert validate_api_key() == ""
+
+    def test_short_key_warns_but_does_not_raise_in_dev_mode(self, monkeypatch, caplog):
+        import logging
+
+        monkeypatch.setenv("MORE_API_KEY", "short")
+        monkeypatch.delenv("MORE_REQUIRE_API_KEY", raising=False)
+        with caplog.at_level(logging.WARNING):
+            assert validate_api_key() == "short"
+        assert any("too short" in r.message for r in caplog.records)
+
+    def test_strict_mode_raises_when_key_missing(self, monkeypatch):
+        monkeypatch.delenv("MORE_API_KEY", raising=False)
+        monkeypatch.setenv("MORE_REQUIRE_API_KEY", "1")
+        with pytest.raises(APIKeyConfigError, match="not set"):
+            validate_api_key()
+
+    def test_strict_mode_raises_when_key_too_short(self, monkeypatch):
+        monkeypatch.setenv("MORE_API_KEY", "sk-more-os-abc")
+        monkeypatch.setenv("MORE_REQUIRE_API_KEY", "1")
+        with pytest.raises(APIKeyConfigError, match="too short"):
+            validate_api_key()
+
+    def test_strict_mode_raises_when_prefix_missing(self, monkeypatch):
+        key = "z" * (API_KEY_MIN_LENGTH + 4)
+        monkeypatch.setenv("MORE_API_KEY", key)
+        monkeypatch.setenv("MORE_REQUIRE_API_KEY", "1")
+        with pytest.raises(APIKeyConfigError, match=API_KEY_PREFIX):
+            validate_api_key()
+
+    def test_strict_mode_accepts_well_formed_key(self, monkeypatch):
+        key = API_KEY_PREFIX + "a" * (API_KEY_MIN_LENGTH + 4)
+        monkeypatch.setenv("MORE_API_KEY", key)
+        monkeypatch.setenv("MORE_REQUIRE_API_KEY", "1")
+        assert validate_api_key() == key
+
+    def test_explicit_require_overrides_env(self, monkeypatch):
+        """require=False must downgrade strict mode even when env says 1."""
+        monkeypatch.delenv("MORE_API_KEY", raising=False)
+        monkeypatch.setenv("MORE_REQUIRE_API_KEY", "1")
+        assert validate_api_key(require=False) == ""
+
+    def test_create_app_propagates_strict_mode_failure(self, _core, monkeypatch):
+        monkeypatch.delenv("MORE_API_KEY", raising=False)
+        monkeypatch.setenv("MORE_REQUIRE_API_KEY", "1")
+        with pytest.raises(APIKeyConfigError):
+            create_app(_core)
+
+    def test_min_length_constant_is_sane(self):
+        assert API_KEY_MIN_LENGTH >= 16
+        assert API_KEY_PREFIX == "sk-more-os-"
 
 
 class TestAuditEndpoint:

@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import logging
 import os
 from dataclasses import dataclass
 from typing import Any, Callable, Awaitable
 
 from .protocol import (
+    ErrorCode,
+    JSONRPCError,
+    MCPRequest,
+    MCPResponse,
     JSONRPCProtocol,
     ServerCapabilities,
     ClientCapabilities,
@@ -68,6 +73,8 @@ class MCPRequestHandler:
         self._protocol = JSONRPCProtocol()
         self._client_capabilities: ClientCapabilities | None = None
         self._initialized = False
+        # 会话级鉴权状态：initialize 校验通过后置位；其余方法一律要求已鉴权。
+        self._authenticated = False
 
         self._tools: dict[str, ToolHandler] = {}
         self._resources: dict[str, ResourceHandler] = {}
@@ -142,11 +149,53 @@ class MCPRequestHandler:
             prompts={"listChanged": True} if self._prompts else None,
         )
 
+    @staticmethod
+    def _expected_token() -> str:
+        """MCP 期望令牌：MORE_MCP_KEY 优先，回退 MORE_API_KEY。空 = 开发模式。"""
+        return (os.getenv("MORE_MCP_KEY") or os.getenv("MORE_API_KEY") or "").strip()
+
+    @staticmethod
+    def _token_from_params(params: Any) -> str:
+        if not isinstance(params, dict):
+            return ""
+        auth = params.get("_auth")
+        if isinstance(auth, dict):
+            return str(auth.get("token") or "").strip()
+        return str(params.get("token") or "").strip()
+
+    def _is_authorized(self, msg: Any) -> bool:
+        """initialize 之外的所有方法都必须在已鉴权会话中执行。
+
+        历史缺陷：只在 initialize 校验令牌，`tools/call` 可被无令牌直接调用，
+        等价于把 shell_exec/python_exec 暴露给任何能连上 MCP 通道的进程
+        （见 RESIDUAL_RISKS R-02）。
+        """
+        expected = self._expected_token()
+        if not expected:
+            return True  # 开发模式：未配置令牌
+        if self._authenticated:
+            return True
+        supplied = self._token_from_params(getattr(msg, "params", None))
+        return bool(supplied) and hmac.compare_digest(supplied, expected)
+
     async def handle_message(self, message: str) -> str | None:
         """Handle incoming message and return response."""
         msg = self._protocol.parse_message(message)
         if not msg:
             return None
+
+        # 鉴权守卫：仅 initialize 可免令牌；其余方法必须是已鉴权会话。
+        if isinstance(msg, MCPRequest) and msg.method != "initialize":
+            if not self._is_authorized(msg):
+                _log.warning("MCP rejected unauthenticated method=%s", msg.method)
+                response = MCPResponse(
+                    id=msg.id,
+                    error=JSONRPCError(
+                        code=ErrorCode.INVALID_REQUEST.value,
+                        message="Unauthorized: initialize with a valid MCP token first",
+                    ),
+                )
+                return self._protocol.serialize_message(response)
 
         response = await self._protocol.handle_message(msg)
         if response:
@@ -161,6 +210,7 @@ class MCPRequestHandler:
             if client_token != expected:
                 _log.warning("MCP initialize rejected: invalid token")
                 raise MCPServerError("Unauthorized: invalid MCP token")
+        self._authenticated = True
         self._client_capabilities = ClientCapabilities(**params.get("capabilities", {}))
 
         result = {

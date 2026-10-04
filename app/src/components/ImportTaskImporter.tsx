@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/apiClient';
 import { useState, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -11,7 +12,6 @@ import {
   Play, Download, Eye, FileCode, Braces,
 } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8011';
 
 interface ItdDocument {
   metadata: Record<string, unknown>;
@@ -42,7 +42,7 @@ export function ImportTaskImporter() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const apiCall = useCallback(async (path: string, body: unknown) => {
-    const res = await fetch(`${API_BASE}${path}`, {
+    const res = await apiFetch(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -97,7 +97,7 @@ export function ImportTaskImporter() {
   const loadTemplate = useCallback(async (id: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/v1/tasks/itd/templates`);
+      const res = await apiFetch('/api/v1/tasks/itd/templates');
       const data = await res.json();
       const tmpl = data.templates?.find((t: { id: string }) => t.id === id);
       if (tmpl) setMarkdown(tmpl.template);
@@ -257,7 +257,7 @@ function GenerateForm({ onGenerated }: { onGenerated: (md: string) => void }) {
     if (!title.trim()) { setError('请输入标题'); return; }
     setLoading(true); setError('');
     try {
-      const res = await fetch(`${API_BASE}/api/v1/tasks/itd/generate`, {
+      const res = await apiFetch('/api/v1/tasks/itd/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
