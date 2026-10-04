@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qnming-more-code-shop"
+dynamic = ["version"]
+description = "QNMing MoRE Code Shop — 可验证、可追溯的代码生成流水线（MoRE OS 内核提取版）"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "QNMing MoRE Team" }]
+keywords = ["code-generation", "llm", "agent", "verification", "observability"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Code Generators",
+]
+# 与内核保持一致的最小依赖集合
+dependencies = [
+  "pydantic>=2.6,<4.0",
+  "httpx>=0.27,<2.0",
+  "anyio>=4.3,<6.0",
+  "typing-extensions>=4.10",
+  "python-dotenv>=1.0,<2.0",
+  "PyYAML>=6.0,<8.0",
+  "sympy>=1.13,<2.0",
+]
+
+[project.optional-dependencies]
+api = ["fastapi>=0.110,<1.0", "uvicorn[standard]>=0.27,<2.0"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.4"]
+
+[project.scripts]
+code-shop = "qnming_code_shop.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "qnming_code_shop.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["qnming_code_shop*", "more_core*"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

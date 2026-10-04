@@ -1,0 +1,18 @@
+# 构建产物（由 tools/build.py 生成）
+dist/
+src/more_core/
+src/qnming_code_shop/_build_info.py
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.env
+
+# 运行期数据（CLI 运行会生成；不入库）
+data/
+more_core/
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.jsonl
