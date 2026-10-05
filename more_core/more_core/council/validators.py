@@ -66,16 +66,10 @@ def _strip_extra_fields(
                     result[key] = sub_cleaned
                     stripped.extend(sub_stripped)
                 elif key == "key_arguments" and isinstance(value, list):
-                    # key_arguments 是 dict 列表
-                    cleaned_list = []
-                    for i, item in enumerate(value):
-                        if isinstance(item, dict):
-                            {"point", "reasoning" if "reasoning" in item else "evidence"}
-                            # 更宽松: 接受所有字段但记录
-                            cleaned_list.append(item)
-                        else:
-                            cleaned_list.append(item)
-                    result[key] = cleaned_list
+                    # key_arguments 是 dict 列表：宽松接受所有元素（保留原行为）
+                    # 注：此前这里有一行**无副作用的 set 字面量**（计算后即丢弃），
+                    # 属死代码，已移除。
+                    result[key] = list(value)
                 else:
                     result[key] = value
             else:
