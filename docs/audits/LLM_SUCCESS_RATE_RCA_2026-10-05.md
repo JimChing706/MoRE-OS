@@ -64,14 +64,28 @@ state.provider 恒为 `lmstudio` → 调用点 `chain = [provider] if provider e
 
 ---
 
-## 4. 待决：兜底链塌缩（结构性）
+## 4. 兜底链塌缩 —— 已修复
 
-**尚未修复**（涉及核心调用路径，需单独设计评审）：
+`_apply_runtime_state` 曾用 `state.provider` 覆盖未显式指定的 provider，使 `_fallback` 失效；
+且 `state.model` 是 **provider 专属**模型名，若直接放开多 provider，会把 LM Studio 模型名强加给 ollama。
 
-`_apply_runtime_state` 用 `state.provider` 覆盖未显式指定的 provider，使 `_fallback` 失效。
-且 `state.model` 是 **provider 专属**模型名，若简单放开多 provider，会把 LM Studio 模型名
-强加给 ollama。正确修复需**按 provider 解析模型**（在链循环内逐 provider 应用），
-而非循环外一次性覆盖。
+**修复（三处）**：
+
+1. `_apply_runtime_state` 只应用 provider 无关覆盖（`temperature`/`max_tokens`），
+   **不再**返回 provider 覆盖 → `chain` 恢复为完整 `self._fallback`。
+2. 新增 `_resolve_request_for_provider(request, provider)`：**逐 provider** 解析生效模型，
+   优先级 = 调用方 `model_override` > `state.model`（仅当该 provider == `state.provider`）> provider 默认模型。
+3. `generate()` 循环内逐 provider 调用该方法；`state.provider` 仅作**偏好排序**（排链首，不删除其它兜底）。
+
+**契约保持**：调用方显式传 `provider=` 仍 pin 单 provider（不走兜底）。
+
+**验证**（进程内探针，fallback=["lmstudio","ollama"]，两者都必然失败）：
+
+```
+修复前: lmstudio calls: 1  | ollama calls: 0     ← 链被塌缩
+修复后: lmstudio calls: 1  | ollama calls: 1     ← 两条都真正执行
+        lmstudio 收到 state.model('...35b')；ollama 收到 None（用自己的默认模型）
+```
 
 ### 建议的运维缓解（无需改码，可立即执行）
 
@@ -86,7 +100,7 @@ state.provider 恒为 `lmstudio` → 调用点 `chain = [provider] if provider e
 
 ## 5. 变更文件
 
-- `more_core/more_core/llm/manager.py` — 失败诊断 + 可配置预算 + 公平分配
-- `more_core/tests/test_llm_fallback.py` — 4 个回归用例
+- `more_core/more_core/llm/manager.py` — 失败诊断 + 可配置预算 + 公平分配 + **兜底链去塌缩**
+- `more_core/tests/test_llm_fallback.py` — 8 个回归用例（诊断 3 + 去塌缩 4 + 公平分配 1）
 
 *执行人: Codex · 2026-10-05*

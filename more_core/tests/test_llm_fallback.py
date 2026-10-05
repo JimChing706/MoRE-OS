@@ -590,7 +590,8 @@ async def test_slow_primary_does_not_starve_fallback(monkeypatch):
         async def health(self) -> bool:
             return True
 
-    monkeypatch.setattr(mgr_mod, "_FALLBACK_DEADLINE_S", 1.0)
+    # 2.0s 预算 → 慢 provider 分到 1.0s 切片，兜底仍有 ~1.0s（留足时序余量）
+    monkeypatch.setattr(mgr_mod, "_FALLBACK_DEADLINE_S", 2.0)
     monkeypatch.setattr(mgr_mod, "_FALLBACK_CONTRACT_HEADROOM_S", 0.0)
     mgr = _manager_with_providers(
         [_SlowProvider(), _FastProvider()], fallback=["slow", "fast"]
@@ -598,3 +599,114 @@ async def test_slow_primary_does_not_starve_fallback(monkeypatch):
 
     resp = await mgr.generate(LLMRequest(prompt="hi", max_tokens=8))
     assert resp.content == "fast!", "慢首选超时后，兜底 provider 必须被真正尝试"
+
+
+# ---------------------------------------------------------------------------
+# 回归：state.provider 不得把兜底链塌缩成单 provider（历史"成功率 0%"根因）
+# ---------------------------------------------------------------------------
+
+
+class _HealthyButFailing:
+    """健康检查通过，但 generate 必然失败（用于观察链是否真的往下走）。"""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.model = f"{name}-model"
+        self.called = 0
+
+    async def generate(self, request: LLMRequest) -> LLMResponse:
+        self.called += 1
+        raise LLMError(f"{self.name} down")
+
+    async def health(self) -> bool:
+        return True
+
+
+def _state(provider: str, model: str):
+    from more_core.llm.state_manager import LLMStateManager
+
+    sm = LLMStateManager()
+    sm.update_state(provider=provider, model=model)
+    return sm
+
+
+@pytest.mark.asyncio
+async def test_fallback_chain_not_collapsed_by_state_provider():
+    p1, p2 = _HealthyButFailing("lmstudio"), _HealthyButFailing("ollama")
+    mgr = _manager_with_providers([p1, p2], fallback=["lmstudio", "ollama"])
+    mgr._state_manager = _state("lmstudio", "ornith-1.5-35b-a3b")
+
+    with pytest.raises(LLMError):
+        await mgr.generate(LLMRequest(prompt="hi", max_tokens=4))
+
+    assert p1.called == 1
+    assert p2.called == 1, "state.provider 不得把兜底链塌缩成单 provider"
+
+
+@pytest.mark.asyncio
+async def test_fallback_resolves_model_per_provider():
+    """state.model 只适用于 state.provider；其它 provider 用自己的默认模型。"""
+    seen: dict[str, list] = {"lmstudio": [], "ollama": []}
+
+    class _Rec:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.model = f"{name}-default"
+
+        async def generate(self, request: LLMRequest) -> LLMResponse:
+            seen[self.name].append(request.model_override)
+            if self.name == "lmstudio":
+                raise LLMError("lmstudio down")
+            return LLMResponse(content="ok", provider=self.name, model=self.model)
+
+        async def health(self) -> bool:
+            return True
+
+    mgr = _manager_with_providers([_Rec("lmstudio"), _Rec("ollama")],
+                                  fallback=["lmstudio", "ollama"])
+    mgr._state_manager = _state("lmstudio", "ornith-1.5-35b-a3b")
+
+    resp = await mgr.generate(LLMRequest(prompt="hi", max_tokens=4))
+    assert resp.content == "ok"
+    assert seen["lmstudio"] == ["ornith-1.5-35b-a3b"]  # 匹配 state.provider → 用 state.model
+    assert seen["ollama"] == [None]                    # 其它 provider 用自己的默认模型
+
+
+@pytest.mark.asyncio
+async def test_explicit_provider_still_pins_single_provider():
+    p1, p2 = _HealthyButFailing("lmstudio"), _HealthyButFailing("ollama")
+    mgr = _manager_with_providers([p1, p2], fallback=["lmstudio", "ollama"])
+    mgr._state_manager = _state("lmstudio", "m")
+
+    with pytest.raises(LLMError):
+        await mgr.generate(LLMRequest(prompt="hi", max_tokens=4), provider="ollama")
+
+    assert p1.called == 0, "显式 pin provider 时不应再走其它 provider"
+    assert p2.called == 1
+
+
+@pytest.mark.asyncio
+async def test_state_provider_preference_orders_chain_without_dropping():
+    order: list[str] = []
+
+    class _Rec:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.model = name
+
+        async def generate(self, request: LLMRequest) -> LLMResponse:
+            order.append(self.name)
+            raise LLMError(f"{self.name} down")
+
+        async def health(self) -> bool:
+            return True
+
+    mgr = _manager_with_providers([_Rec("lmstudio"), _Rec("ollama")],
+                                  fallback=["lmstudio", "ollama"])
+    mgr._state_manager = _state("ollama", "qwen2.5:7b")
+
+    with pytest.raises(LLMError):
+        await mgr.generate(LLMRequest(prompt="hi", max_tokens=4))
+
+    assert order[0] == "ollama", "state.provider 应作为偏好排在链首"
+    assert set(order) == {"lmstudio", "ollama"}, "偏好排序不得删除兜底 provider"

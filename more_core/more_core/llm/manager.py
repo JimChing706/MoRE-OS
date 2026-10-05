@@ -410,24 +410,42 @@ class LLMManager:
     def _apply_runtime_state(
         self, request: LLMRequest, provider: str | None
     ) -> tuple[str | None, LLMRequest]:
-        """Merge LLMStateManager runtime overrides into the request."""
+        """Merge provider-agnostic runtime overrides (temperature / max_tokens).
+
+        重要：**不能**用 ``state.provider`` 覆盖未显式指定的 ``provider``。调用方随后
+        以 ``chain = [provider] if provider else list(self._fallback)`` 构造链；一旦此处
+        返回非 None，配置的兜底链会被塌缩成单 provider（历史事故：35B 超时后
+        9B/ollama 兜底永不执行 → 成功率 0%）。
+
+        模型(``state.model``)是 **provider 专属**的，必须逐 provider 解析，见
+        :meth:`_resolve_request_for_provider`。
+        """
         sm = self._state_manager
         if sm is None:
             return provider, request
         state = sm.get_state()
-        effective_provider = provider or state.provider
-        if effective_provider != provider and effective_provider not in self._providers:
-            effective_provider = provider
-        effective_model = request.model_override or state.model
-        t = state.temperature
-        if t is not None:
-            request.temperature = t
-        mt = state.max_tokens
-        if mt is not None:
-            request.max_tokens = mt
-        if effective_model != request.model_override:
-            request = self._create_request_with_model(request, effective_model)
-        return effective_provider, request
+        if state.temperature is not None:
+            request.temperature = state.temperature
+        if state.max_tokens is not None:
+            request.max_tokens = state.max_tokens
+        return provider, request
+
+    def _resolve_request_for_provider(self, request: LLMRequest, provider: str) -> LLMRequest:
+        """Resolve the effective model for ONE provider in the fallback chain.
+
+        优先级：调用方显式 ``model_override`` > ``state.model``（仅当该 provider 就是
+        ``state.provider`` 时）> provider 自身默认模型。这样把模型兜底到其它 provider
+        时不会强行套用不存在的模型名（如把 LM Studio 模型名发给 ollama）。
+        """
+        if request.model_override:
+            return request
+        sm = self._state_manager
+        if sm is None:
+            return request
+        state = sm.get_state()
+        if state.model and (not state.provider or provider == state.provider):
+            return self._create_request_with_model(request, state.model)
+        return request
 
     def list_providers(self) -> list[str]:
         return list(self._providers)
@@ -526,6 +544,11 @@ class LLMManager:
         provider, request = self._apply_runtime_state(request, provider)
 
         chain = [provider] if provider else list(self._fallback)
+        if provider is None and self._state_manager is not None:
+            # state.provider 只作"偏好"：排链首，但**不删除**其它兜底 provider。
+            _pref = self._state_manager.get_state().provider
+            if _pref and _pref in chain:
+                chain = [_pref] + [n for n in chain if n != _pref]
         last_exc: Exception | None = None
         effective_deadline_s = _effective_fallback_deadline(contract_timeout_s)
         deadline = time.monotonic() + effective_deadline_s
@@ -537,7 +560,9 @@ class LLMManager:
         for _idx, name in enumerate(chain):
             if name not in self._providers:
                 continue
-            if self._should_skip(name, request.model_override):
+            # 逐 provider 解析生效模型（state.model 是 provider 专属的）
+            attempt_req = self._resolve_request_for_provider(request, name)
+            if self._should_skip(name, attempt_req.model_override):
                 _logger.info("Skipping %s due to repeated failures", name)
                 continue
             # Quick health check before attempting (cached, TTL 30s)
@@ -545,7 +570,7 @@ class LLMManager:
                 _logger.warning("Provider %s is unhealthy, skipping", name)
                 continue
 
-            key = self._cache_key(request, name, request.model_override)
+            key = self._cache_key(attempt_req, name, attempt_req.model_override)
             if use_cache:
                 async with self._cache_lock:
                     cached = self._cache.get(key)
@@ -558,7 +583,7 @@ class LLMManager:
                             record_llm_call(
                                 request_id=logical_rid,
                                 provider=cached.provider or name,
-                                model=cached.model or request.model_override or "",
+                                model=cached.model or attempt_req.model_override or "",
                                 prompt_chars=len(request.prompt or ""),
                                 prompt_tokens=cached.prompt_tokens,
                                 completion_tokens=cached.completion_tokens,
@@ -579,7 +604,7 @@ class LLMManager:
                             cached=True,
                             reasoning_content=cached.reasoning_content,
                         )
-                        return self._postprocess_llm_response(cached_resp, request)
+                        return self._postprocess_llm_response(cached_resp, attempt_req)
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 _logger.error("Fallback chain total timeout exceeded (%ss)", effective_deadline_s)
@@ -597,11 +622,11 @@ class LLMManager:
             try:
                 start = time.perf_counter()
                 resp = await asyncio.wait_for(
-                    self._providers[name].generate(request), timeout=attempt_timeout
+                    self._providers[name].generate(attempt_req), timeout=attempt_timeout
                 )
                 resp.latency_ms = (time.perf_counter() - start) * 1000
-                resp = self._postprocess_llm_response(resp, request)
-                self._record_success(name, request.model_override)
+                resp = self._postprocess_llm_response(resp, attempt_req)
+                self._record_success(name, attempt_req.model_override)
                 if use_cache:
                     async with self._cache_lock:
                         self._cache.put(key, resp)
@@ -613,7 +638,7 @@ class LLMManager:
                     record_llm_call(
                         request_id=logical_rid,
                         provider=resp.provider or name,
-                        model=resp.model or request.model_override or "",
+                        model=resp.model or attempt_req.model_override or "",
                         prompt_chars=len(request.prompt or ""),
                         prompt_tokens=resp.prompt_tokens,
                         completion_tokens=resp.completion_tokens,
@@ -630,7 +655,7 @@ class LLMManager:
                 # 否则超时故障在指标里表现为"没有调用"。
                 self._emit_llm_call(
                     request_id=logical_rid, provider=name,
-                    model=request.model_override or "",
+                    model=attempt_req.model_override or "",
                     prompt_chars=len(request.prompt or ""), prompt_tokens=0,
                     completion_tokens=0,
                     latency_ms=(time.perf_counter() - start) * 1000,
@@ -642,7 +667,7 @@ class LLMManager:
                 raise
             except Exception as exc:
                 _elapsed = (time.perf_counter() - start) * 1000
-                self._record_failure(name, request.model_override, _exc_summary(exc, _elapsed))
+                self._record_failure(name, attempt_req.model_override, _exc_summary(exc, _elapsed))
                 try:
                     from ..governance.observability import record_llm_call
                 except Exception:  # pragma: no cover
@@ -651,7 +676,7 @@ class LLMManager:
                     record_llm_call(
                         request_id=logical_rid,
                         provider=name,
-                        model=request.model_override or "",
+                        model=attempt_req.model_override or "",
                         prompt_chars=len(request.prompt or ""),
                         prompt_tokens=0,
                         completion_tokens=0,
