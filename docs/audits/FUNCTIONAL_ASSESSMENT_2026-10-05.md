@@ -296,7 +296,7 @@ skills  : 1h = 0 runs 24h = 55.6%   trend = no_data      ← 无样本不再误�
 | **D-9** | Telegram 转义**顺序错误** | `a < b` → `a &amp;lt; b`（**二次转义**，渲染成字面量 `&lt;`） | 先转义 `&` 再转 `<`/`>` |
 | **D-10** | `truncate` **超出上限** | `truncate("abcdef", 2)` → `'abcde...'`（8 字符 > 2；切片变负） | `max_length <= len(suffix)` 时硬截断；负值返回 "" |
 | **D-11** | 空列表产生**孤立符号** | `format_list([])` → `'\n• '` | 空列表返回 "" |
-| **D-12/14** | **围栏代码块被拆坏 / 语言标签丢失** | Telegram `\`\`\`python…` → `<code>\`</code>python…`；Discord/Slack 丢失 `python` | 围栏规则**先于**内联规则；用 lambda 保留语言标签 |
+| **D-12/14** | **围栏代码块被拆坏 / 语言标签丢失** | Telegram 的三反引号代码块被内联规则拆成 `<code>`+`python…`；Discord/Slack 丢失语言标签 `python` | 围栏规则**先于**内联规则；用 lambda 保留语言标签 |
 | **D-13** | Slack **粗体变斜体** | `**b**` → `_b_`（`**` 规则产物被 `*` 规则二次改写） | 粗体先占位、斜体转换后再还原 |
 
 ### 13.2 覆盖率变化
