@@ -141,6 +141,17 @@ CREATE TABLE IF NOT EXISTS skill_runs (
 CREATE INDEX IF NOT EXISTS idx_skill_ts       ON skill_runs(ts);
 CREATE INDEX IF NOT EXISTS idx_skill_id       ON skill_runs(skill_id, ts);
 CREATE INDEX IF NOT EXISTS idx_skill_success  ON skill_runs(success);
+
+-- 7. skill_network_snapshots — 技能出网可达性自检（R-4）
+CREATE TABLE IF NOT EXISTS skill_network_snapshots (
+    id            TEXT PRIMARY KEY,
+    ts            REAL NOT NULL,
+    ok            INTEGER NOT NULL DEFAULT 0,
+    n_targets     INTEGER NOT NULL DEFAULT 0,
+    n_reachable   INTEGER NOT NULL DEFAULT 0,
+    report        TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_skill_net_ts ON skill_network_snapshots(ts);
 """
 
 # Hard cap on db size before we stop appending — telemetry must not eat disk.
@@ -938,6 +949,102 @@ def query_skill_stats(window_s: int = 3600) -> dict[str, Any]:
         }
     except Exception as exc:  # pragma: no cover - defensive
         return {**empty, "error": str(exc)}
+
+
+def record_skill_network(report: dict[str, Any]) -> None:
+    """Persist one skill-egress reachability snapshot. Never raises."""
+    try:
+        conn = _get_conn()
+        if conn is None:
+            return
+        import json
+
+        targets = report.get("targets") or []
+        reachable = sum(1 for t in targets if t.get("reachable"))
+        conn.execute(
+            """INSERT INTO skill_network_snapshots
+               (id, ts, ok, n_targets, n_reachable, report)
+               VALUES (?,?,?,?,?,?)""",
+            (
+                f"sknet_{uuid.uuid4().hex[:14]}",
+                time.time(),
+                1 if report.get("ok") else 0,
+                len(targets),
+                reachable,
+                json.dumps(report, ensure_ascii=False)[:20000],
+            ),
+        )
+    except Exception:  # pragma: no cover - defensive
+        pass
+
+
+def query_skill_network_health(window_s: int = 3600) -> dict[str, Any]:
+    """Return the most recent skill-egress snapshot."""
+    empty: dict[str, Any] = {
+        "checked_at": 0.0, "ok": None, "targets": [], "required_egress": [],
+        "warnings": [], "n_targets": 0, "n_reachable": 0,
+        "snapshots": 0, "window_s": int(window_s),
+    }
+    try:
+        conn = _get_conn()
+        if conn is None:
+            return {**empty, "error": "observability store unavailable"}
+        conn.row_factory = sqlite3.Row
+        since = time.time() - max(0, int(window_s))
+        row = conn.execute(
+            """SELECT ts, ok, n_targets, n_reachable, report
+               FROM skill_network_snapshots WHERE ts >= ? ORDER BY ts DESC LIMIT 1""",
+            (since,),
+        ).fetchone()
+        if row is None:
+            return empty
+        import json
+
+        try:
+            report = json.loads(row["report"] or "{}")
+        except Exception:
+            report = {}
+        return {
+            "checked_at": float(row["ts"]),
+            "ok": bool(row["ok"]),
+            "targets": report.get("targets") or [],
+            "required_egress": report.get("required_egress") or [],
+            "warnings": report.get("warnings") or [],
+            "n_targets": int(row["n_targets"]),
+            "n_reachable": int(row["n_reachable"]),
+            "snapshots": 1,
+            "window_s": int(window_s),
+        }
+    except Exception as exc:  # pragma: no cover - defensive
+        return {**empty, "error": str(exc)}
+
+
+def evaluate_skill_network_alerts(health: dict[str, Any]) -> list[dict[str, Any]]:
+    """Pure threshold evaluation over :func:`query_skill_network_health`."""
+    if not health.get("targets") and not health.get("checked_at"):
+        return [{
+            "level": "warning", "code": "skill_network_preflight_missing",
+            "message": "尚未执行技能出网可达性自检（无快照）",
+        }]
+    n_targets = int(health.get("n_targets") or 0)
+    n_reachable = int(health.get("n_reachable") or 0)
+    alerts: list[dict[str, Any]] = []
+    if n_targets == 0:
+        return alerts
+    if n_reachable == 0:
+        alerts.append({
+            "level": "critical", "code": "skill_network_unreachable",
+            "message": (
+                f"全部 {n_targets} 个出网目标不可达——"
+                f"{health.get('required_egress')} 依赖技能将不可用"
+            ),
+        })
+    elif n_reachable < n_targets:
+        alerts.append({
+            "level": "warning", "code": "skill_network_partial",
+            "message": f"部分出网目标不可达：{n_reachable}/{n_targets} 可达",
+        })
+    return alerts
 
 
 def summary(window_s: int = 3600) -> dict[str, Any]:

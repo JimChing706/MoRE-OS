@@ -243,6 +243,19 @@ class MoRECore:
             await self.skill_manager.start_all()
         except Exception:  # pragma: no cover - 技能启动失败不得阻断启动
             self.logger.warning("skill start_all failed", exc_info=True)
+        # R-4：技能出网可达性自检（DNS+TCP），结果落库并在看板/告警中暴露。
+        # 可用 MORE_SKIP_SKILL_NETWORK_PREFLIGHT=1 跳过（测试/离线环境）。
+        if os.getenv("MORE_SKIP_SKILL_NETWORK_PREFLIGHT") != "1":
+            try:
+                from ..governance import observability as _obs
+                from ..skills.network_check import check_skill_network
+
+                _net = await check_skill_network(self.skill_manager)
+                _obs.record_skill_network(_net)
+                for _w in _net.get("warnings") or []:
+                    self.logger.warning("skill network preflight: %s", _w)
+            except Exception:  # pragma: no cover - 自检失败不得阻断启动
+                self.logger.warning("skill network preflight skipped", exc_info=True)
         # 生产效率事故修复：启动即校验 LLM 链路（模型名是否存在、兜底链是否完整）
         try:
             from ..llm.preflight import preflight_llm

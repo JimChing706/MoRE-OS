@@ -32,6 +32,10 @@ for _ambient_llm_var in (
 ):
     os.environ[_ambient_llm_var] = ""
 
+# 测试默认跳过技能出网自检（避免每个 TestClient 用例都做真实 DNS/TCP 探测）。
+# 需要该行为的用例直接调用 check_skill_network() 或 monkeypatch 探测函数。
+os.environ.setdefault("MORE_SKIP_SKILL_NETWORK_PREFLIGHT", "1")
+
 
 @pytest.fixture
 def mock_llm_response():

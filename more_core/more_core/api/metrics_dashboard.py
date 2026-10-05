@@ -102,7 +102,7 @@ async function refresh() {
   err.textContent = '';
   if (!key) { st.textContent = '请输入 API Key'; return; }
   try {
-    const [m, d, rec, g, c, p, o, sk] = await Promise.all([
+    const [m, d, rec, g, c, p, o, sk, sn] = await Promise.all([
       get('/api/v1/metrics/llm?window_s=3600'),
       get('/api/v1/delivery/stats?window_s=86400'),
       get('/api/v1/metrics/llm/recent?limit=15'),
@@ -110,7 +110,8 @@ async function refresh() {
       get('/api/v1/metrics/council?window_s=3600'),
       get('/api/v1/metrics/providers?window_s=3600'),
       get('/api/v1/metrics/overview?window_s=3600'),
-      get('/api/v1/metrics/skills?window_s=3600')
+      get('/api/v1/metrics/skills?window_s=3600'),
+      get('/api/v1/metrics/skill-network?window_s=3600')
     ]);
     const mm = m.metrics || {}, lat = mm.latency_ms || {}, tok = mm.tokens || {}, ds = d.stats || {};
     const rate = Math.round((mm.success_rate || 0) * 100);
@@ -146,11 +147,14 @@ async function refresh() {
       card('技能执行 (1h)', fmt((sk.metrics||{}).runs), `注册 ${fmt((sk.registry||{}).total_skills)} · 活跃 ${fmt((sk.registry||{}).active)}`),
       card('技能成功率', Math.round(((sk.metrics||{}).success_rate||0)*100) + '%',
            `平均 ${fmt((sk.metrics||{}).avg_duration_ms)} ms · p95 ${fmt((sk.metrics||{}).p95_duration_ms)} ms`,
-           ((sk.metrics||{}).success_rate||0) >= 0.9 ? 'ok' : 'warn')
+           ((sk.metrics||{}).success_rate||0) >= 0.9 ? 'ok' : 'warn'),
+      card('技能出网可达', `${fmt((sn.health||{}).n_reachable)}/${fmt((sn.health||{}).n_targets)}`,
+           `依赖技能 ${((sn.health||{}).required_egress||[]).length} 个`,
+           ((sn.health||{}).n_targets||0) > 0 && (sn.health||{}).n_reachable < (sn.health||{}).n_targets ? 'bad' : 'ok')
     ].join('');
 
     document.getElementById('alerts').innerHTML =
-      [...(g.alerts || []), ...(p.alerts || [])].map(a =>
+      [...(g.alerts || []), ...(p.alerts || []), ...(sn.alerts || [])].map(a =>
         `<div class="alert ${a.level === 'critical' ? 'critical' : 'warning'}">` +
         `[${a.level.toUpperCase()}] ${a.message}</div>`).join('');
 

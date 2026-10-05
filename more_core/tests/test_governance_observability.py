@@ -283,6 +283,10 @@ def test_metrics_overview_healthy_when_no_alerts(core):
     with TestClient(create_app(core)) as client:
         obs.record_governance_event(request_id="p1")
         obs.record_provider_health(_healthy_provider_snapshot())
+        # R-4：overview 现在还纳入技能出网告警，健康用例需同时播种可达快照
+        obs.record_skill_network(
+            {"ok": True, "required_egress": [], "targets": [], "warnings": []}
+        )
         resp = client.get("/api/v1/metrics/overview?window_s=3600")
     assert resp.status_code == 200
     body = resp.json()

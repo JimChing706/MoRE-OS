@@ -404,6 +404,7 @@ class APICallSkill(Skill):
                 "runtime": "python>=3.10",
                 "packages": ["httpx"],
                 "network_egress": True,
+                "network_targets": ["example.com:443"],
                 "sandbox_required": False,
                 "env": [],
             },

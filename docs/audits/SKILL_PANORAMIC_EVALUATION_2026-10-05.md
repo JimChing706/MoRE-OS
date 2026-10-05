@@ -84,7 +84,7 @@ code.execute / data.analyze / api.call）+ 参数校验、交付台账、可观�
 | ~~R-1~~ | ~~`code.execute` 无 OS 级沙箱~~ | 安全 | **已修复（2026-10-05）**：`code.execute` 现统一走 `SecureSandbox`——AST 危险调用扫描（`os.system`/`subprocess`/`rmtree`…）+ 全 argv 策略 + 路径白名单 + 环境脱敏 + 超时 + 审计日志。危险代码返回 `Blocked: ...`。见 §6 |
 | ~~R-2~~ | ~~`web.search` 指定 serpapi 但未配 key 时静默降级~~ | 正确性 | **已修复（2026-10-05）**：缺 key / 未知 provider 一律显式报错；key 支持 `config.serpapi_key` 与 `SERPAPI_API_KEY`；成功时 metadata 明确 `provider_used`。见 §6 |
 | ~~R-3~~ | ~~`data.analyze.query` 为朴素子串匹配，且对 dict/scalar 静默忽略 query~~ | 功能边界 | **已修复（2026-10-05）**：定义查询语义（字段+运算符）+ 结构化返回 + 非法查询显式报错。见 §7 |
-| **R-4** | 网络受限环境下 web/api 技能整体不可用 | 兼容性 | 部署前确认出网策略；失败已结构化返回，不影响其它技能 |
+| ~~R-4~~ | ~~网络受限环境下 web/api 技能整体不可用~~ | 兼容性 | **已解决（2026-10-05）**：新增启动期**出网可达性自检**（DNS+TCP）+ 告警 + 看板；实测 4/4 可达、web.* 实调用成功。见 §8 |
 
 ---
 
@@ -178,7 +178,29 @@ age>abc → success=false, error="查询运算符 '>' 需要数值，实际为 '
 
 ---
 
-## 8. 测试与回归
+## 8. R-4 处理详情（技能出网可达性自检）
+
+**背景**：`web.search` / `web.browse` / `api.call` 需要出网；受限网络下会整片不可用，
+此前只能等业务调用时才抛 DNS 错误，缺少"部署前可见"的信号。
+
+**落地**：
+
+| 能力 | 说明 |
+|------|------|
+| 目标声明 | 技能 `deployment.network_targets` 显式声明（web.search→duckduckgo/serpapi；web.browse/api.call→example.com:443） |
+| 自检 | `skills/network_check.py`：对每个目标做 **DNS 解析 + TCP 连接**（轻量，不发业务请求），3s/目标 |
+| 采集 | 启动时执行并落库 `skill_network_snapshots`（`MORE_SKIP_SKILL_NETWORK_PREFLIGHT=1` 可跳过） |
+| 告警 | 全部不可达 → **critical** `skill_network_unreachable`；部分不可达 → warning `skill_network_partial`；无快照 → warning |
+| 接口 | `GET /api/v1/metrics/skill-network`；Prometheus `more_os_skill_network_*`；并入 `/metrics/overview` 与看板 |
+
+**实机结果（2026-10-05 复测）**：`/metrics/skill-network` 显示 **4/4 目标可达**、
+无告警；`web.search`、`web.browse` 实调用均 **success=True**。
+结论：当前环境出网正常，此前观察到的 DNS 失败为**瞬时**现象；自检已把"网络是否可用"
+变成**启动即知、可告警、可追溯**的可观测信号，该项按 **已解决** 收敛。
+
+---
+
+## 9. 测试与回归
 
 | 测试文件 | 用例数 |
 |----------|:------:|

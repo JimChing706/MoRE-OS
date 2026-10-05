@@ -117,8 +117,11 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
         except Exception as exc:  # pragma: no cover - ledger read must not break overview
             delivery = {"error": str(exc)}
 
-        alerts = _obs.evaluate_governance_alerts(governance) + _obs.evaluate_provider_alerts(
-            providers
+        skill_network = _obs.query_skill_network_health(window_s)
+        alerts = (
+            _obs.evaluate_governance_alerts(governance)
+            + _obs.evaluate_provider_alerts(providers)
+            + _obs.evaluate_skill_network_alerts(skill_network)
         )
         n_crit = sum(1 for a in alerts if a.get("level") == "critical")
         n_warn = sum(1 for a in alerts if a.get("level") == "warning")
@@ -136,6 +139,13 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
             "delivery": delivery,
             "governance": governance,
             "council": council,
+            "skill_network": {
+                "ok": skill_network.get("ok"),
+                "n_targets": skill_network.get("n_targets"),
+                "n_reachable": skill_network.get("n_reachable"),
+                "required_egress": skill_network.get("required_egress"),
+                "checked_at": skill_network.get("checked_at"),
+            },
             "providers": {
                 "ok": providers.get("ok"),
                 "degraded": providers.get("degraded"),
@@ -268,6 +278,20 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
             "# TYPE more_os_skill_avg_duration_ms gauge",
             f"more_os_skill_avg_duration_ms {float(sk.get('avg_duration_ms') or 0.0)}",
         ]
+        sn = _obs.query_skill_network_health(window_s)
+        lines += [
+            "# HELP more_os_skill_network_targets Declared skill egress targets.",
+            "# TYPE more_os_skill_network_targets gauge",
+            f"more_os_skill_network_targets {int(sn.get('n_targets') or 0)}",
+            "# HELP more_os_skill_network_reachable Reachable skill egress targets.",
+            "# TYPE more_os_skill_network_reachable gauge",
+            f"more_os_skill_network_reachable {int(sn.get('n_reachable') or 0)}",
+        ]
+        lines.append("# TYPE more_os_skill_network_alerts gauge")
+        for a in _obs.evaluate_skill_network_alerts(sn):
+            code = str(a.get("code", "")).replace('"', "")
+            lvl = str(a.get("level", "")).replace('"', "")
+            lines.append(f'more_os_skill_network_alerts{{level="{lvl}",code="{code}"}} 1')
         lines.append("# TYPE more_os_skill_runs_by_skill gauge")
         for sid, slot in (sk.get("by_skill") or {}).items():
             safe = str(sid).replace('"', "")
@@ -291,6 +315,19 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
             "window_s": int(window_s),
             "metrics": _obs.query_skill_stats(window_s),
             "registry": core.skill_manager.get_stats(),
+        }
+
+    @router.get("/metrics/skill-network", dependencies=deps)
+    async def skill_network_metrics(window_s: int = 3600) -> dict[str, Any]:
+        """技能出网可达性自检结果 + 告警（R-4）。"""
+        from ...governance import observability as _obs
+
+        health = _obs.query_skill_network_health(window_s)
+        return {
+            "status": "ok",
+            "window_s": int(window_s),
+            "health": health,
+            "alerts": _obs.evaluate_skill_network_alerts(health),
         }
 
     @router.get("/metrics/dashboard", include_in_schema=False)
