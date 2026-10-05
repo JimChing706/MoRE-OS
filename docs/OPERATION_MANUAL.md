@@ -285,6 +285,46 @@ bash scripts/health_check.sh
 - `analysis` - 数据分析
 - `review` - 代码审查
 
+### 6.6 可观测性与运行指标
+
+MoRE OS 内置零依赖实时看板与 Prometheus 导出，覆盖五类核心指标：
+
+| 指标族 | 端点 | 说明 |
+|--------|------|------|
+| **运行健康总览** | `GET /api/v1/metrics/overview` | 五类指标汇总 + 统一裁决（healthy/degraded/critical）+ 合并告警 |
+| LLM 调用 | `GET /api/v1/metrics/llm` | token 消耗、延迟 p50/p95、成功率（按 provider/model） |
+| 交付成功率 | `GET /api/v1/delivery/stats` | 交付/拦截/失败、闸门通过率 |
+| 治理拦截率 | `GET /api/v1/metrics/governance` | blocked_requests/requests + 命中规则 + 阈值告警 |
+| Council 复评 | `GET /api/v1/metrics/council` | 下修率、共识分布、平均调整量 |
+| Provider 健康 | `GET /api/v1/metrics/providers` | 健康 / 无效模型 / 推理探针 + 告警 |
+| Prometheus | `GET /api/v1/metrics/governance/prometheus` | `more_os_*` 文本导出 |
+
+**看板**：浏览器打开 `http://localhost:8011/api/v1/metrics/dashboard`，
+页面内输入 `MORE_API_KEY`（仅存本机 localStorage），每 5 秒自动刷新。
+
+**鉴权**：除看板页面本身外，所有指标端点都需要 `Authorization: Bearer <MORE_API_KEY>`。
+
+```bash
+KEY=$(grep -E '^MORE_API_KEY=' more_core/.env | cut -d= -f2-)
+curl -H "Authorization: Bearer $KEY" http://localhost:8011/api/v1/metrics/overview
+```
+
+**告警语义**：`overall` 由合并告警的最高级别决定。
+
+| 级别 | 含义 | 典型 code |
+|------|------|-----------|
+| critical | 已确证会失败或被绕过 | `state_invalid_model`、`provider_inference_failed`、`provider_unhealthy`、`provider_invalid_model` |
+| warning | 降级 / 需关注 | `fallback_chain_degraded`、`governance_blocked_rate`、`destructive_request_blocks`、`provider_preflight_missing` |
+
+**LLM 深度体检**（发一次真实最小补全，验证"能否真正出 token"，而非仅 `/models` 可达）：
+
+```bash
+curl -H "Authorization: Bearer $KEY" "http://localhost:8011/api/v1/llm/preflight?probe=1"
+```
+
+> 常见陷阱：`provider.health()` 只探 `/models`，LM Studio 在**推理时**才可能返回
+> HTTP 500。若"看起来健康但任务失败"，请用上面的 `probe=1` 复核。
+
 ---
 
 ## 7. 故障排除
@@ -336,6 +376,10 @@ API Key 状态: ✗ 未配置
 curl http://localhost:8011/api/v1/health    # API
 curl http://localhost:1234/v1/models       # LM Studio
 curl http://localhost:11434/api/tags       # Ollama
+
+# 运行健康总览（需 API Key，见 6.6）
+KEY=$(grep -E '^MORE_API_KEY=' more_core/.env | cut -d= -f2-)
+curl -H "Authorization: Bearer $KEY" http://localhost:8011/api/v1/metrics/overview
 ```
 
 ### 7.3 日志位置

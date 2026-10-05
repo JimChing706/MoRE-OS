@@ -44,6 +44,11 @@ DASHBOARD_HTML = """<!doctype html>
   .alert { padding:10px 14px; border-radius:8px; border:1px solid; margin:0; }
   .alert.warning  { background:#2a230f; border-color:#7a5b13; color:#fbbf24; }
   .alert.critical { background:#2a1313; border-color:#7a1f1f; color:#f87171; }
+  .overview { padding:10px 14px; border-radius:8px; border:1px solid #24304f;
+              background:#131a30; font-size:13px; }
+  .overview.ok   { border-color:#1f5f3a; color:#4ade80; }
+  .overview.warn { border-color:#7a5b13; color:#fbbf24; }
+  .overview.bad  { border-color:#7a1f1f; color:#f87171; }
 </style>
 </head>
 <body>
@@ -55,6 +60,7 @@ DASHBOARD_HTML = """<!doctype html>
   <span id="err"></span>
 </header>
 <div class="wrap">
+  <div id="overview" class="overview">正在加载运行健康总览…</div>
   <div class="cards" id="cards"></div>
   <div id="alerts" class="wrap" style="padding:0;gap:8px"></div>
   <div class="cards" id="gcards"></div>
@@ -96,13 +102,14 @@ async function refresh() {
   err.textContent = '';
   if (!key) { st.textContent = '请输入 API Key'; return; }
   try {
-    const [m, d, rec, g, c, p] = await Promise.all([
+    const [m, d, rec, g, c, p, o] = await Promise.all([
       get('/api/v1/metrics/llm?window_s=3600'),
       get('/api/v1/delivery/stats?window_s=86400'),
       get('/api/v1/metrics/llm/recent?limit=15'),
       get('/api/v1/metrics/governance?window_s=3600'),
       get('/api/v1/metrics/council?window_s=3600'),
-      get('/api/v1/metrics/providers?window_s=3600')
+      get('/api/v1/metrics/providers?window_s=3600'),
+      get('/api/v1/metrics/overview?window_s=3600')
     ]);
     const mm = m.metrics || {}, lat = mm.latency_ms || {}, tok = mm.tokens || {}, ds = d.stats || {};
     const rate = Math.round((mm.success_rate || 0) * 100);
@@ -114,6 +121,15 @@ async function refresh() {
       card('交付总数 (24h)', fmt(ds.total), `已交付 ${fmt(ds.delivered)} · 拦截 ${fmt(ds.blocked)} · 失败 ${fmt(ds.failed)}`),
       card('交付成功率', Math.round((ds.success_rate || 0) * 100) + '%', `闸门通过率 ${Math.round((ds.gate_pass_rate||0)*100)}%`)
     ].join('');
+
+    const ovMap = {healthy: ['健康', 'ok'], degraded: ['降级', 'warn'], critical: ['严重', 'bad']};
+    const ovc = o.alert_counts || {};
+    const [ovLabel, ovCls] = ovMap[o.overall] || ['未知', 'warn'];
+    document.getElementById('overview').className = 'overview ' + ovCls;
+    document.getElementById('overview').innerHTML =
+      `运行健康总览：<b>${ovLabel}</b> · 告警 ` +
+      `${fmt(ovc.critical)} critical / ${fmt(ovc.warning)} warning · ` +
+      `更新 ${new Date((o.generated_at || 0) * 1000).toLocaleTimeString()}`;
 
     const gm = g.metrics || {}, gbyrule = gm.by_rule || {}, pm = p.health || {};
     const grate = Math.round((gm.blocked_rate || 0) * 100);

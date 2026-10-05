@@ -257,3 +257,57 @@ def test_governance_prometheus_endpoint_exports_metrics(core):
     assert "more_os_governance_destructive_blocks 1" in body
     assert 'rule="destructive_request_detection"' in body
     assert "more_os_governance_alerts" in body
+
+
+# ---------------------------------------------------------------------------
+# 6. 运行健康总览端点（五类指标 + 统一裁决）
+# ---------------------------------------------------------------------------
+
+
+def _healthy_provider_snapshot():
+    return {
+        "ok": True, "degraded": False,
+        "providers": [{"name": "a", "healthy": True, "model_present": True,
+                       "inference_ok": True}],
+        "fallback_chain": ["a"], "chain_registered": ["a"],
+        "state_provider": "a", "state_model": "m", "state_model_present": True,
+        "warnings": [],
+    }
+
+
+def test_metrics_overview_healthy_when_no_alerts(core):
+    from fastapi.testclient import TestClient
+
+    from more_core.api.server import create_app
+
+    with TestClient(create_app(core)) as client:
+        obs.record_governance_event(request_id="p1")
+        obs.record_provider_health(_healthy_provider_snapshot())
+        resp = client.get("/api/v1/metrics/overview?window_s=3600")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["overall"] == "healthy"
+    assert body["alert_counts"] == {"critical": 0, "warning": 0}
+    for key in ("llm", "delivery", "governance", "council", "providers", "generated_at"):
+        assert key in body
+
+
+def test_metrics_overview_critical_on_invalid_effective_model(core):
+    from fastapi.testclient import TestClient
+
+    from more_core.api.server import create_app
+
+    bad = _healthy_provider_snapshot()
+    bad["ok"] = False
+    bad["state_model"] = "local-model"
+    bad["state_model_present"] = False
+
+    with TestClient(create_app(core)) as client:
+        obs.record_provider_health(bad)
+        resp = client.get("/api/v1/metrics/overview?window_s=3600")
+    body = resp.json()
+    assert body["overall"] == "critical"
+    assert body["alert_counts"]["critical"] >= 1
+    assert any(a["code"] == "state_invalid_model" for a in body["alerts"])
+    assert body["providers"]["n_invalid_model"] == 1
+

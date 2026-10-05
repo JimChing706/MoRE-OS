@@ -93,6 +93,62 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
             "alerts": _obs.evaluate_governance_alerts(stats),
         }
 
+    @router.get("/metrics/overview", dependencies=deps)
+    async def metrics_overview(
+        window_s: int = 3600, delivery_window_s: int = 86400
+    ) -> dict[str, Any]:
+        """MoRE OS 运行健康总览：五类核心指标 + 统一裁决 + 合并告警。
+
+        指标族：LLM 调用（token/延迟/成功率）、交付成功率、治理拦截率、
+        Council 复评、Provider 健康。``overall`` 由合并告警的最高级别决定：
+        ``critical`` → critical，``warning`` → degraded，无告警 → healthy。
+        """
+        import time as _time
+
+        from ...codegen.delivery_ledger import get_default_ledger
+        from ...governance import observability as _obs
+
+        llm = _obs.summary(window_s)
+        governance = _obs.query_governance_stats(window_s)
+        council = _obs.query_council_stats(window_s)
+        providers = _obs.query_provider_health(window_s)
+        try:
+            delivery = get_default_ledger().stats(delivery_window_s)
+        except Exception as exc:  # pragma: no cover - ledger read must not break overview
+            delivery = {"error": str(exc)}
+
+        alerts = _obs.evaluate_governance_alerts(governance) + _obs.evaluate_provider_alerts(
+            providers
+        )
+        n_crit = sum(1 for a in alerts if a.get("level") == "critical")
+        n_warn = sum(1 for a in alerts if a.get("level") == "warning")
+        overall = "critical" if n_crit else ("degraded" if n_warn else "healthy")
+
+        return {
+            "status": "ok",
+            "generated_at": _time.time(),
+            "window_s": int(window_s),
+            "delivery_window_s": int(delivery_window_s),
+            "overall": overall,
+            "alert_counts": {"critical": n_crit, "warning": n_warn},
+            "alerts": alerts,
+            "llm": llm,
+            "delivery": delivery,
+            "governance": governance,
+            "council": council,
+            "providers": {
+                "ok": providers.get("ok"),
+                "degraded": providers.get("degraded"),
+                "n_providers": providers.get("n_providers"),
+                "n_unhealthy": providers.get("n_unhealthy"),
+                "n_invalid_model": providers.get("n_invalid_model"),
+                "n_inference_failed": providers.get("n_inference_failed"),
+                "state_model": providers.get("state_model"),
+                "state_model_present": providers.get("state_model_present"),
+                "checked_at": providers.get("checked_at"),
+            },
+        }
+
     @router.get("/metrics/providers", dependencies=deps)
     async def provider_metrics(window_s: int = 3600) -> dict[str, Any]:
         """LLM provider 健康预检指标 + 阈值告警。
