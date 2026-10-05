@@ -220,10 +220,19 @@ class CouncilOrchestrator:
         complete_fn: Any,
         charter_provider: RoleCharterProvider | None = None,
         core_roles: list[str] | None = None,
+        max_roles: int | None = None,
+        enable_cross_review: bool = True,
     ):
         self._complete = complete_fn
         self._charters = charter_provider or InMemoryCharterProvider()
-        self._core_roles = core_roles or list(self.DEFAULT_CORE_ROLES)
+        roles = core_roles or list(self.DEFAULT_CORE_ROLES)
+        # 按算力自适应缩减：本地慢模型下 5 角色 × (独立+交叉) + 综合 ≈ 11 次 LLM
+        # 调用，串行阶段会撑爆任务预算。max_roles 截断角色数；enable_cross_review
+        # 关闭 Stage 2（交叉审查）——两者都是"降负载"旋钮，默认保持原行为。
+        if max_roles is not None and max_roles > 0:
+            roles = roles[:max_roles]
+        self._core_roles = roles
+        self._enable_cross_review = bool(enable_cross_review)
 
     async def deliberate(
         self,
@@ -304,11 +313,10 @@ class CouncilOrchestrator:
                 "[%s] Stage 1 完成: %d 个角色输出", session_id, len(result.independent_outputs)
             )
 
-            # ── Stage 2: Cross-Review ─────────────────────────────
-            _log.debug("[%s] Stage 2: 交叉审查开始", session_id)
-            cross_tasks = []
-            for role_id in self._core_roles:
-                cross_tasks.append(
+            # ── Stage 2: Cross-Review（可关闭以降负载） ────────────
+            if self._enable_cross_review:
+                _log.debug("[%s] Stage 2: 交叉审查开始", session_id)
+                cross_tasks = [
                     self._run_cross_review(
                         role_id,
                         question,
@@ -317,21 +325,29 @@ class CouncilOrchestrator:
                         mode=mode,
                         matched_keywords=matched_keywords,
                     )
+                    for role_id in self._core_roles
+                ]
+                raw_reviews = await asyncio.gather(*cross_tasks, return_exceptions=True)
+
+                for i, out in enumerate(raw_reviews):
+                    if isinstance(out, Exception):
+                        result.errors.append(f"[{self._core_roles[i]}] 交叉审查失败: {out}")
+                        _log.warning(
+                            "[%s] 角色 '%s' 交叉审查失败: %s",
+                            session_id,
+                            self._core_roles[i],
+                            out,
+                        )
+                    else:
+                        result.cross_review_outputs.append(cast(dict[str, Any], out))
+
+                _log.info(
+                    "[%s] Stage 2 完成: %d 个审查输出",
+                    session_id,
+                    len(result.cross_review_outputs),
                 )
-            raw_reviews = await asyncio.gather(*cross_tasks, return_exceptions=True)
-
-            for i, out in enumerate(raw_reviews):
-                if isinstance(out, Exception):
-                    result.errors.append(f"[{self._core_roles[i]}] 交叉审查失败: {out}")
-                    _log.warning(
-                        "[%s] 角色 '%s' 交叉审查失败: %s", session_id, self._core_roles[i], out
-                    )
-                else:
-                    result.cross_review_outputs.append(cast(dict[str, Any], out))
-
-            _log.info(
-                "[%s] Stage 2 完成: %d 个审查输出", session_id, len(result.cross_review_outputs)
-            )
+            else:
+                _log.info("[%s] Stage 2 已按配置跳过（降负载）", session_id)
 
             # ── Stage 3: Synthesis ─────────────────────────────────
             _log.debug("[%s] Stage 3: 综合裁决开始", session_id)

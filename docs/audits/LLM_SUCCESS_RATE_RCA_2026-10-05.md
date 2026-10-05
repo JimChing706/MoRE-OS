@@ -121,11 +121,33 @@ state.provider 恒为 `lmstudio` → 调用点 `chain = [provider] if provider e
 | 整体 LLM 成功率（30min） | 0% | **40.8%** |
 | 失败原因可读性 | `err=''` | `provider timeout after 150094ms` |
 
-### 残留：重负载任务仍超预算
+### 5.1 重负载任务降载（已修复）
 
-Council 单次任务会发起 ~11 次串行 LLM 调用，本地 7B 单次 11–91s，合计 ~550s，
-仍超过任务级预算（280s）。属**本地算力/工作负载**问题，需按需：
-提高任务超时、削减 Council 角色/轮次，或换用更强算力。
+Council 默认 5 角色 × (独立+交叉) + 综合 ≈ **11 次 LLM 调用**，串行阶段撑爆任务预算。
+另发现两条路径**绕过全局预算**：`generate_with_fallback_chain` / `generate_parallel`
+不经 `_apply_runtime_state`，L1 的 `max_tokens=8192` 直打慢模型，单次 130–224s。
+
+**修复**：
+
+| 修复 | 位置 |
+|------|------|
+| Council 降载旋钮：`max_roles` 截断角色数；`enable_cross_review=False` 跳过 Stage 2 | `council/orchestrator.py` |
+| 旋钮 env 化：`MORE_COUNCIL_MAX_ROLES` / `MORE_COUNCIL_CROSS_REVIEW` | `runtime/bootstrap.py` |
+| **全局 max_tokens 封顶**：chain / parallel 入口也遵守（原绕过） | `llm/manager.py` |
+| 逐层模型覆盖：`MORE_TIER_{0..3}_MODEL` 把最慢的 T0 换成可用模型 | `more_core/.env` |
+
+**配置**：`MORE_COUNCIL_MAX_ROLES=3`、`MORE_COUNCIL_CROSS_REVIEW=0`、
+`MORE_TIER_0_MODEL=ollama:qwen2.5:7b`（T1/T2→9B，T3→7B）。
+
+### 5.2 最终实测
+
+| 指标 | 修复前 | 最终 |
+|------|:---:|:---:|
+| 高难度任务 | 280s **超时失败** | **85.8s 成功产出** |
+| 近 10min LLM 成功率 | 0% | **90%**（`ollama:qwen2.5:7b` **9/9=100%**） |
+| 单次调用 max_tokens | 8192（无上限） | 512（全局封顶） |
+| Council 调用数 | 11 | 4（3 角色 + 综合） |
+| 唯一残留失败 | — | 修复前的历史 224s 调用（不再复现） |
 
 ---
 
@@ -134,6 +156,12 @@ Council 单次任务会发起 ~11 次串行 LLM 调用，本地 7B 单次 11–9
 - `more_core/more_core/llm/manager.py` — 失败诊断 + 可配置预算 + 公平分配 + **兜底链去塌缩**
 - `more_core/more_core/runtime/bootstrap.py` — `MORE_LLM_MAX_TOKENS` 初始化生效 state
 - `more_core/more_core/core/config.py` — `MORE_OLLAMA_TIMEOUT` / `MORE_LMSTUDIO_TIMEOUT` 可配
+- `more_core/more_core/council/orchestrator.py` — `max_roles` / `enable_cross_review` 降载旋钮
+- `more_core/more_core/llm/manager.py` — chain/parallel 入口全局 max_tokens 封顶
+- `more_core/tests/test_council_adaptive_sizing.py` — 3 个降载用例
+- `more_core/tests/test_llm_fallback.py` — 追加封顶用例
+- `more_core/tests/conftest.py` — 隔离开发者本地 `.env` 的 LLM 调优（空串占位阻止 dotenv 灌入）
+- `more_core/more_core/core/config.py` — `int(os.getenv(...) or "120")` 空值安全
 - `more_core/tests/test_llm_fallback.py` — 8 个回归用例（诊断 3 + 去塌缩 4 + 公平分配 1）
 - `more_core/tests/test_bootstrap.py` — 2 个 env 用例
 - `more_core/.env` — 链序 / 超时 / 预算 / max_tokens（含备份）

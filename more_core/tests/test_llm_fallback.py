@@ -710,3 +710,45 @@ async def test_state_provider_preference_orders_chain_without_dropping():
 
     assert order[0] == "ollama", "state.provider 应作为偏好排在链首"
     assert set(order) == {"lmstudio", "ollama"}, "偏好排序不得删除兜底 provider"
+
+
+@pytest.mark.asyncio
+async def test_chain_and_parallel_cap_max_tokens():
+    """chain / parallel 入口也必须遵守全局 max_tokens 封顶。
+
+    回归：这两条路径不经过 _apply_runtime_state，L1 的 8192 预算会直打慢模型，
+    单次调用 130s+ 拖垮任务。
+    """
+    from more_core.llm.manager import ProviderModelPair
+
+    seen: list[tuple[str, int]] = []
+
+    class _Rec:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.model = name
+
+        async def generate(self, request: LLMRequest) -> LLMResponse:
+            seen.append((self.name, request.max_tokens))
+            return LLMResponse(content="ok", provider=self.name, model=self.model)
+
+        async def health(self) -> bool:
+            return True
+
+    mgr = _manager_with_providers([_Rec("a"), _Rec("b")], fallback=["a", "b"])
+    sm = _state("a", "m")
+    sm.update_state(max_tokens=512)
+    mgr._state_manager = sm
+
+    await mgr.generate_with_fallback_chain(
+        LLMRequest(prompt="hi", max_tokens=8192),
+        [ProviderModelPair(provider="a", model="m")],
+    )
+    assert seen[-1] == ("a", 512), "chain 入口未封顶"
+
+    await mgr.generate_parallel(
+        LLMRequest(prompt="hi", max_tokens=8192),
+        [ProviderModelPair(provider="a", model="m"),
+         ProviderModelPair(provider="b", model="b")],
+    )
+    assert all(mt == 512 for _, mt in seen), f"parallel 入口未封顶: {seen}"

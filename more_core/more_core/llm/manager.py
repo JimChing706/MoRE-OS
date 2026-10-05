@@ -426,9 +426,25 @@ class LLMManager:
         state = sm.get_state()
         if state.temperature is not None:
             request.temperature = state.temperature
-        if state.max_tokens is not None:
+        if state.max_tokens is not None and request.max_tokens > state.max_tokens:
+            # 封顶（不抬高）：请求若本就更小则保留
             request.max_tokens = state.max_tokens
         return provider, request
+
+    def _cap_max_tokens(self, request: LLMRequest) -> LLMRequest:
+        """把输出预算封顶到 state.max_tokens（``MORE_LLM_MAX_TOKENS``）。
+
+        ``generate_with_fallback_chain`` / ``generate_parallel`` 不经过
+        ``_apply_runtime_state``，会绕过全局预算；L1 的 8192 预算因此直接打到慢
+        模型上（历史：单次调用 130s+ 并拖垮任务）。这两个入口显式调用本方法。
+        """
+        sm = self._state_manager
+        if sm is None:
+            return request
+        cap = sm.get_state().max_tokens
+        if cap is not None and request.max_tokens > cap:
+            request.max_tokens = cap
+        return request
 
     def _resolve_request_for_provider(self, request: LLMRequest, provider: str) -> LLMRequest:
         """Resolve the effective model for ONE provider in the fallback chain.
@@ -763,6 +779,7 @@ class LLMManager:
         Raises:
             LLMError: When all pairs in chain fail
         """
+        request = self._cap_max_tokens(request)
         last_exc: Exception | None = None
         effective_deadline_s = _effective_fallback_deadline(contract_timeout_s)
         deadline = time.monotonic() + effective_deadline_s
@@ -911,6 +928,7 @@ class LLMManager:
         """
         import asyncio as _aio
 
+        request = self._cap_max_tokens(request)
         par_rid = f"par_{int(time.time() * 1e6)}"
 
         # 1. Filter to healthy, non-skipped candidates

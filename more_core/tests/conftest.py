@@ -6,6 +6,32 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+# 开发者本地 more_core/.env 里的 LLM 性能/路由调优不得泄漏进测试环境：
+# ``core.config._load_dotenv()`` 在 import 时把 .env 写进 os.environ，若不清掉，
+# 本地把 MORE_TIER_*/MORE_LLM_*/MORE_COUNCIL_* 调过之后会翻转无关的路由断言
+# （如"T0 是 reasoning-distilled"）。测试需要这些旋钮时显式 monkeypatch.setenv。
+# 注意：必须"设为空串"而不是 del —— ``core.config._load_dotenv()`` 用的是
+# ``load_dotenv(override=False)``，只有当 key **不存在**时才会被 .env 覆盖。
+# 占位为空串可同时满足：① 阻止 .env 灌入；② 各读取点把空串当作"未配置"→ 用默认。
+for _ambient_llm_var in (
+    "MORE_LLM_FALLBACK_DEADLINE_S",
+    "MORE_LLM_MAX_TOKENS",
+    "MORE_OLLAMA_TIMEOUT",
+    "MORE_LMSTUDIO_TIMEOUT",
+    "MORE_COUNCIL_MAX_ROLES",
+    "MORE_COUNCIL_CROSS_REVIEW",
+    "MORE_TIER_0_MODEL",
+    "MORE_TIER_1_MODEL",
+    "MORE_TIER_2_MODEL",
+    "MORE_TIER_3_MODEL",
+    "MORE_PREV_TIER_0_MODEL",
+    "MORE_PREV_TIER_1_MODEL",
+    "MORE_PREV_TIER_2_MODEL",
+    "MORE_PREV_TIER_3_MODEL",
+    "MORE_DISABLE_TIER_0",
+):
+    os.environ[_ambient_llm_var] = ""
+
 
 @pytest.fixture
 def mock_llm_response():

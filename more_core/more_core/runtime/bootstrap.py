@@ -77,8 +77,15 @@ def init_capabilities(settings: Settings) -> dict[str, Any]:
         state_manager=state_manager,
     )
     task_model_router = DynamicModelRouter(llm)
+    # Council 降负载旋钮：本地慢模型下 5 角色 × (独立+交叉)+综合 ≈ 11 次 LLM 调用
+    # 会撑爆任务预算。MORE_COUNCIL_MAX_ROLES 截断角色数，
+    # MORE_COUNCIL_CROSS_REVIEW=0 关闭交叉审查阶段（默认保持原行为）。
+    _council_roles_env = os.getenv("MORE_COUNCIL_MAX_ROLES", "").strip()
+    _council_max_roles = int(_council_roles_env) if _council_roles_env.isdigit() else None
     council_orchestrator = CouncilOrchestrator(
         complete_fn=_make_council_complete_fn(llm),
+        max_roles=_council_max_roles,
+        enable_cross_review=os.getenv("MORE_COUNCIL_CROSS_REVIEW", "1") == "1",
     )
 
     # R-10：沙箱级别可配置。BASIC = AST 危险操作拦截 + 全 argv 命令检查；
