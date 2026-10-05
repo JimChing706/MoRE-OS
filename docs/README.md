@@ -38,6 +38,7 @@
 | [COUNCIL_REVIEW_BASELINE_2026-10-05.md](audits/COUNCIL_REVIEW_BASELINE_2026-10-05.md) | L4→L5 Council 复评量化基线 + 看板接入 |
 | [PROVIDER_HEALTH_OBSERVABILITY_2026-10-05.md](audits/PROVIDER_HEALTH_OBSERVABILITY_2026-10-05.md) | LLM provider 预检落库 + 无效模型标识告警 |
 | [OBSERVABILITY_INTEGRATION_2026-10-05.md](audits/OBSERVABILITY_INTEGRATION_2026-10-05.md) | 运行健康总览（五类指标整合 + 统一裁决） |
+| [LLM_SUCCESS_RATE_RCA_2026-10-05.md](audits/LLM_SUCCESS_RATE_RCA_2026-10-05.md) | LLM 成功率 0% 根因分析 + 诊断修复 |
 | [RCA_AND_FIX_2026-10-04.md](audits/RCA_AND_FIX_2026-10-04.md) | 三大硬伤（产出正确性/交付可信度/可观测性）根因分析 |
 | [STAGE_EVALUATION_2026-10-04.md](audits/STAGE_EVALUATION_2026-10-04.md) | 阶段成果评估（需求逐条对照 + 达成度评分） |
 | [HARDENING_BATCH_2026-10-04.md](audits/HARDENING_BATCH_2026-10-04.md) | 加固批次 1–4（R-01…R-19 / D-1…D-4 / 生产效率） |

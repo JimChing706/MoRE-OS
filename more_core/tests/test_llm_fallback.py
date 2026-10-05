@@ -499,3 +499,102 @@ async def test_generate_parallel_retrieves_cancelled_task_exceptions() -> None:
         assert not any("Task exception was never retrieved" in m for m in messages), messages
     finally:
         loop.set_exception_handler(old_handler)
+
+
+# ---------------------------------------------------------------------------
+# 生产事故回归：超时失败必须"可诊断 + 有耗时"（此前记成 error='' / latency=0）
+# ---------------------------------------------------------------------------
+
+
+def test_exc_summary_names_timeout_and_blank_errors():
+    from more_core.llm.manager import _exc_summary
+
+    # asyncio.TimeoutError 的 str() 是空串 → 必须显式命名并带耗时
+    msg = _exc_summary(asyncio.TimeoutError(), 1234.0)
+    assert "timeout" in msg.lower()
+    assert "1234" in msg
+    # 其他异常消息为空 → 回退到类型名；非空 → 原样
+    assert _exc_summary(RuntimeError(""), 0.0) == "RuntimeError"
+    assert _exc_summary(RuntimeError("boom"), 0.0) == "boom"
+
+
+def test_fallback_deadline_respects_env_override(monkeypatch):
+    from more_core.llm import manager as mgr_mod
+
+    monkeypatch.setattr(mgr_mod, "_FALLBACK_DEADLINE_S", 240.0)
+    assert mgr_mod._effective_fallback_deadline(None) == 240.0
+    # 合约超时再大也被上限钳制
+    assert mgr_mod._effective_fallback_deadline(10_000.0) == 240.0
+
+
+@pytest.mark.asyncio
+async def test_timeout_failure_records_diagnosable_error(monkeypatch):
+    from more_core.governance import observability as obs
+    from more_core.llm import manager as mgr_mod
+
+    class _SlowProvider:
+        name = "slow"
+        model = "slow-model"
+
+        async def generate(self, request: LLMRequest) -> LLMResponse:
+            await asyncio.sleep(5)
+            return LLMResponse(content="late", provider="slow", model="slow-model")
+
+        async def health(self) -> bool:
+            return True
+
+    # 把链级预算压到 0.2s，让 slow provider 必然超时（测试可控且快）
+    monkeypatch.setattr(mgr_mod, "_FALLBACK_DEADLINE_S", 0.2)
+    monkeypatch.setattr(mgr_mod, "_FALLBACK_CONTRACT_HEADROOM_S", 0.0)
+
+    mgr = _manager_with_providers([_SlowProvider()])
+    with pytest.raises(LLMError):
+        await mgr.generate(LLMRequest(prompt="hi", max_tokens=8))
+
+    rows = obs.query_recent_llm(limit=5)
+    assert rows, "超时失败也必须留痕（不能被静默丢弃）"
+    row = rows[0]
+    assert row["success"] == 0
+    err = (row["error"] or "").lower()
+    assert "timeout" in err, f"超时必须给出可诊断原因，实际 error={row['error']!r}"
+    assert row["latency_ms"] > 0, "失败也应记录真实耗时（此前恒为 0）"
+
+
+@pytest.mark.asyncio
+async def test_slow_primary_does_not_starve_fallback(monkeypatch):
+    """回归：慢的首选 provider 不得吃光整条链预算，否则兜底永远轮不到。
+
+    事故形态：链 = 35B(极慢) → 9B(可用)，90s 预算被 35B 全部消耗，
+    `remaining<=0` 直接抛错，9B 根本没机会执行 → 成功率 0%。
+    """
+    from more_core.llm import manager as mgr_mod
+
+    class _SlowProvider:
+        name = "slow"
+        model = "slow-model"
+
+        async def generate(self, request: LLMRequest) -> LLMResponse:
+            await asyncio.sleep(30)  # 远超预算
+            return LLMResponse(content="slow", provider="slow", model="slow-model")
+
+        async def health(self) -> bool:
+            return True
+
+    class _FastProvider:
+        name = "fast"
+        model = "fast-model"
+
+        async def generate(self, request: LLMRequest) -> LLMResponse:
+            return LLMResponse(content="fast!", provider="fast", model="fast-model")
+
+        async def health(self) -> bool:
+            return True
+
+    monkeypatch.setattr(mgr_mod, "_FALLBACK_DEADLINE_S", 1.0)
+    monkeypatch.setattr(mgr_mod, "_FALLBACK_CONTRACT_HEADROOM_S", 0.0)
+    mgr = _manager_with_providers(
+        [_SlowProvider(), _FastProvider()], fallback=["slow", "fast"]
+    )
+
+    resp = await mgr.generate(LLMRequest(prompt="hi", max_tokens=8))
+    assert resp.content == "fast!", "慢首选超时后，兜底 provider 必须被真正尝试"

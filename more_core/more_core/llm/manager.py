@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import os
 import re
 import time
 from collections import OrderedDict
@@ -25,11 +26,26 @@ _CACHE_MAX = 256
 # Wall-clock budget for the whole serial fallback chain (all providers tried).
 # Guards against the pathological case: N providers × 5 retries × 120s timeout
 # with no total bound, which previously could stall a task for ~750s+.
-_FALLBACK_DEADLINE_S = 90.0
+# 可用 MORE_LLM_FALLBACK_DEADLINE_S 覆盖：本地 35B 推理模型较慢时需放宽，
+# 否则每次调用都会在链级预算耗尽 → TimeoutError（历史"成功率 0%"事故）。
+_FALLBACK_DEADLINE_S = float(os.getenv("MORE_LLM_FALLBACK_DEADLINE_S", "90") or 90)
 # CLOSEDSPEC P1-3 R4-B 覃朗：把 DeliverableContract.timeout_s 和 LLM fallback deadline 联动绑定。
 # 预留 5s 给上层合约 kill switch 做清理；若 contract 超时极短则兜底 1s 地板。
 _FALLBACK_CONTRACT_HEADROOM_S = 5.0
 _FALLBACK_MIN_EFFECTIVE_S = 1.0
+
+
+def _exc_summary(exc: BaseException, elapsed_ms: float) -> str:
+    """人类可读的失败原因。
+
+    ``asyncio.TimeoutError``/``TimeoutError`` 的 ``str()`` 是空串，直接记录会让
+    遥测里出现 ``error=''``，无法区分"超时"与"其他失败"。这里显式命名超时，
+    并在其他异常消息为空时回退到异常类型名。
+    """
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
+        return f"provider timeout after {elapsed_ms:.0f}ms"
+    text = str(exc).strip()
+    return text or type(exc).__name__
 
 
 def _effective_fallback_deadline(contract_timeout_s: float | None) -> float:
@@ -518,7 +534,7 @@ class LLMManager:
         logical_rid = getattr(request, "id", "") or f"gen_{int(time.time()*1e6)}"
         attempt = 0
 
-        for name in chain:
+        for _idx, name in enumerate(chain):
             if name not in self._providers:
                 continue
             if self._should_skip(name, request.model_override):
@@ -570,10 +586,18 @@ class LLMManager:
                 raise LLMError(
                     f"fallback chain total timeout exceeded after {effective_deadline_s}s"
                 ) from last_exc
+            # 预算公平分配：把剩余时间均摊给"剩余已注册 provider"，避免慢的首选
+            # 吃光整条链预算、让兜底永远轮不到（此前 35B 超时 → 9B 兜底形同虚设）。
+            remaining_providers = sum(
+                1 for _n in chain[_idx:] if _n in self._providers
+            )
+            attempt_timeout = (
+                remaining / remaining_providers if remaining_providers > 1 else remaining
+            )
             try:
                 start = time.perf_counter()
                 resp = await asyncio.wait_for(
-                    self._providers[name].generate(request), timeout=remaining
+                    self._providers[name].generate(request), timeout=attempt_timeout
                 )
                 resp.latency_ms = (time.perf_counter() - start) * 1000
                 resp = self._postprocess_llm_response(resp, request)
@@ -608,14 +632,17 @@ class LLMManager:
                     request_id=logical_rid, provider=name,
                     model=request.model_override or "",
                     prompt_chars=len(request.prompt or ""), prompt_tokens=0,
-                    completion_tokens=0, latency_ms=0.0, success=False,
+                    completion_tokens=0,
+                    latency_ms=(time.perf_counter() - start) * 1000,
+                    success=False,
                     error="cancelled (task timeout / client disconnect)",
                     attempt=attempt, temperature=request.temperature,
                     max_tokens=request.max_tokens,
                 )
                 raise
             except Exception as exc:
-                self._record_failure(name, request.model_override, str(exc))
+                _elapsed = (time.perf_counter() - start) * 1000
+                self._record_failure(name, request.model_override, _exc_summary(exc, _elapsed))
                 try:
                     from ..governance.observability import record_llm_call
                 except Exception:  # pragma: no cover
@@ -628,10 +655,10 @@ class LLMManager:
                         prompt_chars=len(request.prompt or ""),
                         prompt_tokens=0,
                         completion_tokens=0,
-                        latency_ms=0.0,
+                        latency_ms=_elapsed,
                         success=False,
                         cached=False,
-                        error=str(exc)[:4000],
+                        error=_exc_summary(exc, _elapsed)[:4000],
                         attempt=attempt,
                         temperature=request.temperature,
                         max_tokens=request.max_tokens,
@@ -795,14 +822,18 @@ class LLMManager:
                 self._emit_llm_call(
                     request_id=chain_rid, provider=pair.provider,
                     model=pair.model or "", prompt_chars=len(request.prompt or ""),
-                    prompt_tokens=0, completion_tokens=0, latency_ms=0.0,
+                    prompt_tokens=0, completion_tokens=0,
+                    latency_ms=(time.perf_counter() - start) * 1000,
                     success=False, error="cancelled (task timeout / client disconnect)",
                     attempt=chain_attempt, temperature=request.temperature,
                     max_tokens=request.max_tokens,
                 )
                 raise
             except Exception as exc:
-                self._record_failure(pair.provider, pair.model, str(exc))
+                _elapsed = (time.perf_counter() - start) * 1000
+                self._record_failure(
+                    pair.provider, pair.model, _exc_summary(exc, _elapsed)
+                )
                 self._emit_llm_call(
                     request_id=chain_rid,
                     provider=pair.provider,
@@ -810,9 +841,9 @@ class LLMManager:
                     prompt_chars=len(request.prompt or ""),
                     prompt_tokens=0,
                     completion_tokens=0,
-                    latency_ms=0.0,
+                    latency_ms=_elapsed,
                     success=False,
-                    error=str(exc),
+                    error=_exc_summary(exc, _elapsed),
                     attempt=chain_attempt,
                     temperature=request.temperature,
                     max_tokens=request.max_tokens,
@@ -921,6 +952,7 @@ class LLMManager:
             resp.latency_ms = (time.perf_counter() - start) * 1000
             return self._postprocess_llm_response(resp, req)
 
+        par_start = time.perf_counter()
         tasks = {_aio.create_task(_try_one(p)): p for p, _ in valid}
         pending: set[_aio.Task[Any]] = set(tasks)
         errors: list[tuple[str, str, str]] = []
@@ -971,7 +1003,11 @@ class LLMManager:
                     await _aio.gather(*pending, return_exceptions=True)
                     return resp
                 except BaseException as exc:
-                    self._record_failure(pair.provider, pair.model, str(exc))
+                    # 并行批次起点（_try_one 的 start 是嵌套局部变量，外层不可见）
+                    _elapsed = (time.perf_counter() - par_start) * 1000
+                    self._record_failure(
+                        pair.provider, pair.model, _exc_summary(exc, _elapsed)
+                    )
                     self._emit_llm_call(
                         request_id=par_rid,
                         provider=pair.provider,
@@ -979,9 +1015,9 @@ class LLMManager:
                         prompt_chars=len(request.prompt or ""),
                         prompt_tokens=0,
                         completion_tokens=0,
-                        latency_ms=0.0,
+                        latency_ms=_elapsed,
                         success=False,
-                        error=str(exc),
+                        error=_exc_summary(exc, _elapsed),
                         temperature=request.temperature,
                         max_tokens=request.max_tokens,
                     )
@@ -1116,7 +1152,8 @@ class LLMManager:
                 )
                 raise
             except Exception as exc:
-                self._record_failure(name, model_override)
+                _stream_elapsed = (time.perf_counter() - started) * 1000
+                self._record_failure(name, model_override, _exc_summary(exc, _stream_elapsed))
                 self._emit_llm_call(
                     request_id=stream_rid,
                     provider=name,
@@ -1124,9 +1161,9 @@ class LLMManager:
                     prompt_chars=len(request.prompt or ""),
                     prompt_tokens=0,
                     completion_tokens=0,
-                    latency_ms=(time.perf_counter() - started) * 1000,
+                    latency_ms=_stream_elapsed,
                     success=False,
-                    error=str(exc),
+                    error=_exc_summary(exc, _stream_elapsed),
                     attempt=stream_attempt,
                     temperature=request.temperature,
                     max_tokens=request.max_tokens,
