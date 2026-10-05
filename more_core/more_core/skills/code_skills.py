@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import tempfile
 import json
 import httpx
@@ -183,7 +184,13 @@ class DataAnalysisSkill(Skill):
                     },
                     "query": {
                         "type": "string", "maxLength": 2000,
-                        "description": "查询表达式 (operation=query 时使用)",
+                        "description": (
+                            "查询表达式 (operation=query): "
+                            "field=value / field!=value / field~substr / "
+                            "field>N / field>=N / field<N / field<=N；"
+                            "无字段裸串则对整项做子串匹配；返回 "
+                            "{query,matched,returned,results}（最多 10 条）"
+                        ),
                     },
                 },
                 "required": ["data"],
@@ -279,14 +286,81 @@ class DataAnalysisSkill(Skill):
             return {"keys": list(data.keys()), "count": len(data)}
         return {"type": type(data).__name__}
 
-    def _query_data(self, data: Any, query: str) -> Any:
-        """Simple query on data."""
-        if not query:
-            return data
+    # 查询语法：可选的「字段 + 运算符」前缀，缺省为对整项的子串匹配。
+    _QUERY_RE = re.compile(r"^\s*([A-Za-z_][\w.]*)\s*(>=|<=|!=|=|~|>|<)\s*(.*?)\s*$")
+    _QUERY_MAX_RESULTS = 10
 
-        if isinstance(data, list):
-            return [x for x in data if query.lower() in str(x).lower()][:10]
-        return data
+    def _query_data(self, data: Any, query: str) -> Any:
+        """按**明确定义的查询语义**过滤数据（R-3）。
+
+        支持语法::
+
+            field=value      相等（字符串比较，忽略大小写）
+            field!=value     不等
+            field~substr     包含（忽略大小写，子串）
+            field>N / >=N    数值下界（N 必须可解析为数字）
+            field<N / <=N    数值上界
+            <无字段裸串>      对整项做子串匹配（向后兼容）
+
+        返回**结构化结果**（此前对 dict/scalar 会静默忽略 query 并原样返回）::
+
+            {"query": q, "matched": N, "returned": M, "results": [...]}   # 最多 10 条
+
+        非法查询（如 `age>abc`）抛 ``ValueError``，由 ``execute`` 转为结构化失败。
+        """
+        text = str(query or "").strip()
+        if not text:
+            items = list(data) if isinstance(data, list) else [data]
+            return {"query": "", "matched": len(items),
+                    "returned": len(items), "results": items}
+
+        match = self._QUERY_RE.match(text)
+        if match:
+            field, op, raw = match.group(1), match.group(2), match.group(3)
+        else:
+            field, op, raw = None, "~", text
+
+        items = list(data) if isinstance(data, list) else [data]
+        matched = [item for item in items if self._query_match(item, field, op, raw)]
+        shown = matched[: self._QUERY_MAX_RESULTS]
+        return {
+            "query": text,
+            "matched": len(matched),
+            "returned": len(shown),
+            "results": shown,
+        }
+
+    @staticmethod
+    def _query_match(item: Any, field: str | None, op: str, raw: str) -> bool:
+        value = item
+        if field is not None:
+            if not isinstance(item, dict) or field not in item:
+                return False
+            value = item[field]
+
+        if op == "~":
+            return raw.lower() in str(value).lower()
+        if op == "=":
+            return str(value).lower() == raw.lower()
+        if op == "!=":
+            return str(value).lower() != raw.lower()
+
+        # 数值比较：raw 不可解析 → 明确报错（不静默返回全量）
+        try:
+            bound = float(raw)
+        except (TypeError, ValueError):
+            raise ValueError(f"查询运算符 {op!r} 需要数值，实际为 {raw!r}") from None
+        try:
+            left = float(value)
+        except (TypeError, ValueError):
+            return False
+        if op == ">":
+            return left > bound
+        if op == ">=":
+            return left >= bound
+        if op == "<":
+            return left < bound
+        return left <= bound
 
 
 class APICallSkill(Skill):

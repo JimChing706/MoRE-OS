@@ -83,7 +83,7 @@ code.execute / data.analyze / api.call）+ 参数校验、交付台账、可观�
 |---|------|------|------|
 | ~~R-1~~ | ~~`code.execute` 无 OS 级沙箱~~ | 安全 | **已修复（2026-10-05）**：`code.execute` 现统一走 `SecureSandbox`——AST 危险调用扫描（`os.system`/`subprocess`/`rmtree`…）+ 全 argv 策略 + 路径白名单 + 环境脱敏 + 超时 + 审计日志。危险代码返回 `Blocked: ...`。见 §6 |
 | ~~R-2~~ | ~~`web.search` 指定 serpapi 但未配 key 时静默降级~~ | 正确性 | **已修复（2026-10-05）**：缺 key / 未知 provider 一律显式报错；key 支持 `config.serpapi_key` 与 `SERPAPI_API_KEY`；成功时 metadata 明确 `provider_used`。见 §6 |
-| **R-3** | `data.analyze` 的 `query` 为**朴素子串/包含匹配**，非真正查询语言 | 功能 | 文档标注能力边界，或引入正式查询语法 |
+| ~~R-3~~ | ~~`data.analyze.query` 为朴素子串匹配，且对 dict/scalar 静默忽略 query~~ | 功能边界 | **已修复（2026-10-05）**：定义查询语义（字段+运算符）+ 结构化返回 + 非法查询显式报错。见 §7 |
 | **R-4** | 网络受限环境下 web/api 技能整体不可用 | 兼容性 | 部署前确认出网策略；失败已结构化返回，不影响其它技能 |
 
 ---
@@ -152,7 +152,33 @@ POST /skills/web.search/run {"query":"x","provider":"serpapi"}
 
 ---
 
-## 7. 测试与回归
+## 7. R-3 修复详情（query 明确定义语义）
+
+**修复前**：`query` 仅对 list 做朴素子串过滤（上限 10）；**对 dict/scalar 静默忽略 query
+并原样返回全部数据**——调用方无法区分"命中全部"与"没查"。
+
+**修复后**：定义查询语法并返回结构化结果。
+
+| 语法 | 含义 |
+|------|------|
+| `field=value` / `field!=value` | 相等 / 不等（字符串，忽略大小写） |
+| `field~substr` | 包含（忽略大小写） |
+| `field>N` / `>=N` / `<N` / `<=N` | 数值比较（N 必须可解析为数字） |
+| `<无字段裸串>` | 对整项做子串匹配（向后兼容） |
+
+返回：`{"query": q, "matched": N, "returned": M, "results": [...]}`（结果上限 10 条）。
+非法查询（如 `age>abc`）→ `SkillResult(success=False, error="查询运算符 '>' 需要数值…")`。
+
+**实测**（`[{name:a,age:30},{name:b,age:20},{name:c,age:40}]`）：
+```
+age>25  → matched=2      name=a → matched=1      name~b → matched=1
+age<=20 → matched=1      zzz    → matched=0      （不再返回全量）
+age>abc → success=false, error="查询运算符 '>' 需要数值，实际为 'abc'"
+```
+
+---
+
+## 8. 测试与回归
 
 | 测试文件 | 用例数 |
 |----------|:------:|

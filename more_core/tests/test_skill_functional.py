@@ -42,11 +42,12 @@ async def test_data_analyze_transform_projects_keys():
 
 @pytest.mark.asyncio
 async def test_data_analyze_query_filters_list():
+    """R-3：query 现返回结构化结果 {query,matched,returned,results}。"""
     r = await DataAnalysisSkill().execute(
         {"data": "[1,2,3]", "operation": "query", "query": "2", "format": "auto"}
     )
     assert r.success is True
-    assert r.output == [2]
+    assert r.output == {"query": "2", "matched": 1, "returned": 1, "results": [2]}
 
 
 @pytest.mark.asyncio
@@ -141,3 +142,74 @@ async def test_duckduckgo_path_reports_provider_used(monkeypatch):
     r = await WebSearchSkill().execute({"query": "x", "provider": "duckduckgo"})
     assert r.success is True
     assert r.metadata["provider_used"] == "duckduckgo"
+
+
+# ---------------------------------------------------------------------------
+# R-3：query 的明确定义语义
+# ---------------------------------------------------------------------------
+
+_ROWS = '[{"name":"a","age":30},{"name":"b","age":20},{"name":"c","age":40}]'
+
+
+async def _q(query: str):
+    return await DataAnalysisSkill().execute(
+        {"data": _ROWS, "operation": "query", "query": query, "format": "json"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_query_numeric_comparisons():
+    assert (await _q("age>25")).output["matched"] == 2
+    assert (await _q("age>=30")).output["matched"] == 2
+    assert (await _q("age<30")).output["matched"] == 1
+    assert (await _q("age<=20")).output["matched"] == 1
+
+
+@pytest.mark.asyncio
+async def test_query_equality_not_equal_and_contains():
+    assert (await _q("name=a")).output["results"] == [{"name": "a", "age": 30}]
+    assert (await _q("name!=a")).output["matched"] == 2
+    assert (await _q("name~b")).output["matched"] == 1
+
+
+@pytest.mark.asyncio
+async def test_query_no_match_returns_empty_not_whole_dataset():
+    """回归：此前 dict/scalar 输入会静默忽略 query 并原样返回全部数据。"""
+    r = await _q("zzz")
+    assert r.success is True
+    assert r.output["matched"] == 0
+    assert r.output["results"] == []
+
+
+@pytest.mark.asyncio
+async def test_query_without_field_does_substring_match():
+    r = await _q("b")
+    assert r.success is True
+    assert r.output["matched"] == 1  # {"name":"b","age":20}
+
+
+@pytest.mark.asyncio
+async def test_query_malformed_numeric_raises_structured_error():
+    r = await _q("age>abc")
+    assert r.success is False
+    assert "需要数值" in (r.error or "")
+
+
+@pytest.mark.asyncio
+async def test_query_empty_returns_all_with_zero_cap_semantics():
+    r = await _q("")
+    assert r.success is True
+    assert r.output["matched"] == 3
+    assert r.output["returned"] == 3
+
+
+@pytest.mark.asyncio
+async def test_query_caps_results_at_ten():
+    data = "[" + ",".join(str(i) for i in range(25)) + "]"
+    r = await DataAnalysisSkill().execute(
+        {"data": data, "operation": "query", "query": "1", "format": "json"}
+    )
+    assert r.success is True
+    assert r.output["matched"] > 10
+    assert r.output["returned"] == 10
+    assert len(r.output["results"]) == 10
