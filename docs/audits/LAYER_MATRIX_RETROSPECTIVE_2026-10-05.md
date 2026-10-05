@@ -74,6 +74,34 @@ else:
 
 ---
 
+## 3.1 建议 2 已执行：矩阵路由断言迁移到权威来源
+
+原 X-I2 / X-I3 / X-I3b / X-I4 断言 `core.router.route()`，现全部迁移到
+`core.meta_orchestrator.route()`（权威），并据此**修正了原本不成立的契约**：
+
+| 用例 | 迁移前（基座，不生效） | 迁移后（权威，实测） |
+|------|----------------------|---------------------|
+| X-I2 | 各 TaskType 路由非空 | 权威管道非空、层已注册、**L0 居末** |
+| X-I3 | SELF_IMPROVEMENT = `L5→L2→L1→L0` | 仅 **RIVER_DEEP** 引入 L5；普通模式无 L5 |
+| X-I3b | 门控关闭"剥离" L5/L2 | **L2 在任何谱模式下都不可达**（登记为已知分歧） |
+| X-I4 | MATH_REASONING 必含 L3 | L3 由**谱模式**决定（短查询 U=0.24 走 Village 无 L3；复杂查询 U=0.30 走 River 含 L3） |
+
+### 3.2 迁移过程中暴露的第二个缺陷：**L2 进化层在生产不可达**
+
+权威链路仅有三条固定管道：
+
+```
+village    = [L4, L1, L0]
+river      = [L4, L3, L1, L0]
+river_deep = [L5, L4, L3, L1, L0]
+```
+
+**均不含 L2**。即：`MORE_ENABLE_EVOLUTION` 开关与 SELF_IMPROVEMENT → L2 的绑定
+在生产链路上**完全不生效**（L2 只在被显式调用时才可能执行）。属功能缺失，
+建议单独立项（把 L2 纳入 RIVER/RIVER_DEEP，或废除该声明）。
+
+---
+
 ## 4. 结论与建议
 
 ### 结论
@@ -84,14 +112,15 @@ else:
 ### 建议（待决策）
 1. **对齐语义**：让 `LayerRouter` 成为谱路由的降级实现，或明确标注其为"advisory"，
    避免继续被误读为权威管道。
-2. **改造矩阵**：把 X-I2/I3/I4 的断言对象从 `core.router.route()` 改为
-   `meta_orchestrator.route()`（或直接断言 `stage_timings`）。
+2. ~~**改造矩阵**：把 X-I2/I3/I4 的断言对象从 `core.router.route()` 改为
+   `meta_orchestrator.route()`~~ ✅ **已执行（见 §3.1）**。
 3. **CI 门禁**：把本回顾性套件纳入 `layer-gate`（`make test-layers`），防止分歧漂移。
 
 ---
 
 ## 5. 变更文件
 
+- `more_core/tests/test_layer_matrix_l0_l5.py`（X-I2/I3/I3b/I4 迁移到权威来源）
 - `more_core/tests/test_layer_matrix_retrospective.py`（新增 17 用例）
 - 本报告
 

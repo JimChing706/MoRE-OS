@@ -194,9 +194,11 @@
 
 后续系统增强后对本矩阵做了**回顾性检验**，结论：
 * L0–L5 单层契约与故障隔离用例**依然全部有效**（72/72 全绿）。
-* ⚠️ 但 X-I2 / X-I3 / X-I4 断言的 `core.router.route()` **不是权威来源**——
-  生产实际执行由 **Meta-Orchestrator 谱路由**决定（VILLAGE `[L4,L1,L0]` / RIVER `[L4,L3,L1,L0]`）。
-  权威链路已由新增的 `test_layer_matrix_retrospective.py`（17 用例）钉住。
+* ⚠️ X-I2 / X-I3 / X-I4 原断言 `core.router.route()`，但它是**非权威来源**——
+  生产实际执行由 **Meta-Orchestrator 谱路由**决定。
+  **→ 已迁移**：X-I2/I3/I3b/I4 现断言 `core.meta_orchestrator.route()`，并修正了三处
+  原本不成立的契约（SELF_IMPROVEMENT 不含 L5/L2、L2 全链路不可达、L3 由谱模式决定）。
+* 权威链路由 `test_layer_matrix_retrospective.py`（17 用例）持续钉住。
 
 详见: [LAYER_MATRIX_RETROSPECTIVE_2026-10-05.md](LAYER_MATRIX_RETROSPECTIVE_2026-10-05.md)
 

@@ -676,38 +676,57 @@ async def test_l5_e1_self_modification_failure_is_contained(core):
      TaskType.SELF_IMPROVEMENT, TaskType.DATA_ANALYSIS],
 )
 def test_x_i2_every_task_type_routes_to_registered_layers(core, task_type):
-    """X-I2: 各 TaskType 路由到非空且已注册的管道。"""
-    decision = core.router.route(TaskRequest(type=task_type, query="test"))
-    assert decision.pipeline, f"{task_type} 路由为空"
+    """X-I2（**迁移到权威来源**）: 各 TaskType 实际管道非空、层均已注册、L0 居末。
+
+    注：`core.router.route()` 会被 Meta-Orchestrator 谱路由覆盖，**不是权威来源**；
+    权威决策来自 `core.meta_orchestrator.route()`。
+    """
+    decision = core.meta_orchestrator.route(task_type, "test")
+    assert decision.pipeline, f"{task_type} 权威管道为空"
     for lid in decision.pipeline:
         assert core.get_layer(lid) is not None, f"管道含未注册层 {lid}"
+    assert decision.pipeline[-1] == LayerId.L0, "L0 必须在管道末尾"
 
 
-def test_x_i3_self_improvement_pipeline_order(core):
-    """X-I3: 门控开启后 SELF_IMPROVEMENT 管道为 L5→L2→L1→L0。"""
+def test_x_i3_deep_mode_includes_metacognition(core):
+    """X-I3（迁移）: 仅 RIVER_DEEP（U≥0.7 或强制监控）才引入 L5 元认知。"""
+    normal = core.meta_orchestrator.route(TaskType.SELF_IMPROVEMENT, "自改进")
+    deep = core.meta_orchestrator.route(
+        TaskType.SELF_IMPROVEMENT, "自改进", require_metacognitive=True
+    )
+    assert LayerId.L5 not in normal.pipeline
+    assert LayerId.L5 in deep.pipeline
+    assert deep.pipeline[-1] == LayerId.L0
+
+
+def test_x_i3b_evolution_layer_unreachable_in_authoritative_pipeline(core):
+    """X-I3b（迁移 + **已知分歧登记**）: L2 进化层在权威链路上不可达。
+
+    基座路由为 SELF_IMPROVEMENT 声明了 L2，但三条谱管道
+    （village / river / river_deep）**均不含 L2** —— 该声明在生产不生效。
+    """
     core.settings.enable_evolution = True
-    core.settings.enable_metacognition = True
     try:
-        decision = core.router.route(TaskRequest(type=TaskType.SELF_IMPROVEMENT, query="自改进"))
-        assert decision.pipeline[:2] == [LayerId.L5, LayerId.L2]
-        assert decision.pipeline[-2:] == [LayerId.L1, LayerId.L0]
+        for require_meta in (False, True):
+            decision = core.meta_orchestrator.route(
+                TaskType.SELF_IMPROVEMENT, "自改进", require_metacognitive=require_meta
+            )
+            assert LayerId.L2 not in decision.pipeline, "L2 不应出现在谱路由管道"
     finally:
         core.settings.enable_evolution = False
-        core.settings.enable_metacognition = False
 
 
-def test_x_i3b_gates_off_strip_self_improvement_layers(core):
-    """X-I3b: 门控关闭时路由剥离 L5/L2（防止未授权的自修改）。"""
-    decision = core.router.route(TaskRequest(type=TaskType.SELF_IMPROVEMENT, query="自改进"))
-    assert LayerId.L5 not in decision.pipeline
-    assert LayerId.L2 not in decision.pipeline
-    assert decision.pipeline[-1] == LayerId.L0
+def test_x_i4_math_l3_inclusion_is_mode_dependent(core):
+    """X-I4（迁移）: L3 是否进入数学任务管道由**谱模式**决定，而非任务类型。"""
+    short = core.meta_orchestrator.route(TaskType.MATH_REASONING, "解方程")
+    complex_q = (
+        "请证明并推导一个复杂数学问题：涉及多元微积分、线性代数与概率论的联合求解，"
+        "并给出严格证明与误差分析，" * 8
+    )
+    hard = core.meta_orchestrator.route(TaskType.MATH_REASONING, complex_q)
 
-
-def test_x_i4_math_pipeline_contains_symbolic(core):
-    """X-I4: MATH_REASONING 管道含 L4 与 L3。"""
-    decision = core.router.route(TaskRequest(type=TaskType.MATH_REASONING, query="解方程"))
-    assert LayerId.L4 in decision.pipeline and LayerId.L3 in decision.pipeline
+    assert LayerId.L3 not in short.pipeline, "低不确定度(Village)应跳过 L3"
+    assert LayerId.L3 in hard.pipeline, "高不确定度(River)应包含 L3"
 
 
 @pytest.mark.asyncio
