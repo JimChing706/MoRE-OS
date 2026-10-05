@@ -204,3 +204,23 @@ async def test_core_start_runs_skill_network_preflight(core, monkeypatch):
 
     assert seen.get("called") is True
     assert obs.query_skill_network_health(3600)["checked_at"] > 0
+
+
+def test_stale_skill_network_snapshot_is_info():
+    import time as _t
+
+    obs.record_skill_network({
+        "ok": True, "required_egress": ["web.search"],
+        "targets": [{"skill_id": "web.search", "target": "x:443", "reachable": True}],
+        "warnings": [],
+    })
+    conn = obs._get_conn()
+    conn.execute("UPDATE skill_network_snapshots SET ts = ?", (_t.time() - 7200,))
+
+    h = obs.query_skill_network_health(3600)
+    assert h["stale"] is True
+    assert h["n_targets"] == 1, "过期快照仍应可读（此前返回空 → 误报 missing）"
+
+    alerts = obs.evaluate_skill_network_alerts(h)
+    assert alerts[0]["code"] == "skill_network_preflight_stale"
+    assert alerts[0]["level"] == "info"

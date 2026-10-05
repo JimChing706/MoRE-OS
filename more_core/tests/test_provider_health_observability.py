@@ -361,3 +361,70 @@ def test_preflight_endpoint_records_snapshot(core, monkeypatch):
     assert h["snapshots"] == before + 1   # 按需复检写入了新快照
     assert h["n_providers"] == 1
     assert h["n_invalid_model"] == 0
+
+
+# ---------------------------------------------------------------------------
+# P0/A-1：快照滑窗不得导致误报降级
+# ---------------------------------------------------------------------------
+
+
+def _age_snapshots(hours: float = 2) -> None:
+    """把最新快照时间戳改老（不依赖 monkeypatch time）。"""
+    import time as _t
+
+    old = _t.time() - hours * 3600
+    conn = obs._get_conn()
+    assert conn is not None
+    conn.execute("UPDATE provider_health_snapshots SET ts = ?", (old,))
+
+
+def test_stale_provider_snapshot_is_info_not_degrading(core):
+    from fastapi.testclient import TestClient
+
+    from more_core.api.server import create_app
+
+    healthy = {
+        "ok": True, "degraded": False,
+        "providers": [{"name": "a", "healthy": True, "model_present": True,
+                       "inference_ok": True, "state_model_present": True}],
+        "state_provider": "a", "state_model": "m", "state_model_present": True,
+        "fallback_chain": ["a"], "chain_registered": ["a"], "warnings": [],
+    }
+    with TestClient(create_app(core)) as client:
+        obs.record_provider_health(healthy)
+        obs.record_skill_network(
+            {"ok": True, "required_egress": [], "targets": [], "warnings": []}
+        )
+        _age_snapshots(2)
+        body = client.get("/api/v1/metrics/overview?window_s=3600").json()
+
+    codes = {a["code"]: a for a in body["alerts"]}
+    assert "provider_preflight_stale" in codes, body["alerts"]
+    assert codes["provider_preflight_stale"]["level"] == "info"
+    # 过期只是信息新鲜度问题，不得把 overall 压成 degraded
+    assert body["overall"] == "healthy", body["alerts"]
+
+
+def test_query_provider_health_returns_latest_outside_window():
+    obs.record_provider_health(_bad_report())
+    _age_snapshots(2)
+
+    h = obs.query_provider_health(60)          # 1 分钟窗口，快照 2 小时前
+    assert h["n_providers"] == 1, "必须仍返回最新快照（此前按窗口过滤会返回空）"
+    assert h["snapshots"] == 0, "窗口内计数应为 0"
+    assert h["stale"] is True
+    assert h["age_s"] > 3600
+
+
+def test_stale_and_missing_are_distinct():
+    # 无快照 → warning missing（真正缺失）
+    missing = obs.evaluate_provider_alerts(obs.query_provider_health(3600))
+    assert missing[0]["code"] == "provider_preflight_missing"
+    assert missing[0]["level"] == "warning"
+
+    # 有旧快照 → info stale（不是缺失）
+    obs.record_provider_health(_bad_report())
+    _age_snapshots(2)
+    stale = obs.evaluate_provider_alerts(obs.query_provider_health(3600))
+    assert any(a["code"] == "provider_preflight_stale" and a["level"] == "info" for a in stale)
+    assert not any(a["code"] == "provider_preflight_missing" for a in stale)

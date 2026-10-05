@@ -746,25 +746,28 @@ def query_provider_health(window_s: int = 3600) -> dict[str, Any]:
         "state_provider": "", "state_model": "", "state_model_present": None,
         "warnings": [], "n_providers": 0, "n_unhealthy": 0,
         "n_invalid_model": 0, "n_inference_failed": 0,
-        "snapshots": 0, "window_s": int(window_s),
+        "snapshots": 0, "age_s": 0.0, "stale": False, "window_s": int(window_s),
     }
     try:
         conn = _get_conn()
         if conn is None:
             return {**empty, "error": "observability store unavailable"}
         conn.row_factory = sqlite3.Row
-        since = time.time() - max(0, int(window_s))
-        rows = conn.execute(
+        now = time.time()
+        since = now - max(0, int(window_s))
+        # P0/A-1：取**最新快照（不限窗口）**。此前按窗口过滤，快照滑出窗口后
+        # 会退化成空结果 → 误报 "preflight_missing" → 系统健康却显示 degraded。
+        latest = conn.execute(
             """SELECT ts, ok, degraded, n_providers, n_unhealthy, n_invalid_model, report
-               FROM provider_health_snapshots WHERE ts >= ? ORDER BY ts DESC""",
-            (since,),
-        ).fetchall()
-        if not rows:
+               FROM provider_health_snapshots ORDER BY ts DESC LIMIT 1"""
+        ).fetchone()
+        if latest is None:
             return empty
+        in_window = conn.execute(
+            "SELECT COUNT(*) n FROM provider_health_snapshots WHERE ts >= ?", (since,)
+        ).fetchone()["n"]
 
         import json
-
-        latest = rows[0]
         try:
             report = json.loads(latest["report"] or "{}")
         except Exception:
@@ -788,7 +791,9 @@ def query_provider_health(window_s: int = 3600) -> dict[str, Any]:
             "n_providers": int(latest["n_providers"]),
             "n_unhealthy": int(latest["n_unhealthy"]),
             "n_invalid_model": int(latest["n_invalid_model"]),
-            "snapshots": len(rows),
+            "snapshots": int(in_window),
+            "age_s": round(now - float(latest["ts"]), 1),
+            "stale": (now - float(latest["ts"])) > max(0, int(window_s)),
             "window_s": int(window_s),
         }
     except Exception as exc:  # pragma: no cover - defensive
@@ -808,6 +813,16 @@ def evaluate_provider_alerts(health: dict[str, Any]) -> list[dict[str, Any]]:
         }]
 
     alerts: list[dict[str, Any]] = []
+    # P0/A-1：快照过期只是"信息新鲜度"问题，不是健康故障——用 info 级，
+    # 不参与 overall 的 degraded/critical 裁决（避免健康时误报降级）。
+    if health.get("stale"):
+        alerts.append({
+            "level": "info", "code": "provider_preflight_stale",
+            "message": (
+                f"provider 预检快照已过期（{health.get('age_s')}s 前，窗口 "
+                f"{health.get('window_s')}s）——数据仍可用但非最新"
+            ),
+        })
     for p in health.get("providers") or []:
         name = p.get("name") or "?"
         if p.get("model_present") is False:
@@ -983,21 +998,25 @@ def query_skill_network_health(window_s: int = 3600) -> dict[str, Any]:
     empty: dict[str, Any] = {
         "checked_at": 0.0, "ok": None, "targets": [], "required_egress": [],
         "warnings": [], "n_targets": 0, "n_reachable": 0,
-        "snapshots": 0, "window_s": int(window_s),
+        "snapshots": 0, "age_s": 0.0, "stale": False, "window_s": int(window_s),
     }
     try:
         conn = _get_conn()
         if conn is None:
             return {**empty, "error": "observability store unavailable"}
         conn.row_factory = sqlite3.Row
-        since = time.time() - max(0, int(window_s))
+        now = time.time()
+        since = now - max(0, int(window_s))
+        # P0/A-1：取最新快照（不限窗口），避免滑窗导致误报 missing
         row = conn.execute(
             """SELECT ts, ok, n_targets, n_reachable, report
-               FROM skill_network_snapshots WHERE ts >= ? ORDER BY ts DESC LIMIT 1""",
-            (since,),
+               FROM skill_network_snapshots ORDER BY ts DESC LIMIT 1"""
         ).fetchone()
         if row is None:
             return empty
+        in_window = conn.execute(
+            "SELECT COUNT(*) n FROM skill_network_snapshots WHERE ts >= ?", (since,)
+        ).fetchone()["n"]
         import json
 
         try:
@@ -1012,7 +1031,9 @@ def query_skill_network_health(window_s: int = 3600) -> dict[str, Any]:
             "warnings": report.get("warnings") or [],
             "n_targets": int(row["n_targets"]),
             "n_reachable": int(row["n_reachable"]),
-            "snapshots": 1,
+            "snapshots": int(in_window),
+            "age_s": round(now - float(row["ts"]), 1),
+            "stale": (now - float(row["ts"])) > max(0, int(window_s)),
             "window_s": int(window_s),
         }
     except Exception as exc:  # pragma: no cover - defensive
@@ -1025,6 +1046,15 @@ def evaluate_skill_network_alerts(health: dict[str, Any]) -> list[dict[str, Any]
         return [{
             "level": "warning", "code": "skill_network_preflight_missing",
             "message": "尚未执行技能出网可达性自检（无快照）",
+        }]
+
+    if health.get("stale"):
+        return [{
+            "level": "info", "code": "skill_network_preflight_stale",
+            "message": (
+                f"技能出网自检快照已过期（{health.get('age_s')}s 前，窗口 "
+                f"{health.get('window_s')}s）——数据仍可用但非最新"
+            ),
         }]
     n_targets = int(health.get("n_targets") or 0)
     n_reachable = int(health.get("n_reachable") or 0)

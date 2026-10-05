@@ -44,6 +44,7 @@ DASHBOARD_HTML = """<!doctype html>
   .alert { padding:10px 14px; border-radius:8px; border:1px solid; margin:0; }
   .alert.warning  { background:#2a230f; border-color:#7a5b13; color:#fbbf24; }
   .alert.critical { background:#2a1313; border-color:#7a1f1f; color:#f87171; }
+  .alert.info { background:#0f1a2a; border-color:#2b3a5e; color:#8fa0c8; }
   .overview { padding:10px 14px; border-radius:8px; border:1px solid #24304f;
               background:#131a30; font-size:13px; }
   .overview.ok   { border-color:#1f5f3a; color:#4ade80; }
@@ -155,7 +156,7 @@ async function refresh() {
 
     document.getElementById('alerts').innerHTML =
       [...(g.alerts || []), ...(p.alerts || []), ...(sn.alerts || [])].map(a =>
-        `<div class="alert ${a.level === 'critical' ? 'critical' : 'warning'}">` +
+        `<div class="alert ${['critical','warning','info'].includes(a.level) ? a.level : 'warning'}">` +
         `[${a.level.toUpperCase()}] ${a.message}</div>`).join('');
 
     const hits = Object.values(gbyrule).reduce((x, y) => x + y, 0) || 1;

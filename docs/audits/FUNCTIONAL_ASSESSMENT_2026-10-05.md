@@ -115,7 +115,7 @@ api 62.0% · llm 65.8% · runtime 77.4%
 
 | # | 发现 | 维度 | 影响 |
 |---|------|------|------|
-| **A-1** | **时间点快照 + 滑窗查询 → 误报**：provider/skill-network 的预检快照滑出窗口后，`overview` 报 `*_preflight_missing` → 系统健康却显示 **degraded** | 可观测性 | 中（误导运维判断） |
+| ~~A-1~~ | ~~时间点快照 + 滑窗查询 → 误报~~ | 可观测性 | **已修复（2026-10-05）**：查询改为"取最新快照（不限窗口）"+ 新鲜度（`age_s`/`stale`）；过期时改用 **info 级 `*_stale`**，不再影响 `overall` 裁决。见 §9 |
 | **A-2** | `router/scene_router.py` **0% 覆盖**：仅被 `LayerRouter.route_with_scene()` 使用，而该方法**无任何调用方** → **死代码 ~160 行** | 可维护性 | 低-中 |
 | **A-3** | `delivery success_rate=51.5%` / 技能 55.6% —— 需区分"历史故障期"与"当前状态"（当前 LLM 链路已修复，llm_calls 近 1h 无样本） | 正确性 | 中（缺窗口化/近期对比） |
 
@@ -134,7 +134,35 @@ api 62.0% · llm 65.8% · runtime 77.4%
 
 ---
 
-## 8. 结论
+## 8. P0（A-1）修复详情
+
+**问题**：`query_provider_health` / `query_skill_network_health` 按滑窗（`ts >= now - window_s`）取快照；
+预检快照滑出窗口后返回**空**，被判定为 `*_preflight_missing`（warning）→ 系统健康却显示 **degraded**。
+
+**修复**：
+
+| 项 | 修复前 | 修复后 |
+|----|--------|--------|
+| 取数 | 按窗口过滤，窗口外=空 | **取最新快照（不限窗口）** |
+| 新鲜度 | 无 | 返回 `age_s` / `stale`，并保留窗口内计数 `snapshots` |
+| 过期语义 | 当作 `missing`（warning） | **`*_preflight_stale`（info）**，不参与 overall 裁决 |
+| 真正无快照 | `missing`（warning） | 不变（仍是 warning） |
+| 看板 | 仅 critical/warning 样式 | 新增 `info` 中性样式 |
+
+**实测**：
+
+| 场景 | 修复前 overall | 修复后 overall |
+|------|:-------------:|:-------------:|
+| `window_s=3600`（快照 1h 前） | degraded | **healthy** |
+| `window_s=60`（快照 >60s） | degraded | **healthy** |
+| 快照 2h 前（手工构造） | — | healthy + `*_preflight_stale`(**info**) |
+| 完全无快照 | degraded | degraded（`missing` warning，语义正确） |
+
+> 语义澄清：**"过期" ≠ "缺失"** —— 前者是数据新鲜度（info），后者才是观测缺口（warning）。
+
+---
+
+## 9. 结论
 
 MoRE OS 现有代码**功能覆盖完整、工程化程度高**（49.6k 行 / 1588 测试 / 73.8% 覆盖 /
 ruff 全通过 / 18 端点全通 / 多层可观测 + 治理 + 安全防护），综合 **7.6/10**。
