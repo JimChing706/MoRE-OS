@@ -12,6 +12,7 @@ Two-phase reasoning:
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from ..core.errors import GovernanceError
 from ..core.types import LayerId, TaskType
@@ -44,6 +45,33 @@ class SymbolicLayer(Layer):
     def symbolic_engine(self) -> SymbolicEngine:
         return self._symbolic
 
+    def _record_governance_event(
+        self, ctx: LayerContext, inference: Any, all_violations: list[str]
+    ) -> None:
+        """Emit one governance evaluation row (pass or block). Never raises.
+
+        Recording passes as well as blocks gives the "治理拦截率" metric a
+        self-contained denominator (``blocked / evaluations``).
+        """
+        try:
+            from ..governance import observability as _obs
+
+            strict = bool(ctx.core.settings.strict_ontology)
+            rules = list(getattr(inference, "violation_rules", []) or [])
+            if not rules and all_violations:
+                rules = list(inference.fired_rules)
+            _obs.record_governance_event(
+                request_id=ctx.request.id,
+                layer=self.layer_id.value,
+                task_type=ctx.request.type.value,
+                blocked=bool(all_violations) and strict,
+                strict=strict,
+                rules=rules,
+                violations=all_violations,
+            )
+        except Exception:  # pragma: no cover - telemetry must never break L3
+            pass
+
     async def process(self, ctx: LayerContext) -> LayerResult:
         # 1. Classic ontology check
         violations = await ctx.core.ontology.check(ctx.request)
@@ -74,6 +102,7 @@ class SymbolicLayer(Layer):
         # 3. Run forward-chaining inference (governance rules)
         inference = self._engine.run(facts, context={"settings": ctx.core.settings})
         all_violations = violations + inference.violations
+        self._record_governance_event(ctx, inference, all_violations)
 
         if all_violations and ctx.core.settings.strict_ontology:
             raise GovernanceError(f"symbolic violations: {all_violations}")

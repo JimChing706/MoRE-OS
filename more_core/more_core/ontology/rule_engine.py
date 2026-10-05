@@ -66,6 +66,10 @@ class InferenceResult:
         self.annotations: dict[str, Any] = {}
         self.halted: bool = False
         self.violations: list[str] = []
+        # Rule attribution: ``violation_rules[i]`` is the rule that produced
+        # ``violations[i]``.  Lets governance telemetry count *which* rule
+        # fired a violation instead of guessing from co-fired benign rules.
+        self.violation_rules: list[str] = []
 
     @property
     def ok(self) -> bool:
@@ -112,7 +116,7 @@ class RuleEngine:
                     for act_fn in rule.actions:
                         actions = act_fn(wm, ctx)
                         for act in actions:
-                            self._apply(act, wm, result)
+                            self._apply(act, wm, result, rule_name=rule.name)
                     if result.halted:
                         return result
                     break  # restart from highest-priority rule
@@ -121,7 +125,12 @@ class RuleEngine:
         return result
 
     @staticmethod
-    def _apply(action: RuleAction, wm: list[Fact], result: InferenceResult) -> None:
+    def _apply(
+        action: RuleAction,
+        wm: list[Fact],
+        result: InferenceResult,
+        rule_name: str = "",
+    ) -> None:
         if action.type == "assert":
             new_fact = Fact(
                 kind=action.payload.get("kind", "derived"),
@@ -137,6 +146,7 @@ class RuleEngine:
             result.annotations.update(action.payload)
         elif action.type == "violation":
             result.violations.append(action.payload.get("message", "rule violation"))
+            result.violation_rules.append(rule_name)
         elif action.type == "halt":
             result.halted = True
 

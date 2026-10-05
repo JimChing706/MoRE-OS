@@ -474,7 +474,20 @@ class MoRECore:
                     task_id=request.id,
                     rule="ZEN-01",
                 )
-            if zen.check_violation("ZEN-19", {"query": request.query, "task_id": request.id}):
+            zen19_blocked = zen.check_violation(
+                "ZEN-19", {"query": request.query, "task_id": request.id}
+            )
+            # 可观测性：前置护栏是"最前线"的治理门禁。每个请求都记一行
+            # （通过/拦截），让治理拦截率拥有全量请求分母，而不是只看进 L3 的
+            # 子集（谱路由会跳过 L3）。
+            self._record_governance_event(
+                request,
+                layer="guardrail",
+                blocked=zen19_blocked,
+                rules=["zen_19_absolute_prohibition"] if zen19_blocked else [],
+                violations=["query contains forbidden operations"] if zen19_blocked else [],
+            )
+            if zen19_blocked:
                 self.audit.log(
                     actor=actor,
                     action="zen_violation",
@@ -936,6 +949,31 @@ class MoRECore:
 
         # 通用默认: 无契约约束
         return TaskExpectation()
+
+    def _record_governance_event(
+        self,
+        request: TaskRequest,
+        *,
+        layer: str,
+        blocked: bool,
+        rules: list[str] | None = None,
+        violations: list[str] | None = None,
+    ) -> None:
+        """Emit one governance evaluation row. Never raises (telemetry only)."""
+        try:
+            from ..governance import observability as _obs
+
+            _obs.record_governance_event(
+                request_id=request.id,
+                layer=layer,
+                task_type=request.type.value,
+                blocked=blocked,
+                strict=bool(getattr(self.settings, "strict_ontology", True)),
+                rules=rules or [],
+                violations=violations or [],
+            )
+        except Exception:  # pragma: no cover - telemetry must never break execution
+            pass
 
     async def _run_pipeline(
         self,

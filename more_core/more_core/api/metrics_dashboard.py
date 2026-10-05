@@ -41,6 +41,9 @@ DASHBOARD_HTML = """<!doctype html>
   .bar { height:8px; background:#1d2742; border-radius:4px; overflow:hidden; }
   .bar > i { display:block; height:100%; background:#2b6cff; }
   #err { color:#f87171; }
+  .alert { padding:10px 14px; border-radius:8px; border:1px solid; margin:0; }
+  .alert.warning  { background:#2a230f; border-color:#7a5b13; color:#fbbf24; }
+  .alert.critical { background:#2a1313; border-color:#7a1f1f; color:#f87171; }
 </style>
 </head>
 <body>
@@ -53,6 +56,12 @@ DASHBOARD_HTML = """<!doctype html>
 </header>
 <div class="wrap">
   <div class="cards" id="cards"></div>
+  <div id="alerts" class="wrap" style="padding:0;gap:8px"></div>
+  <div class="cards" id="gcards"></div>
+  <div>
+    <div class="k">治理命中规则（近 1h）</div>
+    <table id="govrules"><thead><tr><th>规则</th><th>命中</th><th>占比</th><th></th></tr></thead><tbody></tbody></table>
+  </div>
   <div>
     <div class="k">按 Provider / Model</div>
     <table id="providers"><thead><tr><th>provider:model</th><th>调用</th><th>成功率</th><th>prompt tok</th><th>completion tok</th></tr></thead><tbody></tbody></table>
@@ -87,10 +96,11 @@ async function refresh() {
   err.textContent = '';
   if (!key) { st.textContent = '请输入 API Key'; return; }
   try {
-    const [m, d, rec] = await Promise.all([
+    const [m, d, rec, g] = await Promise.all([
       get('/api/v1/metrics/llm?window_s=3600'),
       get('/api/v1/delivery/stats?window_s=86400'),
-      get('/api/v1/metrics/llm/recent?limit=15')
+      get('/api/v1/metrics/llm/recent?limit=15'),
+      get('/api/v1/metrics/governance?window_s=3600')
     ]);
     const mm = m.metrics || {}, lat = mm.latency_ms || {}, tok = mm.tokens || {}, ds = d.stats || {};
     const rate = Math.round((mm.success_rate || 0) * 100);
@@ -102,6 +112,26 @@ async function refresh() {
       card('交付总数 (24h)', fmt(ds.total), `已交付 ${fmt(ds.delivered)} · 拦截 ${fmt(ds.blocked)} · 失败 ${fmt(ds.failed)}`),
       card('交付成功率', Math.round((ds.success_rate || 0) * 100) + '%', `闸门通过率 ${Math.round((ds.gate_pass_rate||0)*100)}%`)
     ].join('');
+
+    const gm = g.metrics || {}, gbyrule = gm.by_rule || {};
+    const grate = Math.round((gm.blocked_rate || 0) * 100);
+    document.getElementById('gcards').innerHTML = [
+      card('治理请求 (1h)', fmt(gm.requests), `评估 ${fmt(gm.evaluations)} · 通过 ${fmt(gm.passed)}`),
+      card('治理拦截率', grate + '%', `拦截 ${fmt(gm.blocked_requests)} / ${fmt(gm.requests)} 请求`, grate >= 60 ? 'bad' : (grate >= 30 ? 'warn' : 'ok')),
+      card('破坏性请求拦截', fmt(gm.destructive_blocks), 'destructive_request_detection', (gm.destructive_blocks||0) > 0 ? 'bad' : 'ok')
+    ].join('');
+
+    document.getElementById('alerts').innerHTML = (g.alerts || []).map(a =>
+      `<div class="alert ${a.level === 'critical' ? 'critical' : 'warning'}">` +
+      `[${a.level.toUpperCase()}] ${a.message}</div>`).join('');
+
+    const hits = Object.values(gbyrule).reduce((x, y) => x + y, 0) || 1;
+    document.querySelector('#govrules tbody').innerHTML =
+      Object.entries(gbyrule).map(([k, v]) => {
+        const pct = Math.round(v / hits * 100);
+        return `<tr><td>${k}</td><td>${fmt(v)}</td><td>${pct}%</td>` +
+               `<td><div class="bar"><i style="width:${pct}%"></i></div></td></tr>`;
+      }).join('') || '<tr><td colspan="4" class="sub">暂无治理命中</td></tr>';
 
     const pb = document.querySelector('#providers tbody');
     pb.innerHTML = Object.entries(mm.providers || {}).map(([k, v]) =>

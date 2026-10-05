@@ -75,6 +75,58 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
         rows = _obs.query_recent_llm(limit=max(1, min(int(limit), 500)))
         return {"status": "ok", "count": len(rows), "calls": rows}
 
+    @router.get("/metrics/governance", dependencies=deps)
+    async def governance_metrics(window_s: int = 3600) -> dict[str, Any]:
+        """治理拦截率指标 + 阈值告警（对应"可观测性"硬伤）。
+
+        读取 ``governance_events`` 遥测表（每次 L3 治理评估一行，通过/拦截
+        均记录），返回自洽的拦截率与按规则的命中分布，并在读取时求值
+        阈值告警（纯函数，无副作用）。
+        """
+        from ...governance import observability as _obs
+
+        stats = _obs.query_governance_stats(window_s)
+        return {
+            "status": "ok",
+            "window_s": int(window_s),
+            "metrics": stats,
+            "alerts": _obs.evaluate_governance_alerts(stats),
+        }
+
+    @router.get("/metrics/governance/prometheus", include_in_schema=False)
+    async def governance_prometheus(window_s: int = 3600) -> Any:
+        """治理指标的 Prometheus 文本导出（供 scrape / Grafana 直接消费）。"""
+        from fastapi.responses import PlainTextResponse
+
+        from ...governance import observability as _obs
+
+        st = _obs.query_governance_stats(window_s)
+        alerts = _obs.evaluate_governance_alerts(st)
+        lines = [
+            "# HELP more_os_governance_requests Governance-evaluated requests in window.",
+            "# TYPE more_os_governance_requests gauge",
+            f"more_os_governance_requests {int(st.get('requests') or 0)}",
+            "# HELP more_os_governance_blocked_requests Requests blocked by governance.",
+            "# TYPE more_os_governance_blocked_requests gauge",
+            f"more_os_governance_blocked_requests {int(st.get('blocked_requests') or 0)}",
+            "# HELP more_os_governance_blocked_rate Blocked requests / evaluated requests.",
+            "# TYPE more_os_governance_blocked_rate gauge",
+            f"more_os_governance_blocked_rate {float(st.get('blocked_rate') or 0.0)}",
+            "# HELP more_os_governance_destructive_blocks Destructive requests blocked.",
+            "# TYPE more_os_governance_destructive_blocks gauge",
+            f"more_os_governance_destructive_blocks {int(st.get('destructive_blocks') or 0)}",
+        ]
+        lines.append("# TYPE more_os_governance_rule_hits_total gauge")
+        for rule, hits in (st.get("by_rule") or {}).items():
+            safe = str(rule).replace('"', "")
+            lines.append(f'more_os_governance_rule_hits_total{{rule="{safe}"}} {int(hits)}')
+        lines.append("# TYPE more_os_governance_alerts gauge")
+        for a in alerts:
+            code = str(a.get("code", "")).replace('"', "")
+            lvl = str(a.get("level", "")).replace('"', "")
+            lines.append(f'more_os_governance_alerts{{level="{lvl}",code="{code}"}} 1')
+        return PlainTextResponse("\n".join(lines) + "\n")
+
     @router.get("/metrics/dashboard", include_in_schema=False)
     async def metrics_dashboard() -> Any:
         """自托管实时指标看板（无密钥内嵌；页面内输入 API Key 后轮询）。"""

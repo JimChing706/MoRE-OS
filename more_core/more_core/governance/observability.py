@@ -79,6 +79,24 @@ CREATE TABLE IF NOT EXISTS injection_hits (
 CREATE INDEX IF NOT EXISTS idx_inj_ts       ON injection_hits(ts);
 CREATE INDEX IF NOT EXISTS idx_inj_origin   ON injection_hits(origin, injection_site);
 CREATE INDEX IF NOT EXISTS idx_inj_request  ON injection_hits(request_id);
+
+-- 3. governance_events — 每次 L3 治理评估一行（通过/拦截都记），
+--    使"治理拦截率" = blocked / evaluations 自洽可算，无需跨库 join。
+CREATE TABLE IF NOT EXISTS governance_events (
+    id           TEXT PRIMARY KEY,
+    ts           REAL NOT NULL,
+    request_id   TEXT NOT NULL DEFAULT '',
+    layer        TEXT NOT NULL DEFAULT '',
+    task_type    TEXT NOT NULL DEFAULT '',
+    blocked      INTEGER NOT NULL DEFAULT 0,
+    strict       INTEGER NOT NULL DEFAULT 0,
+    rules        TEXT NOT NULL DEFAULT '',   -- JSON list: 触发违规的规则名
+    violations   TEXT NOT NULL DEFAULT '',   -- JSON list: 违规消息
+    severity     TEXT NOT NULL DEFAULT 'info'
+);
+CREATE INDEX IF NOT EXISTS idx_gov_ts      ON governance_events(ts);
+CREATE INDEX IF NOT EXISTS idx_gov_blocked ON governance_events(blocked);
+CREATE INDEX IF NOT EXISTS idx_gov_layer   ON governance_events(layer);
 """
 
 # Hard cap on db size before we stop appending — telemetry must not eat disk.
@@ -329,6 +347,205 @@ def query_injection_stats(window_s: int = 3600) -> dict[str, int]:
         return {row[0]: int(row[1]) for row in cur.fetchall()}
     except Exception:  # pragma: no cover - defensive
         return {}
+
+
+def record_governance_event(
+    *,
+    request_id: str = "",
+    layer: str = "L3",
+    task_type: str = "",
+    blocked: bool = False,
+    strict: bool = False,
+    rules: Iterable[str] | None = None,
+    violations: Iterable[str] | None = None,
+) -> None:
+    """Append one governance evaluation row (pass *and* block). Never raises.
+
+    Recording passed evaluations too gives the metric a self-contained
+    denominator, so ``blocked_rate = blocked / evaluations`` needs no join.
+    """
+    try:
+        conn = _get_conn()
+        if conn is None:
+            return
+        import json
+
+        rule_list = [str(r) for r in (rules or [])]
+        viol_list = [str(v) for v in (violations or [])]
+        if blocked and "destructive_request_detection" in rule_list:
+            severity = "high"
+        elif viol_list:
+            severity = "warn"
+        else:
+            severity = "info"
+        conn.execute(
+            """INSERT INTO governance_events
+               (id, ts, request_id, layer, task_type, blocked, strict,
+                rules, violations, severity)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (
+                f"gov_{uuid.uuid4().hex[:14]}",
+                time.time(),
+                request_id or "",
+                layer or "",
+                task_type or "",
+                1 if blocked else 0,
+                1 if strict else 0,
+                json.dumps(rule_list, ensure_ascii=False)[:2000],
+                json.dumps(viol_list, ensure_ascii=False)[:4000],
+                severity,
+            ),
+        )
+    except Exception:  # pragma: no cover - defensive
+        pass
+
+
+# 判定"破坏性请求拦截"的规则集合：无论被最前线护栏(ZEN-19)还是 L3 深度
+# 规则(destructive_request_detection)拦下，都计入同一指标。
+_DESTRUCTIVE_RULES: frozenset[str] = frozenset({
+    "destructive_request_detection",
+    "zen_19_absolute_prohibition",
+})
+
+
+def _load_json_list(raw: Any) -> list[str]:
+    try:
+        import json
+
+        val = json.loads(raw or "[]")
+        return [str(x) for x in val] if isinstance(val, list) else []
+    except Exception:
+        return []
+
+
+def query_governance_stats(window_s: int = 3600) -> dict[str, Any]:
+    """Aggregate governance evaluations over the trailing *window_s* seconds.
+
+    Returns a self-contained 拦截率 view::
+
+        evaluations / blocked / violations / passed
+        blocked_rate    = blocked / evaluations      (strict 拦截率)
+        violation_rate  = violations / evaluations   (违规命中率)
+        destructive_blocks / by_rule / by_layer
+    """
+    empty: dict[str, Any] = {
+        "evaluations": 0, "requests": 0, "blocked": 0, "blocked_requests": 0,
+        "violations": 0, "passed": 0,
+        "blocked_rate": 0.0, "violation_rate": 0.0,
+        "destructive_blocks": 0, "by_rule": {}, "by_layer": {},
+        "window_s": int(window_s),
+    }
+    try:
+        conn = _get_conn()
+        if conn is None:
+            return {**empty, "error": "observability store unavailable"}
+        conn.row_factory = sqlite3.Row
+        since = time.time() - max(0, int(window_s))
+        rows = conn.execute(
+            """SELECT request_id, layer, task_type, blocked, strict, rules, violations
+               FROM governance_events WHERE ts >= ?""",
+            (since,),
+        ).fetchall()
+        if not rows:
+            return empty
+
+        by_rule: dict[str, int] = {}
+        by_layer: dict[str, int] = {}
+        blocked = viol_evals = destructive = 0
+        # 拦截率以"请求"（去重 request_id）为口径：同一请求可能经过多个治理
+        # 决策点（guardrail / L3），按事件计数会重复放大分母与分子。
+        req_ids: set[str] = set()
+        blocked_reqs: set[str] = set()
+        viol_reqs: set[str] = set()
+        for i, r in enumerate(rows):
+            rid = r["request_id"] or f"__row_{i}"
+            rule_list = _load_json_list(r["rules"])
+            viol_list = _load_json_list(r["violations"])
+            req_ids.add(rid)
+            by_layer[r["layer"] or "unknown"] = by_layer.get(r["layer"] or "unknown", 0) + 1
+            if viol_list:
+                viol_evals += 1
+                viol_reqs.add(rid)
+                for name in rule_list:
+                    by_rule[name] = by_rule.get(name, 0) + 1
+            if int(r["blocked"]):
+                blocked += 1
+                blocked_reqs.add(rid)
+                if _DESTRUCTIVE_RULES & set(rule_list):
+                    destructive += 1
+
+        n = len(rows)
+        req_total = len(req_ids)
+        blocked_req_n = len(blocked_reqs)
+        return {
+            "evaluations": n,
+            "requests": req_total,
+            "blocked": blocked,
+            "blocked_requests": blocked_req_n,
+            "violations": viol_evals,
+            "passed": n - viol_evals,
+            "blocked_rate": round(blocked_req_n / req_total, 3) if req_total else 0.0,
+            "violation_rate": round(len(viol_reqs) / req_total, 3) if req_total else 0.0,
+            "destructive_blocks": destructive,
+            "by_rule": dict(sorted(by_rule.items(), key=lambda kv: -kv[1])),
+            "by_layer": by_layer,
+            "window_s": int(window_s),
+        }
+    except Exception as exc:  # pragma: no cover - defensive
+        return {**empty, "error": str(exc)}
+
+
+# 治理告警阈值（可用 evaluate_governance_alerts 的 overrides 覆盖）
+_GOV_ALERT_DEFAULTS: dict[str, float] = {
+    "min_samples": 10,          # 样本太少不判"率"，避免噪声
+    "blocked_rate_warn": 0.30,
+    "blocked_rate_crit": 0.60,
+    "destructive_blocks_warn": 1,
+    "destructive_blocks_crit": 5,
+}
+
+
+def evaluate_governance_alerts(
+    stats: dict[str, Any], **overrides: float
+) -> list[dict[str, Any]]:
+    """Pure threshold evaluation over :func:`query_governance_stats` output.
+
+    Returns ``[{level, code, value, threshold, message}, ...]`` (empty = ok).
+    No side effects — callers decide how to surface/dispatch.
+    """
+    cfg = {**_GOV_ALERT_DEFAULTS, **overrides}
+    alerts: list[dict[str, Any]] = []
+    n = int(stats.get("requests") or stats.get("evaluations") or 0)
+    rate = float(stats.get("blocked_rate") or 0.0)
+    destructive = int(stats.get("destructive_blocks") or 0)
+
+    if n >= int(cfg["min_samples"]):
+        if rate >= float(cfg["blocked_rate_crit"]):
+            alerts.append({
+                "level": "critical", "code": "governance_blocked_rate",
+                "value": rate, "threshold": float(cfg["blocked_rate_crit"]),
+                "message": f"治理拦截率 {rate:.0%} ≥ 临界阈值 {cfg['blocked_rate_crit']:.0%}（样本 {n}）",
+            })
+        elif rate >= float(cfg["blocked_rate_warn"]):
+            alerts.append({
+                "level": "warning", "code": "governance_blocked_rate",
+                "value": rate, "threshold": float(cfg["blocked_rate_warn"]),
+                "message": f"治理拦截率 {rate:.0%} ≥ 告警阈值 {cfg['blocked_rate_warn']:.0%}（样本 {n}）",
+            })
+
+    if destructive >= int(cfg["destructive_blocks_crit"]):
+        alerts.append({
+            "level": "critical", "code": "destructive_request_blocks",
+            "value": destructive, "threshold": int(cfg["destructive_blocks_crit"]),
+            "message": f"破坏性请求拦截 {destructive} 次 ≥ 临界阈值 {int(cfg['destructive_blocks_crit'])}",
+        })
+    elif destructive >= int(cfg["destructive_blocks_warn"]):
+        alerts.append({
+            "level": "warning", "code": "destructive_request_blocks",
+            "value": destructive, "threshold": int(cfg["destructive_blocks_warn"]),
+            "message": f"破坏性请求拦截 {destructive} 次 ≥ 告警阈值 {int(cfg['destructive_blocks_warn'])}",
+        })
+    return alerts
 
 
 def summary(window_s: int = 3600) -> dict[str, Any]:
