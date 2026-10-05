@@ -42,6 +42,7 @@
 | [SKILL_ENHANCEMENT_2026-10-05.md](audits/SKILL_ENHANCEMENT_2026-10-05.md) | Skill 子系统增强（错误隔离/超时/真实指标/遥测/看板） |
 | [SKILL_PANORAMIC_EVALUATION_2026-10-05.md](audits/SKILL_PANORAMIC_EVALUATION_2026-10-05.md) | Skill 全景评估（功能/兼容/性能/安全 + 残留风险） |
 | [LAYER_MATRIX_RETROSPECTIVE_2026-10-05.md](audits/LAYER_MATRIX_RETROSPECTIVE_2026-10-05.md) | 分层测试矩阵回顾性检验（权威链路核验 + 17 用例） |
+| [FUNCTIONAL_ASSESSMENT_2026-10-05.md](audits/FUNCTIONAL_ASSESSMENT_2026-10-05.md) | 现有代码功能性水平评估（覆盖率/端点/运行指标 + 评分卡） |
 | [RCA_AND_FIX_2026-10-04.md](audits/RCA_AND_FIX_2026-10-04.md) | 三大硬伤（产出正确性/交付可信度/可观测性）根因分析 |
 | [STAGE_EVALUATION_2026-10-04.md](audits/STAGE_EVALUATION_2026-10-04.md) | 阶段成果评估（需求逐条对照 + 达成度评分） |
 | [HARDENING_BATCH_2026-10-04.md](audits/HARDENING_BATCH_2026-10-04.md) | 加固批次 1–4（R-01…R-19 / D-1…D-4 / 生产效率） |
