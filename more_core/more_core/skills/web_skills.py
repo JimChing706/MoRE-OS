@@ -77,19 +77,41 @@ class WebSearchSkill(Skill):
             return SkillResult(
                 success=True,
                 output=results,
-                metadata={"provider": provider, "query": query},
+                metadata={
+                    "provider": provider,
+                    # 显式声明"实际使用"的来源；不再静默换源（R-2）
+                    "provider_used": provider,
+                    "query": query,
+                },
             )
         except Exception as e:
             return SkillResult(success=False, error=str(e))
 
+    def _serpapi_key(self) -> str:
+        """SerpAPI key 来源：技能 config 优先，其次环境变量 SERPAPI_API_KEY。"""
+        import os
+
+        return str(
+            self._config.get("serpapi_key") or os.getenv("SERPAPI_API_KEY") or ""
+        ).strip()
+
     async def _search(self, provider: str, query: str, limit: int) -> list[dict[str, Any]]:
-        """Search using specified provider."""
+        """按指定 provider 搜索。
+
+        R-2 修复：此前 serpapi 缺 key、或 provider 未知时会**静默降级**为
+        DuckDuckGo，而 metadata 仍报告原 provider —— 调用方"以为用了 A，实际用了 B"。
+        现在改为**显式报错**，让调用方明确知道该换源还是配置 key。
+        """
         if provider == "duckduckgo":
             return await self._search_duckduckgo(query, limit)
-        elif provider == "serpapi":
+        if provider == "serpapi":
+            if not self._serpapi_key():
+                raise ValueError(
+                    "provider 'serpapi' 需要 API key：请配置技能 config.serpapi_key "
+                    "或环境变量 SERPAPI_API_KEY（已不再静默降级为 duckduckgo）"
+                )
             return await self._search_serpapi(query, limit)
-        else:
-            return await self._search_duckduckgo(query, limit)
+        raise ValueError(f"未知搜索 provider: {provider!r}（可选: duckduckgo, serpapi）")
 
     async def _search_duckduckgo(self, query: str, limit: int) -> list[dict[str, Any]]:
         """Search via DuckDuckGo HTML."""
@@ -116,9 +138,9 @@ class WebSearchSkill(Skill):
 
     async def _search_serpapi(self, query: str, limit: int) -> list[dict[str, Any]]:
         """Search via SerpAPI (requires key)."""
-        api_key = self._config.get("serpapi_key", "")
+        api_key = self._serpapi_key()
         if not api_key:
-            return await self._search_duckduckgo(query, limit)
+            raise ValueError("serpapi_key 未配置（config.serpapi_key 或 SERPAPI_API_KEY）")
 
         url = f"https://serpapi.com/search.json?q={query}&api_key={api_key}&num={limit}"
         async with httpx.AsyncClient(timeout=30) as client:

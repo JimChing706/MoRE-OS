@@ -64,3 +64,80 @@ def test_declared_dependencies_match_implementation():
     assert "pandas" not in metas["data.analyze"].dependencies
     assert "beautifulsoup4" not in metas["web.browse"].dependencies
     assert metas["web.browse"].dependencies == ["httpx"]
+
+
+# ---------------------------------------------------------------------------
+# R-2：搜索源不得静默降级
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_serpapi_without_key_fails_explicitly(monkeypatch):
+    """回归：此前 serpapi 缺 key 会静默改走 DuckDuckGo 且 metadata 仍报 serpapi。"""
+    from more_core.skills import WebSearchSkill
+
+    monkeypatch.delenv("SERPAPI_API_KEY", raising=False)
+    r = await WebSearchSkill().execute({"query": "x", "provider": "serpapi", "limit": 3})
+
+    assert r.success is False
+    assert "SERPAPI_API_KEY" in (r.error or "")
+    assert "不再静默降级" in (r.error or "")
+
+
+@pytest.mark.asyncio
+async def test_serpapi_uses_env_key(monkeypatch):
+    from more_core.skills import WebSearchSkill
+
+    called: dict[str, object] = {}
+
+    async def fake_serpapi(self, query, limit):
+        called["query"], called["limit"] = query, limit
+        return [{"title": "t", "url": "u", "snippet": "s"}]
+
+    monkeypatch.setattr(WebSearchSkill, "_search_serpapi", fake_serpapi)
+    monkeypatch.setenv("SERPAPI_API_KEY", "test-key")
+
+    r = await WebSearchSkill().execute({"query": "abc", "provider": "serpapi", "limit": 2})
+    assert r.success is True
+    assert called == {"query": "abc", "limit": 2}
+    assert r.metadata["provider_used"] == "serpapi"
+
+
+@pytest.mark.asyncio
+async def test_serpapi_uses_config_key(monkeypatch):
+    from more_core.skills import WebSearchSkill
+
+    monkeypatch.delenv("SERPAPI_API_KEY", raising=False)
+    seen: dict[str, object] = {}
+
+    async def fake_serpapi(self, query, limit):
+        seen["called"] = True
+        return []
+
+    monkeypatch.setattr(WebSearchSkill, "_search_serpapi", fake_serpapi)
+    r = await WebSearchSkill({"serpapi_key": "cfg-key"}).execute(
+        {"query": "q", "provider": "serpapi"}
+    )
+    assert r.success is True and seen.get("called") is True
+
+
+@pytest.mark.asyncio
+async def test_unknown_provider_raises_not_fallback(monkeypatch):
+    from more_core.skills import WebSearchSkill
+
+    monkeypatch.delenv("SERPAPI_API_KEY", raising=False)
+    with pytest.raises(ValueError):
+        await WebSearchSkill()._search("bing", "x", 5)
+
+
+@pytest.mark.asyncio
+async def test_duckduckgo_path_reports_provider_used(monkeypatch):
+    from more_core.skills import WebSearchSkill
+
+    async def fake_ddg(self, query, limit):
+        return []
+
+    monkeypatch.setattr(WebSearchSkill, "_search_duckduckgo", fake_ddg)
+    r = await WebSearchSkill().execute({"query": "x", "provider": "duckduckgo"})
+    assert r.success is True
+    assert r.metadata["provider_used"] == "duckduckgo"

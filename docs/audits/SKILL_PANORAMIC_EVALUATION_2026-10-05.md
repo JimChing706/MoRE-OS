@@ -82,7 +82,7 @@ code.execute / data.analyze / api.call）+ 参数校验、交付台账、可观�
 | # | 风险 | 维度 | 建议 |
 |---|------|------|------|
 | ~~R-1~~ | ~~`code.execute` 无 OS 级沙箱~~ | 安全 | **已修复（2026-10-05）**：`code.execute` 现统一走 `SecureSandbox`——AST 危险调用扫描（`os.system`/`subprocess`/`rmtree`…）+ 全 argv 策略 + 路径白名单 + 环境脱敏 + 超时 + 审计日志。危险代码返回 `Blocked: ...`。见 §6 |
-| **R-2** | `web.search` 指定 `provider=serpapi` 但未配 key 时**静默降级**为 DuckDuckGo | 正确性 | 检查 SerpAPI key，缺失时返回明确错误而非静默换源（避免"看起来成功、实际换了来源"） |
+| ~~R-2~~ | ~~`web.search` 指定 serpapi 但未配 key 时静默降级~~ | 正确性 | **已修复（2026-10-05）**：缺 key / 未知 provider 一律显式报错；key 支持 `config.serpapi_key` 与 `SERPAPI_API_KEY`；成功时 metadata 明确 `provider_used`。见 §6 |
 | **R-3** | `data.analyze` 的 `query` 为**朴素子串/包含匹配**，非真正查询语言 | 功能 | 文档标注能力边界，或引入正式查询语法 |
 | **R-4** | 网络受限环境下 web/api 技能整体不可用 | 兼容性 | 部署前确认出网策略；失败已结构化返回，不影响其它技能 |
 
@@ -129,7 +129,30 @@ bash    rm -rf /                     → 非零退出 + 策略拒绝     （拦�
 
 ---
 
-## 6. 测试与回归
+## 6. R-2 修复详情（搜索源不再静默降级）
+
+`WebSearchSkill._search()` 此前对 **serpapi 缺 key** 与 **未知 provider** 都静默改走
+DuckDuckGo，而 `execute()` 的 metadata 仍报告原 provider —— 调用方"以为用了 A，实际用了 B"。
+
+**修复**：
+
+| 场景 | 修复前 | 修复后 |
+|------|--------|--------|
+| `provider=serpapi` 且无 key | 静默用 DuckDuckGo，metadata 报 serpapi | `success=False`，错误含"需要 API key…已不再静默降级" |
+| `provider=<未知>` | 静默用 DuckDuckGo | 抛 `ValueError`（schema enum 已在入口拦截） |
+| key 来源 | 仅 `config.serpapi_key` | config 优先，其次环境变量 `SERPAPI_API_KEY` |
+| 成功结果来源 | 仅 `provider`（请求值） | 增加 `provider_used`（实际值） |
+
+**实测**（无 key）：
+```
+POST /skills/web.search/run {"query":"x","provider":"serpapi"}
+→ success=false, error="provider 'serpapi' 需要 API key：请配置技能 config.serpapi_key
+  或环境变量 SERPAPI_API_KEY（已不再静默降级为 duckduckgo）"
+```
+
+---
+
+## 7. 测试与回归
 
 | 测试文件 | 用例数 |
 |----------|:------:|
