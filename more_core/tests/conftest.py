@@ -194,6 +194,17 @@ def _isolated_delivery_ledger(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolated_skill_ledger(tmp_path, monkeypatch):
+    """技能交付台账不得写入开发者真实 data/ 目录。"""
+    from more_core.skills.delivery import set_default_skill_ledger
+
+    monkeypatch.setenv("MORE_SKILL_LEDGER_DB", str(tmp_path / "skill_deliverables.db"))
+    set_default_skill_ledger(None)
+    yield
+    set_default_skill_ledger(None)
+
+
+@pytest.fixture(autouse=True)
 def _isolated_observability(tmp_path, monkeypatch):
     """Telemetry must never leak between tests (or into the real logs/ DB)."""
     from more_core.governance import observability as _obs

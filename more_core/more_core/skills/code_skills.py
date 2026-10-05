@@ -25,14 +25,42 @@ class CodeExecutionSkill(Skill):
         self._metadata = SkillMetadata(
             id="code.execute",
             name="Code Execution",
-            description="Execute code in multiple languages with sandboxing",
+            # 注意：实现为裸 subprocess（无 OS 级沙箱），描述不得再声称 "with sandboxing"。
+            # 风险登记见 docs/audits/SKILL_PANORAMIC_EVALUATION_2026-10-05.md（R-1）。
+            description=(
+                "Execute code via subprocess (python/javascript/bash); "
+                "privileged callers only — no OS-level sandbox"
+            ),
             category=SkillCategory.CODE,
             version="1.0.0",
             tags=["code", "execute", "python", "javascript", "sandbox"],
             config_schema={
-                "language": {"type": "string", "enum": self.SUPPORTED_LANGUAGES},
-                "code": {"type": "string", "required": True},
-                "timeout": {"type": "number", "default": 30},
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string", "minLength": 1, "maxLength": 200000,
+                        "description": "待执行的源码",
+                    },
+                    "language": {
+                        "type": "string", "enum": self.SUPPORTED_LANGUAGES,
+                        "default": "python", "description": "源码语言",
+                    },
+                    "timeout": {
+                        "type": "number", "minimum": 1, "maximum": 300, "default": 30,
+                        "description": "执行超时秒数 (1-300)",
+                    },
+                },
+                "required": ["code"],
+                "additionalProperties": False,
+            },
+            maintainer="MoRE OS Core Team",
+            deployment={
+                "runtime": "python>=3.10",
+                "packages": [],
+                "network_egress": False,
+                "sandbox_required": True,
+                "runtimes": ["python3", "node", "bash"],
+                "env": ["MORE_SANDBOX_LEVEL"],
             },
         )
 
@@ -172,7 +200,42 @@ class DataAnalysisSkill(Skill):
             category=SkillCategory.DATA,
             version="1.0.0",
             tags=["data", "analysis", "json", "csv", "statistics"],
-            dependencies=["pandas"],
+            dependencies=[],  # 实现仅用标准库(json/csv)；此前误声明 pandas
+            config_schema={
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "type": "string",
+                        "enum": ["parse", "transform", "stats", "query"],
+                        "default": "parse", "description": "分析操作",
+                    },
+                    "data": {
+                        "type": "string", "minLength": 1, "maxLength": 1000000,
+                        "description": "待分析的数据文本 (JSON/CSV)",
+                    },
+                    "format": {
+                        "type": "string", "enum": ["auto", "json", "csv"],
+                        "default": "auto", "description": "数据格式",
+                    },
+                    "transform": {
+                        "type": "object", "description": "转换规则 (operation=transform 时使用)",
+                    },
+                    "query": {
+                        "type": "string", "maxLength": 2000,
+                        "description": "查询表达式 (operation=query 时使用)",
+                    },
+                },
+                "required": ["data"],
+                "additionalProperties": False,
+            },
+            maintainer="MoRE OS Core Team",
+            deployment={
+                "runtime": "python>=3.10",
+                "packages": ["pandas"],
+                "network_egress": False,
+                "sandbox_required": False,
+                "env": [],
+            },
         )
 
     @property
@@ -191,14 +254,18 @@ class DataAnalysisSkill(Skill):
         try:
             if operation == "parse":
                 result = self._parse_data(data, params.get("format", "auto"))
-            elif operation == "transform":
-                result = self._transform_data(data, params.get("transform", {}))
-            elif operation == "stats":
-                result = self._compute_stats(data)
-            elif operation == "query":
-                result = self._query_data(data, params.get("query", ""))
             else:
-                return SkillResult(success=False, error=f"Unknown operation: {operation}")
+                # 先解析：transform/stats/query 需要结构化数据，此前直接把原始字符串
+                # 传进去，导致 stats 恒返回 {'type': 'str'}、query 原样返回（缺陷修复）。
+                parsed = self._parse_data(data, params.get("format", "auto")).get("parsed")
+                if operation == "transform":
+                    result = self._transform_data(parsed, params.get("transform", {}))
+                elif operation == "stats":
+                    result = self._compute_stats(parsed)
+                elif operation == "query":
+                    result = self._query_data(parsed, params.get("query", ""))
+                else:
+                    return SkillResult(success=False, error=f"Unknown operation: {operation}")
 
             return SkillResult(success=True, output=result, metadata={"operation": operation})
         except Exception as e:
@@ -274,6 +341,37 @@ class APICallSkill(Skill):
             version="1.0.0",
             tags=["api", "http", "request", "rest"],
             dependencies=["httpx"],
+            config_schema={
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string", "format": "uri", "pattern": "^https?://",
+                        "minLength": 1, "maxLength": 2048,
+                        "description": "目标 API URL (http/https)",
+                    },
+                    "method": {
+                        "type": "string",
+                        "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+                        "default": "GET", "description": "HTTP 方法",
+                    },
+                    "headers": {"type": "object", "description": "请求头"},
+                    "body": {"description": "请求体（POST/PUT/PATCH 时发送）"},
+                    "timeout": {
+                        "type": "number", "minimum": 1, "maximum": 300, "default": 30,
+                        "description": "请求超时秒数 (1-300)",
+                    },
+                },
+                "required": ["url"],
+                "additionalProperties": False,
+            },
+            maintainer="MoRE OS Core Team",
+            deployment={
+                "runtime": "python>=3.10",
+                "packages": ["httpx"],
+                "network_egress": True,
+                "sandbox_required": False,
+                "env": [],
+            },
         )
 
     @property
@@ -293,6 +391,12 @@ class APICallSkill(Skill):
         timeout = params.get("timeout", 30)
 
         try:
+            # SSRF 防护（与 web.browse 保持一致）：拒绝非 http(s)、缺主机、
+            # 以及私网/回环/链路本地地址（防打内网、云元数据 169.254.169.254）。
+            from ..security.ssrf import validate_http_url
+
+            validate_http_url(url)
+
             async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
                 r = await client.request(
                     method,

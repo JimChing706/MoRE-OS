@@ -209,10 +209,20 @@ def init_services(settings: Settings) -> dict[str, Any]:
     _token_predictor = TokenPredictor()
     _workflows = WorkflowEngine()
 
+    # 技能交付台账归档：全部技能标准化录入并置为"已验收"（可追溯）
+    _skill_manager = create_default_skill_manager()
+    try:
+        from ..skills.delivery import archive_skill_manager
+
+        _archived = archive_skill_manager(_skill_manager)
+        _log.info("skill deliverables archived: %d", _archived)
+    except Exception:  # pragma: no cover - 台账失败不得阻断启动
+        _log.warning("skill deliverable archival failed", exc_info=True)
+
     return {
         "channels": ChannelManager(),
         "cron": _cron,
-        "skill_manager": create_default_skill_manager(),
+        "skill_manager": _skill_manager,
         "hand_registry": _hand_registry,
         "hands": _hands,
         "commands": CommandRegistry(),

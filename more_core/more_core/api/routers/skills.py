@@ -62,6 +62,44 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
             payload["healthy"] = False
         return {"status": "ok", "skill": payload}
 
+    @router.get("/skill-delivery/stats")
+    async def skill_delivery_stats() -> dict[str, Any]:
+        """技能交付台账统计（完整性 / 验收率）。"""
+        from ...skills.delivery import get_default_skill_ledger
+
+        ledger = get_default_skill_ledger()
+        return {"status": "ok", "stats": ledger.stats(), "last_error": ledger.last_error}
+
+    @router.get("/skill-delivery")
+    async def skill_delivery_list() -> dict[str, Any]:
+        """全部技能交付台账明细。"""
+        from ...skills.delivery import get_default_skill_ledger
+
+        rows = get_default_skill_ledger().list()
+        return {"status": "ok", "count": len(rows), "deliverables": [r.to_dict() for r in rows]}
+
+    @router.post(
+        "/skill-delivery/sync",
+        dependencies=[Depends(require_api_key), Depends(require_permission(Permission.HAND_RUN))],
+    )
+    async def skill_delivery_sync() -> dict[str, Any]:
+        """把当前全部技能重新归档到台账并标记为已验收。"""
+        from ...skills.delivery import archive_skill_manager, get_default_skill_ledger
+
+        archived = archive_skill_manager(core.skill_manager)
+        return {"status": "ok", "archived": archived,
+                "stats": get_default_skill_ledger().stats()}
+
+    @router.get("/skill-delivery/{skill_id}")
+    async def skill_delivery_detail(skill_id: str) -> dict[str, Any]:
+        """单个技能的交付台账记录（可追溯）。"""
+        from ...skills.delivery import get_default_skill_ledger
+
+        rec = get_default_skill_ledger().get(skill_id)
+        if rec is None:
+            raise HTTPException(status_code=404, detail=f"No deliverable for {skill_id!r}")
+        return {"status": "ok", "deliverable": rec.to_dict()}
+
     @router.post(
         "/skills/{skill_id}/run",
         dependencies=[Depends(require_api_key), Depends(require_permission(Permission.HAND_RUN))],

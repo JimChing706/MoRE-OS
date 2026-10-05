@@ -29,6 +29,33 @@ class WebSearchSkill(Skill):
             version="1.0.0",
             tags=["search", "web", "information", "research"],
             dependencies=["httpx"],
+            config_schema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string", "minLength": 1, "maxLength": 2000,
+                        "description": "搜索关键词",
+                    },
+                    "limit": {
+                        "type": "integer", "minimum": 1, "maximum": 50, "default": 10,
+                        "description": "返回结果条数 (1-50)",
+                    },
+                    "provider": {
+                        "type": "string", "enum": ["duckduckgo", "serpapi"],
+                        "default": "duckduckgo", "description": "搜索提供方",
+                    },
+                },
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+            maintainer="MoRE OS Core Team",
+            deployment={
+                "runtime": "python>=3.10",
+                "packages": ["httpx"],
+                "network_egress": True,
+                "sandbox_required": False,
+                "env": [],
+            },
         )
 
     @property
@@ -128,7 +155,31 @@ class WebBrowseSkill(Skill):
             category=SkillCategory.WEB,
             version="1.0.0",
             tags=["browse", "scrape", "web", "html"],
-            dependencies=["httpx", "beautifulsoup4"],
+            dependencies=["httpx"],  # 实现用正则解析 HTML；此前误声明 beautifulsoup4
+            config_schema={
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string", "format": "uri", "pattern": "^https?://",
+                        "minLength": 1, "maxLength": 2048,
+                        "description": "目标网页 URL，必须以 http:// 或 https:// 开头",
+                    },
+                    "extract": {
+                        "type": "string", "enum": ["text", "json", "links"],
+                        "default": "text", "description": "内容抽取类型",
+                    },
+                },
+                "required": ["url"],
+                "additionalProperties": False,
+            },
+            maintainer="MoRE OS Core Team",
+            deployment={
+                "runtime": "python>=3.10",
+                "packages": ["httpx"],
+                "network_egress": True,
+                "sandbox_required": False,
+                "env": [],
+            },
         )
 
     @property

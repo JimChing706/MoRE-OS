@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Awaitable
 
+from .schema import check_params
+
 # Type alias for hook handlers — must be awaitable since execute() awaits them.
 HookHandler = Callable[..., Awaitable[Any]]
 
@@ -59,6 +61,9 @@ class SkillMetadata:
     tags: list[str] = field(default_factory=list)
     dependencies: list[str] = field(default_factory=list)
     config_schema: dict[str, Any] = field(default_factory=dict)
+    # 交付台账字段：维护责任人与部署要求（供 SkillDeliveryLedger 归档）
+    maintainer: str = "MoRE OS Core Team"
+    deployment: dict[str, Any] = field(default_factory=dict)
     usage_count: int = 0
     success_rate: float = 1.0
     avg_duration_ms: float = 0
@@ -184,7 +189,17 @@ class SkillManager:
         for hook in self._hooks["before_execute"]:
             await hook(skill_id, params)
 
-        # 参数校验（异常同样隔离）
+        # 1) config_schema 结构化校验（JSON Schema 子集）：类型/必填/范围/枚举/格式
+        ok_schema, schema_msg = check_params(
+            params, skill.metadata.config_schema, skill_id=skill_id
+        )
+        if not ok_schema:
+            return await self._finalize(
+                skill_id, skill, params, success=False,
+                error=f"Validation failed: {schema_msg}", duration_ms=0.0,
+            )
+
+        # 2) 技能自身语义校验（跨字段条件等，异常同样隔离）
         try:
             valid, msg = await skill.validate(params)
         except Exception as exc:  # noqa: BLE001
