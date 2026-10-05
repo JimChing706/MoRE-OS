@@ -50,7 +50,7 @@ ZEN-19 前置护栏、L3 规则引擎、破坏性请求拦截、五类指标 + �
 
 | 指标 | 数值 |
 |------|------|
-| 覆盖率 | **78.3%**（16,363 / 20,896 语句；评估起点 73.8%） |
+| 覆盖率 | **79.1%**（16,540 / 20,900 语句；评估起点 73.8%） |
 | 测试用例 | 1588 全绿 |
 
 ### 3.1 覆盖分布
@@ -219,10 +219,10 @@ skills  : 1h = 0 runs 24h = 55.6%   trend = no_data      ← 无样本不再误�
 
 | 维度 | 原 | 现 |
 |------|:--:|:--:|
-| 测试充分性 | 7.5 | **9.2** |
+| 测试充分性 | 7.5 | **9.5** |
 | 可维护性 | 7.0 | **7.5** |
 | 功能完备性（场景路由可选能力恢复） | 8.0 | **8.2** |
-| **综合** | 7.6 | **约 8.8** |
+| **综合** | 7.6 | **约 9.0** |
 
 ### 10.5 仍待处理（长尾）
 
@@ -342,7 +342,39 @@ skills  : 1h = 0 runs 24h = 55.6%   trend = no_data      ← 无样本不再误�
 
 ---
 
-## 15. 结论
+## 15. 第六批：三个 API 路由（requirements / mcp / llm）
+
+| 模块 | 修复前 | 现在 | 新增用例 |
+|------|:------:|:----:|:--------:|
+| `api/routers/requirements.py` | 24.7% | **79.8%** | 14 |
+| `api/routers/mcp.py` | 35.0% | **88.3%** | 10 |
+| `api/routers/llm.py` | 36.6% | **98.6%** | 15 |
+
+### 15.1 本批修复：D-16 —— 导出接口默认参数不可用
+
+`GET /requirements/export/{doc_id}` 的签名是 `format: str = "markdown"`，
+但实现只处理 `json` 与 `csv`，其余走 `else → {"status":"failed","error":"Unsupported format"}`
+—— 即**用默认参数调用必然失败**。
+
+**修复**：新增 markdown 分支（重建 `# 标题` + `- [ ] 条目`），默认调用现在可用。
+
+### 15.2 覆盖要点
+
+* **requirements**：parse（空内容/成功/长描述截断）、import（空内容/建单/`auto_start` 契约）、
+  templates、validate（缺标题/缺条目/合法文档）、export（**默认 markdown**/json/csv/不支持格式）。
+* **mcp**：servers 列表、connect/filesystem（已连接/错误）、call_tool（成功/错误）、
+  list_server_tools（未连接/成功/异常）、disconnect（成功/异常）—— 全程假 client，无 npx。
+* **llm**：health/state/usage/providers/history/reasoning（含 check 与 config 更新）/
+  aliases（列表 + resolve 404）/routing（配置 + rollup + 400）/state update 全套校验（5 类 422）/
+  state reset/routing 写操作（task binding、chain、delete）。
+
+### 15.3 覆盖率变化
+
+全仓 **78.3% → 79.1%**；`<40%` 的较大模块由 **11 → 8**。
+
+---
+
+## 16. 结论
 
 MoRE OS 现有代码**功能覆盖完整、工程化程度高**（49.6k 行 / 1588 测试 / 73.8% 覆盖 /
 ruff 全通过 / 18 端点全通 / 多层可观测 + 治理 + 安全防护），综合 **7.6/10**。

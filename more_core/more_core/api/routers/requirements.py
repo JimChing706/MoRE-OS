@@ -208,6 +208,16 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     async def export_requirements(doc_id: str, format: str = "markdown") -> dict[str, Any]:
         try:
             doc = parse_requirements(f"# Document {doc_id}\n\n(No content)")
+            if format == "markdown":
+                # 修复 D-16：默认参数就是 markdown，但此前落入 else 返回
+                # "Unsupported format" —— 默认调用必然失败。
+                lines = [f"# {doc.title}", ""]
+                lines.extend(f"- [ ] {item.title}" for item in doc.items)
+                return {
+                    "status": "success",
+                    "format": "markdown",
+                    "data": "\n".join(lines).rstrip() + "\n",
+                }
             if format == "json":
                 return {
                     "status": "success",
