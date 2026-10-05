@@ -255,7 +255,43 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
             code = str(a.get("code", "")).replace('"', "")
             lvl = str(a.get("level", "")).replace('"', "")
             lines.append(f'more_os_provider_alerts{{level="{lvl}",code="{code}"}} 1')
+
+        sk = _obs.query_skill_stats(window_s)
+        lines += [
+            "# HELP more_os_skill_runs Skill executions in window.",
+            "# TYPE more_os_skill_runs gauge",
+            f"more_os_skill_runs {int(sk.get('runs') or 0)}",
+            "# HELP more_os_skill_success_rate Skill execution success rate.",
+            "# TYPE more_os_skill_success_rate gauge",
+            f"more_os_skill_success_rate {float(sk.get('success_rate') or 0.0)}",
+            "# HELP more_os_skill_avg_duration_ms Mean skill duration.",
+            "# TYPE more_os_skill_avg_duration_ms gauge",
+            f"more_os_skill_avg_duration_ms {float(sk.get('avg_duration_ms') or 0.0)}",
+        ]
+        lines.append("# TYPE more_os_skill_runs_by_skill gauge")
+        for sid, slot in (sk.get("by_skill") or {}).items():
+            safe = str(sid).replace('"', "")
+            lines.append(
+                f'more_os_skill_runs_by_skill{{skill="{safe}",'
+                f'result="success"}} {int(slot.get("success") or 0)}'
+            )
+            lines.append(
+                f'more_os_skill_runs_by_skill{{skill="{safe}",'
+                f'result="failed"}} {int(slot.get("calls", 0) - slot.get("success", 0))}'
+            )
         return PlainTextResponse("\n".join(lines) + "\n")
+
+    @router.get("/metrics/skills", dependencies=deps)
+    async def skill_metrics(window_s: int = 3600) -> dict[str, Any]:
+        """技能执行指标：调用数 / 成功率 / 耗时（p95）+ 管理端注册统计。"""
+        from ...governance import observability as _obs
+
+        return {
+            "status": "ok",
+            "window_s": int(window_s),
+            "metrics": _obs.query_skill_stats(window_s),
+            "registry": core.skill_manager.get_stats(),
+        }
 
     @router.get("/metrics/dashboard", include_in_schema=False)
     async def metrics_dashboard() -> Any:

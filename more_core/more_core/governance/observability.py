@@ -127,6 +127,20 @@ CREATE TABLE IF NOT EXISTS provider_health_snapshots (
     report          TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS idx_prov_snap_ts ON provider_health_snapshots(ts);
+
+-- 6. skill_runs — 每次技能执行一行（成功/失败/超时 + 耗时）
+CREATE TABLE IF NOT EXISTS skill_runs (
+    id          TEXT PRIMARY KEY,
+    ts          REAL NOT NULL,
+    skill_id    TEXT NOT NULL DEFAULT '',
+    category    TEXT NOT NULL DEFAULT '',
+    success     INTEGER NOT NULL DEFAULT 0,
+    duration_ms REAL NOT NULL DEFAULT 0,
+    error       TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_skill_ts       ON skill_runs(ts);
+CREATE INDEX IF NOT EXISTS idx_skill_id       ON skill_runs(skill_id, ts);
+CREATE INDEX IF NOT EXISTS idx_skill_success  ON skill_runs(success);
 """
 
 # Hard cap on db size before we stop appending — telemetry must not eat disk.
@@ -831,6 +845,99 @@ def evaluate_provider_alerts(health: dict[str, Any]) -> list[dict[str, Any]]:
             ),
         })
     return alerts
+
+
+def record_skill_run(
+    *,
+    skill_id: str,
+    category: str = "",
+    success: bool = False,
+    duration_ms: float = 0.0,
+    error: str = "",
+) -> None:
+    """Append one skill execution row. Never raises."""
+    try:
+        conn = _get_conn()
+        if conn is None:
+            return
+        conn.execute(
+            """INSERT INTO skill_runs (id, ts, skill_id, category, success, duration_ms, error)
+               VALUES (?,?,?,?,?,?,?)""",
+            (
+                f"skill_{uuid.uuid4().hex[:14]}",
+                time.time(),
+                skill_id or "",
+                category or "",
+                1 if success else 0,
+                float(duration_ms or 0.0),
+                (error or "")[:2000],
+            ),
+        )
+    except Exception:  # pragma: no cover - defensive
+        pass
+
+
+def query_skill_stats(window_s: int = 3600) -> dict[str, Any]:
+    """Aggregate skill executions over the trailing *window_s* seconds.
+
+    Returns per-skill calls/success rate/avg duration plus a category rollup.
+    """
+    empty: dict[str, Any] = {
+        "runs": 0, "failed": 0, "success_rate": 0.0,
+        "avg_duration_ms": 0.0, "p95_duration_ms": 0.0,
+        "by_skill": {}, "by_category": {}, "window_s": int(window_s),
+    }
+    try:
+        conn = _get_conn()
+        if conn is None:
+            return {**empty, "error": "observability store unavailable"}
+        conn.row_factory = sqlite3.Row
+        since = time.time() - max(0, int(window_s))
+        rows = conn.execute(
+            """SELECT skill_id, category, success, duration_ms
+               FROM skill_runs WHERE ts >= ?""",
+            (since,),
+        ).fetchall()
+        if not rows:
+            return empty
+
+        by_skill: dict[str, dict[str, Any]] = {}
+        by_category: dict[str, dict[str, Any]] = {}
+        durations: list[float] = []
+        ok = 0
+        for r in rows:
+            ok += 1 if int(r["success"]) else 0
+            durations.append(float(r["duration_ms"] or 0.0))
+            for bucket, key in ((by_skill, r["skill_id"] or "unknown"),
+                                (by_category, r["category"] or "unknown")):
+                slot = bucket.setdefault(key, {"calls": 0, "success": 0, "duration_ms": 0.0})
+                slot["calls"] += 1
+                slot["success"] += 1 if int(r["success"]) else 0
+                slot["duration_ms"] += float(r["duration_ms"] or 0.0)
+        for bucket in (by_skill, by_category):
+            for slot in bucket.values():
+                slot["success_rate"] = (
+                    round(slot["success"] / slot["calls"], 3) if slot["calls"] else 0.0
+                )
+                slot["avg_duration_ms"] = (
+                    round(slot["duration_ms"] / slot["calls"], 1) if slot["calls"] else 0.0
+                )
+                slot.pop("duration_ms", None)
+        durations.sort()
+        n = len(rows)
+        p95 = durations[min(n - 1, max(0, int(round(0.95 * (n - 1)))))] if durations else 0.0
+        return {
+            "runs": n,
+            "failed": n - ok,
+            "success_rate": round(ok / n, 3) if n else 0.0,
+            "avg_duration_ms": round(sum(durations) / n, 1) if n else 0.0,
+            "p95_duration_ms": round(p95, 1),
+            "by_skill": dict(sorted(by_skill.items(), key=lambda kv: -kv[1]["calls"])),
+            "by_category": by_category,
+            "window_s": int(window_s),
+        }
+    except Exception as exc:  # pragma: no cover - defensive
+        return {**empty, "error": str(exc)}
 
 
 def summary(window_s: int = 3600) -> dict[str, Any]:

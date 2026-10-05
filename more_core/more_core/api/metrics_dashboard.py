@@ -102,14 +102,15 @@ async function refresh() {
   err.textContent = '';
   if (!key) { st.textContent = '请输入 API Key'; return; }
   try {
-    const [m, d, rec, g, c, p, o] = await Promise.all([
+    const [m, d, rec, g, c, p, o, sk] = await Promise.all([
       get('/api/v1/metrics/llm?window_s=3600'),
       get('/api/v1/delivery/stats?window_s=86400'),
       get('/api/v1/metrics/llm/recent?limit=15'),
       get('/api/v1/metrics/governance?window_s=3600'),
       get('/api/v1/metrics/council?window_s=3600'),
       get('/api/v1/metrics/providers?window_s=3600'),
-      get('/api/v1/metrics/overview?window_s=3600')
+      get('/api/v1/metrics/overview?window_s=3600'),
+      get('/api/v1/metrics/skills?window_s=3600')
     ]);
     const mm = m.metrics || {}, lat = mm.latency_ms || {}, tok = mm.tokens || {}, ds = d.stats || {};
     const rate = Math.round((mm.success_rate || 0) * 100);
@@ -141,7 +142,11 @@ async function refresh() {
       card('Council 平均下修', ((c.metrics||{}).avg_adjustment || 0).toFixed(3), `分歧 ${fmt((c.metrics||{}).divided)} · 高风险 ${fmt((c.metrics||{}).high_risk_reviews)}`, ((c.metrics||{}).avg_adjustment||0) < 0 ? 'warn' : 'ok'),
       card('Provider 健康', `${fmt((pm.n_providers||0) - (pm.n_unhealthy||0))}/${fmt(pm.n_providers||0)}`,
            `无效模型 ${fmt(pm.n_invalid_model)} · 兜底链 ${pm.degraded ? '降级' : 'OK'}`,
-           ((pm.n_invalid_model||0) > 0 || (pm.n_unhealthy||0) > 0) ? 'bad' : 'ok')
+           ((pm.n_invalid_model||0) > 0 || (pm.n_unhealthy||0) > 0) ? 'bad' : 'ok'),
+      card('技能执行 (1h)', fmt((sk.metrics||{}).runs), `注册 ${fmt((sk.registry||{}).total_skills)} · 活跃 ${fmt((sk.registry||{}).active)}`),
+      card('技能成功率', Math.round(((sk.metrics||{}).success_rate||0)*100) + '%',
+           `平均 ${fmt((sk.metrics||{}).avg_duration_ms)} ms · p95 ${fmt((sk.metrics||{}).p95_duration_ms)} ms`,
+           ((sk.metrics||{}).success_rate||0) >= 0.9 ? 'ok' : 'warn')
     ].join('');
 
     document.getElementById('alerts').innerHTML =

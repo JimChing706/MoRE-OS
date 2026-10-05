@@ -237,6 +237,12 @@ class MoRECore:
     async def start(self) -> None:
         await self.event_bus.start()
         register_builtins(self.tools, self)
+        # 启动技能：注册 ≠ 可用。此前从不调用 start_all()，导致所有技能恒为
+        # INACTIVE、health_check() 恒 False（/skills 面板全"未激活"）。
+        try:
+            await self.skill_manager.start_all()
+        except Exception:  # pragma: no cover - 技能启动失败不得阻断启动
+            self.logger.warning("skill start_all failed", exc_info=True)
         # 生产效率事故修复：启动即校验 LLM 链路（模型名是否存在、兜底链是否完整）
         try:
             from ..llm.preflight import preflight_llm

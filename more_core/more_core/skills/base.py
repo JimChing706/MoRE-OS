@@ -6,6 +6,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
+import os
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -14,6 +17,11 @@ from typing import Any, Callable, Awaitable
 
 # Type alias for hook handlers — must be awaitable since execute() awaits them.
 HookHandler = Callable[..., Awaitable[Any]]
+
+_log = logging.getLogger(__name__)
+
+# 单次技能执行超时（秒）。0/空 = 不启用。可用 MORE_SKILL_TIMEOUT_S 覆盖。
+_DEFAULT_SKILL_TIMEOUT_S = float(os.getenv("MORE_SKILL_TIMEOUT_S") or 120)
 
 
 class SkillCategory(Enum):
@@ -115,7 +123,7 @@ class Skill(ABC):
 class SkillManager:
     """技能管理器."""
 
-    def __init__(self) -> None:
+    def __init__(self, timeout_s: float | None = None) -> None:
         self._skills: dict[str, Skill] = {}
         self._categories: dict[SkillCategory, list[str]] = {c: [] for c in SkillCategory}
         self._hooks: dict[str, list[HookHandler]] = {
@@ -123,11 +131,22 @@ class SkillManager:
             "after_execute": [],
             "on_error": [],
         }
+        # 0 表示禁用超时保护（默认 120s，可用 MORE_SKILL_TIMEOUT_S 覆盖）
+        self._timeout_s = (
+            _DEFAULT_SKILL_TIMEOUT_S if timeout_s is None else float(timeout_s)
+        )
 
     def register(self, skill: Skill) -> None:
-        """注册技能."""
-        self._skills[skill.metadata.id] = skill
-        self._categories[skill.metadata.category].append(skill.metadata.id)
+        """注册技能（重复 id 覆盖旧实现，避免分类里出现重复条目）。"""
+        sid = skill.metadata.id
+        existing = self._skills.get(sid)
+        if existing is not None:
+            old_cat = existing.metadata.category
+            if sid in self._categories[old_cat]:
+                self._categories[old_cat].remove(sid)
+            _log.warning("skill %s re-registered; previous instance replaced", sid)
+        self._skills[sid] = skill
+        self._categories[skill.metadata.category].append(sid)
 
     def unregister(self, skill_id: str) -> None:
         """注销技能."""
@@ -148,7 +167,16 @@ class SkillManager:
         return [s.metadata for s in self._skills.values()]
 
     async def execute(self, skill_id: str, params: dict[str, Any]) -> SkillResult:
-        """执行技能 (带钩子)."""
+        """执行技能。
+
+        增强点（对应"产出正确性 / 可观测性"）：
+        * **错误隔离**：技能内部异常统一转成 ``SkillResult(success=False)``，
+          不让异常击穿调用方；失败会触发 ``on_error`` 钩子。
+        * **超时保护**：单次执行超过 ``timeout_s`` 返回结构化失败（0 = 关闭）。
+        * **指标统计**：更新 ``usage_count`` / ``success_rate`` / ``avg_duration_ms``
+          （此前这些字段恒为初值，看板全是假数据）。
+        * **遥测落库**：写入 observability 的 ``skill_runs`` 表（若可用）。
+        """
         skill = self._skills.get(skill_id)
         if not skill:
             return SkillResult(success=False, error=f"Skill not found: {skill_id}")
@@ -156,18 +184,116 @@ class SkillManager:
         for hook in self._hooks["before_execute"]:
             await hook(skill_id, params)
 
-        valid, msg = await skill.validate(params)
+        # 参数校验（异常同样隔离）
+        try:
+            valid, msg = await skill.validate(params)
+        except Exception as exc:  # noqa: BLE001
+            return await self._finalize(
+                skill_id, skill, params, success=False,
+                error=f"validation error: {type(exc).__name__}: {exc}", duration_ms=0.0,
+            )
         if not valid:
-            return SkillResult(success=False, error=f"Validation failed: {msg}")
+            return await self._finalize(
+                skill_id, skill, params, success=False,
+                error=f"Validation failed: {msg}", duration_ms=0.0,
+            )
 
-        start = time.time()
-        result = await skill.execute(params)
-        result.duration_ms = (time.time() - start) * 1000
+        start = time.perf_counter()
+        try:
+            coro = skill.execute(params)
+            if self._timeout_s and self._timeout_s > 0:
+                result = await asyncio.wait_for(coro, timeout=self._timeout_s)
+            else:
+                result = await coro
+        except asyncio.TimeoutError:
+            duration_ms = (time.perf_counter() - start) * 1000
+            return await self._finalize(
+                skill_id, skill, params, success=False,
+                error=f"skill timed out after {self._timeout_s}s", duration_ms=duration_ms,
+            )
+        except Exception as exc:  # noqa: BLE001 - 技能异常必须隔离
+            duration_ms = (time.perf_counter() - start) * 1000
+            text = str(exc).strip() or type(exc).__name__
+            return await self._finalize(
+                skill_id, skill, params, success=False,
+                error=f"{type(exc).__name__}: {text}", duration_ms=duration_ms,
+            )
+
+        duration_ms = (time.perf_counter() - start) * 1000
+        if not isinstance(result, SkillResult):
+            return await self._finalize(
+                skill_id, skill, params, success=False,
+                error=f"skill returned {type(result).__name__}, expected SkillResult",
+                duration_ms=duration_ms,
+            )
+        result.duration_ms = duration_ms
+        return await self._finalize(
+            skill_id, skill, params, success=result.success,
+            error=result.error, duration_ms=duration_ms, result=result,
+        )
+
+    async def _finalize(
+        self,
+        skill_id: str,
+        skill: Skill,
+        params: dict[str, Any],
+        *,
+        success: bool,
+        error: str | None,
+        duration_ms: float,
+        result: SkillResult | None = None,
+    ) -> SkillResult:
+        """统一收尾：更新指标 → 失败钩子 → 落库遥测 → after 钩子。"""
+        out = result if result is not None else SkillResult(
+            success=success, error=error, duration_ms=duration_ms
+        )
+        self._update_metrics(skill, success, duration_ms)
+
+        if not success:
+            for hook in self._hooks["on_error"]:
+                try:
+                    await hook(skill_id, params, out)
+                except Exception:  # pragma: no cover - 钩子失败不得影响结果
+                    _log.warning("skill on_error hook failed for %s", skill_id, exc_info=True)
+
+        self._record_telemetry(skill_id, skill, success, duration_ms, error)
 
         for hook in self._hooks["after_execute"]:
-            await hook(skill_id, params, result)
+            await hook(skill_id, params, out)
 
-        return result
+        return out
+
+    @staticmethod
+    def _update_metrics(skill: Skill, success: bool, duration_ms: float) -> None:
+        """累计更新 usage_count / success_rate / avg_duration_ms（真值，非初值）。"""
+        md = skill.metadata
+        prev = md.usage_count
+        md.usage_count = prev + 1
+        ok = 1.0 if success else 0.0
+        md.success_rate = ok if prev == 0 else (md.success_rate * prev + ok) / md.usage_count
+        md.avg_duration_ms = (
+            duration_ms
+            if prev == 0
+            else (md.avg_duration_ms * prev + duration_ms) / md.usage_count
+        )
+
+    @staticmethod
+    def _record_telemetry(
+        skill_id: str, skill: Skill, success: bool, duration_ms: float, error: str | None
+    ) -> None:
+        """写入 observability.skill_runs（不可用时静默跳过）。"""
+        try:
+            from ..governance import observability as _obs
+
+            _obs.record_skill_run(
+                skill_id=skill_id,
+                category=skill.metadata.category.value,
+                success=success,
+                duration_ms=duration_ms,
+                error=(error or "")[:400],
+            )
+        except Exception:  # pragma: no cover - 遥测不得影响执行
+            pass
 
     def add_hook(self, event: str, handler: HookHandler) -> None:
         """添加钩子（必须是 async callable）."""
@@ -175,19 +301,33 @@ class SkillManager:
             self._hooks[event].append(handler)
 
     async def start_all(self) -> None:
-        """启动所有技能."""
-        for skill in self._skills.values():
-            await skill.start()
+        """启动所有技能（单个失败不影响其它技能）。"""
+        for sid, skill in self._skills.items():
+            try:
+                await skill.start()
+            except Exception:  # pragma: no cover - 单个技能启动失败不得阻断全体
+                _log.warning("skill %s failed to start", sid, exc_info=True)
 
     async def stop_all(self) -> None:
-        """停止所有技能."""
-        for skill in self._skills.values():
-            await skill.stop()
+        """停止所有技能（单个失败不影响其它技能）。"""
+        for sid, skill in self._skills.items():
+            try:
+                await skill.stop()
+            except Exception:  # pragma: no cover
+                _log.warning("skill %s failed to stop", sid, exc_info=True)
 
     def get_stats(self) -> dict[str, Any]:
-        """获取统计."""
+        """获取统计（含真实执行量与成功率，而非仅注册数）。"""
+        metas = [s.metadata for s in self._skills.values()]
+        total_runs = sum(m.usage_count for m in metas)
+        weighted_ok = sum(m.success_rate * m.usage_count for m in metas)
         return {
             "total_skills": len(self._skills),
             "by_category": {c.value: len(ids) for c, ids in self._categories.items()},
-            "active": sum(1 for s in self._skills.values() if s.get_status() == SkillStatus.ACTIVE),
+            "active": sum(
+                1 for s in self._skills.values() if s.get_status() == SkillStatus.ACTIVE
+            ),
+            "total_runs": total_runs,
+            "success_rate": round(weighted_ok / total_runs, 3) if total_runs else 0.0,
+            "timeout_s": self._timeout_s,
         }
