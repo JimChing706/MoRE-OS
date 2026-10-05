@@ -31,6 +31,19 @@ HTTP 400: Invalid model identifier "local-model".
 修复：预检**同时校验生效模型**（`state_provider` / `state_model` / `state_model_present`），
 发现漂移即 critical 告警。
 
+### 1.2 根因修复：启动时对齐生效模型
+
+`runtime/bootstrap.py` 只把 state manager 传进 `LLMManager`，**从未用配置初始化它的 model**，
+于是永远是占位符 `local-model`。修复：`init_capabilities` 启动时用主 provider（优先兜底链首个）
+的 `name`/`model` 调 `state_manager.update_state(...)`，把生效模型与 provider 配置对齐。
+
+### 1.3 第三层假绿灯：`health()` 只探 `/models`
+
+`provider.health()` 仅 GET `/models`。实测 LM Studio 在**推理时**才返回 HTTP 500，而
+`/models` 仍 200 → 预检判"健康"。修复：新增**可选推理探针** `probe_inference=True`，
+发一个最小补全（`max_tokens=1`）验证"能否真正出 token"；默认关闭以不拖慢启动，深度体检走
+`GET /api/v1/llm/preflight?probe=1`。告警 `provider_inference_failed`（critical）。
+
 ---
 
 ## 2. 遥测表
@@ -61,6 +74,7 @@ HTTP 400: Invalid model identifier "local-model".
 | **生效模型（state manager）缺失**（配置漂移） | critical | `state_invalid_model` |
 | provider 配置模型缺失 | critical | `provider_invalid_model` |
 | provider 健康检查失败 | critical | `provider_unhealthy` |
+| **推理探针失败**（/models 可达但补全失败） | critical | `provider_inference_failed` |
 | 无任何 provider 注册 | critical | `no_provider_registered` |
 | 兜底链降级（< 2 已注册） | warning | `fallback_chain_degraded` |
 | 无任何预检快照 | warning | `provider_preflight_missing` |
@@ -82,6 +96,7 @@ HTTP 400: Invalid model identifier "local-model".
 |------|------|
 | `GET /api/v1/metrics/providers?window_s=3600` | JSON：`{health, alerts}` |
 | `GET /api/v1/llm/preflight?record=1` | 复检并刷新快照 |
+| `GET /api/v1/llm/preflight?probe=1` | 深度体检：附加真实推理探针 |
 | `GET /api/v1/metrics/governance/prometheus` | 追加 `more_os_provider_*` |
 | `GET /api/v1/metrics/dashboard` | 「Provider 健康」卡片 + provider 告警并入横幅 |
 
@@ -113,13 +128,20 @@ alerts: critical state_invalid_model — 生效模型 'local-model'（provider '
 
 > 即：此前静默杀死 Council 任务的故障，现在**启动即喊、看板可见、可告警、可抓取**。
 
+**根因修复后复验**：`/llm/state/current` → `model='ornith-1.5-35b-a3b'`（原 `local-model`）；
+`/metrics/providers` → `ok=True n_invalid_model=0 alerts=[]`；启动日志不再出现 state 告警。
+
+**推理探针复验**：`/llm/preflight?probe=0` → `ok=True`（`inference_ok=None`）；
+`/llm/preflight?probe=1` → 两 provider `inference_ok=True`（LM Studio 已从瞬时 500 恢复）。
+探针能检出 `/models` 可达但补全失败的情形（见确定性用例）。
+
 ---
 
 ## 7. 测试
 
-`more_core/tests/test_provider_health_observability.py` —— **15 用例**：
-provider 模型缺失检测、**生效模型漂移检测**、正常通过、快照往返 / 最新覆盖、
-空快照容错、五类告警判定、JSON 端点、Prometheus 导出、按需复检写库。
+`more_core/tests/test_provider_health_observability.py` —— **18 用例**：
+provider 模型缺失检测、**生效模型漂移检测**、**推理探针成功/失败**、正常通过、
+快照往返 / 最新覆盖、空快照容错、各类告警判定、JSON 端点、Prometheus 导出、按需复检写库。
 
 > 测试要点：`TestClient` 的 lifespan 会调 `core.start()` 并记录一条启动快照，
 > 涉及"最新快照"的用例需在其后播种。
@@ -129,7 +151,8 @@ provider 模型缺失检测、**生效模型漂移检测**、正常通过、快�
 ## 8. 变更文件
 
 - `more_core/more_core/governance/observability.py` — `provider_health_snapshots` 表 + record/query/alerts
-- `more_core/more_core/llm/preflight.py` — 生效模型（state manager）校验
+- `more_core/more_core/llm/preflight.py` — 生效模型校验 + 可选推理探针
+- `more_core/more_core/runtime/bootstrap.py` — **根因修复**：启动时用主 provider 配置初始化生效模型
 - `more_core/more_core/runtime/orchestrator.py` — 启动预检落库
 - `more_core/more_core/api/routers/llm.py` — 按需复检写库
 - `more_core/more_core/api/routers/monitor.py` — `/metrics/providers` + Prometheus 追加
@@ -138,10 +161,11 @@ provider 模型缺失检测、**生效模型漂移检测**、正常通过、快�
 
 ---
 
-## 9. 待人工修复（环境侧）
+## 9. 残留（环境侧，非代码）
 
-代码已能**检出并告警**，但**根因仍在配置**：请把 `LLMCallState.model` 的默认占位符
-`"local-model"` 改为实际模型（或将 state manager 初始 model 与 provider 配置对齐），
-消除漂移。否则每次含 LLM 调用的请求仍会失败（现在至少会立刻告警而非静默）。
+启动时已自动对齐生效模型，配置漂移的**代码根因已修复**。实测本地 LM Studio 在推理时
+曾返回 **HTTP 500 Internal Server Error**（瞬时/加载态，非模型名问题），随后自行恢复。
+这属本地推理运行时/资源问题，超出代码范围；推理探针可随时用
+`/api/v1/llm/preflight?probe=1` 确认其真实可用性。
 
 *执行人: Codex · 2026-10-05*

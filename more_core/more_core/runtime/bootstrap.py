@@ -44,10 +44,28 @@ def init_capabilities(settings: Settings) -> dict[str, Any]:
     from ..sandbox.secure_sandbox import SandboxConfig, SecurityLevel, create_secure_sandbox
     from ..tools.registry import ToolRegistry
 
+    state_manager = get_llm_state_manager()
+    # 生效模型初始化：LLMCallState 默认是占位符 'local-model'，若不与主 provider
+    # 配置对齐，每次请求都会 400 Invalid model identifier（配置漂移）。
+    # 此前该漂移完全静默；即使初始化失败，preflight 也会发出 state_invalid_model 告警。
+    try:
+        primary_name = (
+            settings.fallback_chain[0]
+            if settings.fallback_chain
+            else (settings.providers[0].name if settings.providers else "")
+        )
+        primary = next(
+            (p for p in settings.providers if p.name == primary_name), None
+        ) or (settings.providers[0] if settings.providers else None)
+        if primary is not None and primary.model:
+            state_manager.update_state(provider=primary.name, model=primary.model)
+    except Exception:  # pragma: no cover - 初始化失败不阻断启动
+        pass
+
     llm = LLMManager(
         settings.providers,
         settings.fallback_chain,
-        state_manager=get_llm_state_manager(),
+        state_manager=state_manager,
     )
     task_model_router = DynamicModelRouter(llm)
     council_orchestrator = CouncilOrchestrator(

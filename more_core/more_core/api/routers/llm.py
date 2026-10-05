@@ -14,7 +14,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["LLM"], dependencies=[Depends(require_api_key)])
 
     @router.get("/llm/preflight")
-    async def llm_preflight(record: bool = True) -> dict[str, Any]:
+    async def llm_preflight(record: bool = True, probe: bool = False) -> dict[str, Any]:
         """LLM 链路预检：provider 注册、模型存在性、兜底链完整度。
 
         默认把本次结果写入可观测库（``record=0`` 可关闭），使按需复检能刷新看板。
@@ -22,7 +22,9 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         from ...governance import observability as _obs
         from ...llm.preflight import preflight_llm
 
-        report = await preflight_llm(core.llm, list(getattr(core.llm, "_fallback", []) or []))
+        report = await preflight_llm(
+            core.llm, list(getattr(core.llm, "_fallback", []) or []), probe_inference=probe
+        )
         payload = report.to_dict()
         if record:
             _obs.record_provider_health(payload)

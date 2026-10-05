@@ -720,7 +720,8 @@ def query_provider_health(window_s: int = 3600) -> dict[str, Any]:
         "providers": [], "chain_declared": [], "chain_registered": [],
         "state_provider": "", "state_model": "", "state_model_present": None,
         "warnings": [], "n_providers": 0, "n_unhealthy": 0,
-        "n_invalid_model": 0, "snapshots": 0, "window_s": int(window_s),
+        "n_invalid_model": 0, "n_inference_failed": 0,
+        "snapshots": 0, "window_s": int(window_s),
     }
     try:
         conn = _get_conn()
@@ -743,11 +744,16 @@ def query_provider_health(window_s: int = 3600) -> dict[str, Any]:
             report = json.loads(latest["report"] or "{}")
         except Exception:
             report = {}
+        providers = report.get("providers") or []
+        n_inference_failed = sum(
+            1 for pr in providers if pr.get("inference_ok") is False
+        )
         return {
             "checked_at": float(latest["ts"]),
             "ok": bool(latest["ok"]),
             "degraded": bool(latest["degraded"]),
-            "providers": report.get("providers") or [],
+            "n_inference_failed": n_inference_failed,
+            "providers": providers,
             "chain_declared": report.get("fallback_chain") or [],
             "chain_registered": report.get("chain_registered") or [],
             "state_provider": report.get("state_provider") or "",
@@ -791,6 +797,13 @@ def evaluate_provider_alerts(health: dict[str, Any]) -> list[dict[str, Any]]:
             alerts.append({
                 "level": "critical", "code": "provider_unhealthy", "provider": name,
                 "message": f"provider {name} 健康检查失败",
+            })
+        if p.get("inference_ok") is False:
+            alerts.append({
+                "level": "critical", "code": "provider_inference_failed", "provider": name,
+                "message": (
+                    f"provider {name} 推理探针失败（/models 可达但补全失败）——请求会失败"
+                ),
             })
 
     if health.get("state_model_present") is False:

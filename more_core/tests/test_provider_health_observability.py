@@ -19,14 +19,22 @@ pytest.importorskip("fastapi")
 
 
 class _Prov:
-    def __init__(self, name, model, base="http://x", healthy=True):
+    def __init__(self, name, model, base="http://x", healthy=True, gen_error=None):
         self.name = name
         self.model = model
         self._base = base
         self._healthy = healthy
+        self._gen_error = gen_error
 
     async def health(self):
         return self._healthy
+
+    async def generate(self, request):
+        if self._gen_error:
+            raise self._gen_error
+        from more_core.llm.provider import LLMResponse
+
+        return LLMResponse(content="pong", provider=self.name, model=self.model)
 
 
 class _LLM:
@@ -119,6 +127,38 @@ async def test_preflight_flags_invalid_effective_state_model(monkeypatch):
     assert any("local-model" in w and "[state]" in w for w in report.warnings)
 
 
+@pytest.mark.asyncio
+async def test_inference_probe_flags_completion_failure(monkeypatch):
+    """/models 可达但补全 500 的假绿灯：推理探针必须判失败。"""
+    from more_core.llm import preflight as pf
+
+    async def fake_fetch(url):
+        return ["m"]
+
+    monkeypatch.setattr(pf, "_fetch_models", fake_fetch)
+    _patch_state(monkeypatch, "a", "m")
+    llm = _LLM([_Prov("a", "m", gen_error=RuntimeError("HTTP 500"))], ["a"])
+    report = await pf.preflight_llm(llm, ["a"], probe_inference=True)
+
+    assert report.providers[0].healthy is True          # /models 说健康
+    assert report.providers[0].inference_ok is False     # 但推理失败
+    assert any("inference probe failed" in w for w in report.providers[0].warnings)
+
+
+@pytest.mark.asyncio
+async def test_inference_probe_success(monkeypatch):
+    from more_core.llm import preflight as pf
+
+    async def fake_fetch(url):
+        return ["m"]
+
+    monkeypatch.setattr(pf, "_fetch_models", fake_fetch)
+    _patch_state(monkeypatch, "a", "m")
+    llm = _LLM([_Prov("a", "m")], ["a"])
+    report = await pf.preflight_llm(llm, ["a"], probe_inference=True)
+    assert report.providers[0].inference_ok is True
+
+
 # ---------------------------------------------------------------------------
 # 2. 落库 / 聚合
 # ---------------------------------------------------------------------------
@@ -197,6 +237,17 @@ def test_invalid_model_is_critical():
     assert "provider_unhealthy" in codes
     crit = [a for a in alerts if a["code"] in ("provider_invalid_model", "provider_unhealthy")]
     assert all(a["level"] == "critical" for a in crit)
+
+
+def test_inference_failed_is_critical_alert():
+    alerts = obs.evaluate_provider_alerts({
+        "checked_at": 1.0, "n_providers": 1, "degraded": False,
+        "providers": [{"name": "lmstudio", "healthy": True,
+                       "model_present": True, "inference_ok": False}],
+        "chain_declared": ["lmstudio"], "chain_registered": ["lmstudio"],
+    })
+    hit = [a for a in alerts if a["code"] == "provider_inference_failed"]
+    assert hit and hit[0]["level"] == "critical"
 
 
 def test_state_invalid_model_is_critical():
@@ -290,7 +341,7 @@ def test_preflight_endpoint_records_snapshot(core, monkeypatch):
     from more_core.llm import preflight as pf
     from more_core.llm.preflight import LLMPreflight, ProviderCheck
 
-    async def fake_preflight(llm, chain=None):
+    async def fake_preflight(llm, chain=None, *, probe_inference=False):
         r = LLMPreflight()
         r.providers = [ProviderCheck(
             name="a", registered=True, configured_model="m",

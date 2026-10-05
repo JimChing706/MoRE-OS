@@ -30,6 +30,7 @@ class ProviderCheck:
     models_available: int = 0
     model_present: bool | None = None   # None = 无法判定（provider 不支持列举）
     healthy: bool | None = None
+    inference_ok: bool | None = None    # None = 未探测（默认关闭推理探针）
     warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -41,6 +42,7 @@ class ProviderCheck:
             "models_available": self.models_available,
             "model_present": self.model_present,
             "healthy": self.healthy,
+            "inference_ok": self.inference_ok,
             "warnings": list(self.warnings),
         }
 
@@ -111,8 +113,18 @@ async def _fetch_models(url: str) -> list[str] | None:
     return None
 
 
-async def preflight_llm(llm: Any, chain: list[str] | None = None) -> LLMPreflight:
-    """检查已注册 provider 的连通性、模型存在性与兜底链覆盖度。"""
+async def preflight_llm(
+    llm: Any,
+    chain: list[str] | None = None,
+    *,
+    probe_inference: bool = False,
+) -> LLMPreflight:
+    """检查已注册 provider 的连通性、模型存在性与兜底链覆盖度。
+
+    ``probe_inference=True`` 时额外发一个最小补全请求。原因：``health()`` 只探
+    ``/models``（200 也可能推理 500），无法代表"能否真正出 token"。默认关闭
+    以免拖慢启动；按需深度体检走 ``/api/v1/llm/preflight?probe=1``。
+    """
     report = LLMPreflight()
     registered = list(llm.list_providers()) if llm is not None else []
     report.fallback_chain = list(chain or getattr(llm, "_fallback", []) or [])
@@ -135,6 +147,20 @@ async def preflight_llm(llm: Any, chain: list[str] | None = None) -> LLMPrefligh
             check.healthy = False
         if not check.healthy:
             check.warnings.append(f"provider {name} health check failed")
+
+        if probe_inference:
+            try:
+                from .provider import LLMRequest
+
+                resp = await provider.generate(LLMRequest(prompt="ping", max_tokens=1))
+                check.inference_ok = resp is not None
+            except Exception as exc:  # noqa: BLE001 - 探针失败即判定不可推理
+                check.inference_ok = False
+                check.warnings.append(f"inference probe failed: {exc}")
+            if check.inference_ok is False and not any(
+                w.startswith("inference probe failed") for w in check.warnings
+            ):
+                check.warnings.append("inference probe returned no response")
 
         url = _list_models_endpoint(name, endpoint)
         if url:
