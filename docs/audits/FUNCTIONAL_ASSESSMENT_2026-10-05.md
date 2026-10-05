@@ -50,7 +50,7 @@ ZEN-19 前置护栏、L3 规则引擎、破坏性请求拦截、五类指标 + �
 
 | 指标 | 数值 |
 |------|------|
-| 覆盖率 | **77.6%**（16,206 / 20,896 语句；评估起点 73.8%） |
+| 覆盖率 | **78.3%**（16,363 / 20,896 语句；评估起点 73.8%） |
 | 测试用例 | 1588 全绿 |
 
 ### 3.1 覆盖分布
@@ -222,7 +222,7 @@ skills  : 1h = 0 runs 24h = 55.6%   trend = no_data      ← 无样本不再误�
 | 测试充分性 | 7.5 | **9.2** |
 | 可维护性 | 7.0 | **7.5** |
 | 功能完备性（场景路由可选能力恢复） | 8.0 | **8.2** |
-| **综合** | 7.6 | **约 8.7** |
+| **综合** | 7.6 | **约 8.8** |
 
 ### 10.5 仍待处理（长尾）
 
@@ -305,7 +305,44 @@ skills  : 1h = 0 runs 24h = 55.6%   trend = no_data      ← 无样本不再误�
 
 ---
 
-## 14. 结论
+## 14. 第五批：deepseek / linux_sandbox / mcp-transport
+
+| 模块 | 修复前 | 现在 | 新增用例 |
+|------|:------:|:----:|:--------:|
+| `llm/providers/deepseek.py` | 31.3% | **98.5%** | 12（+1 ollama 回归） |
+| `sandbox/linux_sandbox.py` | 28.4% | **88.9%** | 12 |
+| `mcp/transport.py` | 34.2% | **77.4%** | 14 |
+
+### 14.1 本批修复：D-15 —— `model_override` 被静默忽略
+
+**发现**：`OllamaProvider` 与 `DeepSeekProvider` 在 `generate`/`stream` 中都写死
+`"model": self.model`，**完全忽略 `request.model_override`**；而 `OpenAICompatProvider`
+是 `request.model_override or self.model`。
+
+**影响**：任务级模型绑定 / 运行时状态切换对 ollama、deepseek **静默失效**——
+调用方以为切了模型，实际仍用 provider 构造时的模型（与 D-2 同类"换了源却不说"）。
+
+**修复**：统一为 `request.model_override or self.model`（4 处），实测 payload 正确带出覆盖模型。
+
+### 14.2 覆盖要点
+
+* **deepseek**：`_build_messages`、`generate`（success/reasoning_content/**model_override**/
+  enable_thinking/默认 4096/ConnectError/ReadTimeout/HTTP 4xx）、`stream`（SSE 增量、
+  `[DONE]` 跳过、畸形行忽略、model_override）、`health`、连接池生命周期。
+* **linux_sandbox**：平台探测、工厂分派（Linux/非 Linux）、能力检测（unshare/cgroup）、
+  非 Linux 回退执行、**模拟 Linux 的 unshare 包装命令构造**（含 `--net` 开关）、
+  超时（`linux hardened`）、cgroup 限额写入 / 残留进程 kill。
+* **mcp/transport**：`_StdoutProtocol` 连接事件、HTTP（aiohttp 缺失优雅降级 /
+  未连接报错 / `receive` 不支持 / 请求体构造 / 不可解析报文忽略 / 通知转发）、
+  SSE（降级 / 事件队列）、Process（真实 `cat` 往返 / 未启动安全）、工厂函数。
+
+### 14.3 覆盖率变化
+
+全仓 **77.6% → 78.3%**；`<40%` 的较大模块由 **14 → 11**。
+
+---
+
+## 15. 结论
 
 MoRE OS 现有代码**功能覆盖完整、工程化程度高**（49.6k 行 / 1588 测试 / 73.8% 覆盖 /
 ruff 全通过 / 18 端点全通 / 多层可观测 + 治理 + 安全防护），综合 **7.6/10**。

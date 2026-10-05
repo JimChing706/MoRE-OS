@@ -150,3 +150,19 @@ async def test_close_is_idempotent():
     await p.close()
     await p.close()
     assert p._client is None
+
+
+@pytest.mark.asyncio
+async def test_generate_honours_model_override():
+    """回归 D-15：Ollama 此前忽略 request.model_override（直接打自建模型名）。"""
+    seen: dict = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.update(req.url.params) if False else None
+        import json as _json
+
+        seen.update(_json.loads(req.content))
+        return httpx.Response(200, json={"response": "ok", "eval_count": 1})
+
+    await _provider(handler).generate(LLMRequest(prompt="hi", model_override="other:7b"))
+    assert seen["model"] == "other:7b"

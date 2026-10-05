@@ -56,7 +56,7 @@ class DeepSeekProvider:
 
     async def generate(self, request: LLMRequest) -> LLMResponse:
         payload = {
-            "model": self.model,
+            "model": request.model_override or self.model,
             "messages": self._build_messages(request),
             "temperature": request.temperature,
             "max_tokens": request.max_tokens or 4096,
@@ -88,7 +88,7 @@ class DeepSeekProvider:
 
     async def stream(self, request: LLMRequest) -> AsyncIterator[str]:
         payload = {
-            "model": self.model,
+            "model": request.model_override or self.model,
             "messages": self._build_messages(request),
             "temperature": request.temperature,
             "max_tokens": request.max_tokens or 4096,
