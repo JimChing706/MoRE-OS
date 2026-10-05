@@ -699,21 +699,19 @@ def test_x_i3_deep_mode_includes_metacognition(core):
     assert deep.pipeline[-1] == LayerId.L0
 
 
-def test_x_i3b_evolution_layer_unreachable_in_authoritative_pipeline(core):
-    """X-I3b（迁移 + **已知分歧登记**）: L2 进化层在权威链路上不可达。
+def test_x_i3b_evolution_layer_reachable_only_in_deep_mode(core):
+    """X-I3b（修复后）: L2 进化层仅出现在 RIVER_DEEP，且紧邻 L5 之后。
 
-    基座路由为 SELF_IMPROVEMENT 声明了 L2，但三条谱管道
-    （village / river / river_deep）**均不含 L2** —— 该声明在生产不生效。
+    修复前三条谱管道均不含 L2，"MORE_ENABLE_EVOLUTION + SELF_IMPROVEMENT→L2"
+    契约在生产失效；现 RIVER_DEEP 纳入 L2（其自带双重门控，关闭时 no-op）。
     """
-    core.settings.enable_evolution = True
-    try:
-        for require_meta in (False, True):
-            decision = core.meta_orchestrator.route(
-                TaskType.SELF_IMPROVEMENT, "自改进", require_metacognitive=require_meta
-            )
-            assert LayerId.L2 not in decision.pipeline, "L2 不应出现在谱路由管道"
-    finally:
-        core.settings.enable_evolution = False
+    shallow = core.meta_orchestrator.route(TaskType.SELF_IMPROVEMENT, "自改进")
+    deep = core.meta_orchestrator.route(
+        TaskType.SELF_IMPROVEMENT, "自改进", require_metacognitive=True
+    )
+    assert LayerId.L2 not in shallow.pipeline, "轻量路径不应引入 L2"
+    assert LayerId.L2 in deep.pipeline, "深度路径必须包含 L2"
+    assert deep.pipeline.index(LayerId.L2) == deep.pipeline.index(LayerId.L5) + 1
 
 
 def test_x_i4_math_l3_inclusion_is_mode_dependent(core):

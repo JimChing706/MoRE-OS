@@ -434,6 +434,11 @@ class MoRECore:
             meta_decision = None
             guardrail_config = None
             if hasattr(self, "meta_orchestrator") and self.meta_orchestrator is not None:
+                # 注意：**不要**用 allow_self_improvement 触发深度模式。
+                # L3 的 policy.metacog_review 要求显式 require_metacognitive_monitoring；
+                # 若仅凭 allow_self_improvement 进入深度模式，会先执行 L5/L2（自修改），
+                # 随后才被 L3 拒绝——"先自修改、后拒绝"的顺序是治理缺陷。
+                # 因此深度模式只由 require_metacognitive_monitoring 触发。
                 meta_decision = self.meta_orchestrator.route(
                     request.type,
                     request.query,

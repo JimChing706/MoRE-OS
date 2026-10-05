@@ -86,19 +86,41 @@ else:
 | X-I3b | 门控关闭"剥离" L5/L2 | **L2 在任何谱模式下都不可达**（登记为已知分歧） |
 | X-I4 | MATH_REASONING 必含 L3 | L3 由**谱模式**决定（短查询 U=0.24 走 Village 无 L3；复杂查询 U=0.30 走 River 含 L3） |
 
-### 3.2 迁移过程中暴露的第二个缺陷：**L2 进化层在生产不可达**
+### 3.2 迁移中暴露的第二个缺陷：**L2 进化层生产不可达** —— 已修复
 
-权威链路仅有三条固定管道：
+权威链路原为三条固定管道，**均不含 L2**：
 
 ```
 village    = [L4, L1, L0]
 river      = [L4, L3, L1, L0]
-river_deep = [L5, L4, L3, L1, L0]
+river_deep = [L5, L4, L3, L1, L0]          ← 原：无 L2
 ```
 
-**均不含 L2**。即：`MORE_ENABLE_EVOLUTION` 开关与 SELF_IMPROVEMENT → L2 的绑定
-在生产链路上**完全不生效**（L2 只在被显式调用时才可能执行）。属功能缺失，
-建议单独立项（把 L2 纳入 RIVER/RIVER_DEEP，或废除该声明）。
+即 `MORE_ENABLE_EVOLUTION` + `SELF_IMPROVEMENT → L2` 的契约**在生产完全失效**。
+
+**修复**：`river_deep` 纳入 L2（置于 L5 之后），与其自带双重门控配合：
+
+```
+river_deep = [L5, L2, L4, L3, L1, L0]      ← 现：L2 可达；门控关闭时为 no-op
+```
+
+**实测**：
+
+| 请求 | status | 实际管道 | 说明 |
+|------|:------:|----------|------|
+| `allow_self_improvement=True`（未要求监控） | `rejected` | `['L4']` | 治理在 L3 拒绝，**未执行 L5/L2** |
+| `allow_self_improvement + require_metacognitive_monitoring` | `success` | `['L5','L2','L4','L3','L1','L0']` | L2 真正执行（DGM 快照→提议→评估→隔离） |
+| `enable_evolution=False` | — | 同上含 L2 | L2 返回 `evolution disabled (governance gate)`（正确 no-op） |
+
+### 3.3 修复过程中发现的**治理顺序缺陷**（已规避）
+
+若让 `allow_self_improvement` 单独触发深度模式，会出现危险顺序：
+**L5/L2 先执行自修改 → 随后 L3 才以 `policy.metacog_review` 拒绝**。
+即"先自修改、后拒绝"，自改进副作用无法撤销。
+
+**处置**：深度模式**只由 `require_metacognitive_monitoring` 触发**（撤销了
+"allow_self_improvement 也触发深度"的改法），确保治理拒绝发生在自修改之前。
+已用 `test_self_improvement_without_monitoring_is_rejected_before_side_effect` 钉住。
 
 ---
 

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import pytest
 
-from more_core.core.types import LayerId, TaskRequest, TaskType
+from more_core.core.types import LayerId, TaskRequest, TaskStatus, TaskType
 
 # 低不确定度（VILLAGE）与高不确定度（RIVER）各取代表
 _SAMPLE_TYPES = [
@@ -97,3 +97,45 @@ def test_base_router_diverges_from_authoritative_pipeline(core):
 
     assert base != meta, "基座路由与权威路由已对齐——请更新回顾性报告与矩阵文档"
     assert LayerId.L3.value in base and LayerId.L3.value not in meta
+
+
+@pytest.mark.asyncio
+async def test_self_improvement_without_monitoring_is_rejected_before_side_effect(core):
+    """治理顺序：未显式要求元认知监控时，自改进被拒绝且**不得执行 L5/L2**。
+
+    回归：若仅凭 allow_self_improvement 进入深度模式，L5/L2 会先执行自修改，
+    随后才被 L3 的 policy.metacog_review 拒绝——"先自修改、后拒绝"不可接受。
+    """
+    core.settings.enable_evolution = True
+    core.settings.enable_metacognition = True
+    try:
+        result = await core.execute(
+            TaskRequest(type=TaskType.SELF_IMPROVEMENT, query="自改进",
+                        allow_self_improvement=True)
+        )
+        assert result.status == TaskStatus.REJECTED
+        executed = _executed(result)
+        assert LayerId.L2.value not in executed, "被治理拒绝前不得执行自修改"
+        assert LayerId.L5.value not in executed
+    finally:
+        core.settings.enable_evolution = False
+        core.settings.enable_metacognition = False
+
+
+@pytest.mark.asyncio
+async def test_deep_self_improvement_runs_l5_then_l2(core):
+    """双开关齐备时，深度管道真正执行 L5 → L2（进化层可达）。"""
+    core.settings.enable_evolution = True
+    core.settings.enable_metacognition = True
+    try:
+        result = await core.execute(
+            TaskRequest(type=TaskType.SELF_IMPROVEMENT, query="自改进",
+                        allow_self_improvement=True,
+                        require_metacognitive_monitoring=True)
+        )
+        executed = _executed(result)
+        assert executed[:2] == [LayerId.L5.value, LayerId.L2.value]
+        assert result.status == TaskStatus.SUCCESS
+    finally:
+        core.settings.enable_evolution = False
+        core.settings.enable_metacognition = False

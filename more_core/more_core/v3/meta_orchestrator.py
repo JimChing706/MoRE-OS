@@ -40,8 +40,13 @@ class RoutingMode(Enum):
 _VILLAGE_PIPELINE: list[LayerId] = [LayerId.L4, LayerId.L1, LayerId.L0]
 _RIVER_PIPELINE: list[LayerId] = [LayerId.L4, LayerId.L3, LayerId.L1, LayerId.L0]
 
-# For high-complexity river tasks, add L5 metacognition
-_RIVER_DEEP_PIPELINE: list[LayerId] = [LayerId.L5, LayerId.L4, LayerId.L3, LayerId.L1, LayerId.L0]
+# For high-complexity river tasks, add L5 metacognition + L2 evolution.
+# L2 自带双重门控（settings.enable_evolution && request.allow_self_improvement），
+# 门控关闭时只返回 evolved=False 的 no-op 步骤，因此纳入管道是安全的；
+# 此前谱管道完全不含 L2，导致"MORE_ENABLE_EVOLUTION + SELF_IMPROVEMENT→L2"契约失效。
+_RIVER_DEEP_PIPELINE: list[LayerId] = [
+    LayerId.L5, LayerId.L2, LayerId.L4, LayerId.L3, LayerId.L1, LayerId.L0,
+]
 
 
 @dataclass(slots=True)
