@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from enum import Enum
 from typing import Any, Callable, Awaitable
 
@@ -116,9 +116,21 @@ class ChannelAdapter(ABC):
 
     def __init__(self, config: ChannelConfig | dict[str, Any]):
         if isinstance(config, dict):
-            self.config = ChannelConfig(**config)
+            # 修复 D-17：各适配器会传入平台专有键（url / bot_token / port …），
+            # 旧实现直接 ChannelConfig(**config) → TypeError，导致适配器**无法用
+            # 真实配置构造**。现在把专有键收进 config.extra，其余照常构造。
+            data = dict(config)
+            known = {f.name for f in fields(ChannelConfig)}
+            extras = {k: v for k, v in data.items() if k not in known}
+            base_kwargs = {k: v for k, v in data.items() if k in known}
+            merged_extra = {**(base_kwargs.get("extra") or {}), **extras}
+            if merged_extra:
+                base_kwargs["extra"] = merged_extra
+            self.config = ChannelConfig(**base_kwargs)
         else:
             self.config = config
+        # 保留原始 dict 供适配器读取自身键（url / method / port ...）
+        self.raw_config: dict[str, Any] = dict(config) if isinstance(config, dict) else {}
         self._handler: MessageHandler | None = None
 
     @property

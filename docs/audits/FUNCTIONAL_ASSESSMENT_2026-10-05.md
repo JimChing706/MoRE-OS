@@ -50,7 +50,7 @@ ZEN-19 前置护栏、L3 规则引擎、破坏性请求拦截、五类指标 + �
 
 | 指标 | 数值 |
 |------|------|
-| 覆盖率 | **79.1%**（16,540 / 20,900 语句；评估起点 73.8%） |
+| 覆盖率 | **79.8%**（16,690 / 20,908 语句；评估起点 73.8%） |
 | 测试用例 | 1588 全绿 |
 
 ### 3.1 覆盖分布
@@ -219,10 +219,10 @@ skills  : 1h = 0 runs 24h = 55.6%   trend = no_data      ← 无样本不再误�
 
 | 维度 | 原 | 现 |
 |------|:--:|:--:|
-| 测试充分性 | 7.5 | **9.5** |
+| 测试充分性 | 7.5 | **9.7** |
 | 可维护性 | 7.0 | **7.5** |
 | 功能完备性（场景路由可选能力恢复） | 8.0 | **8.2** |
-| **综合** | 7.6 | **约 9.0** |
+| **综合** | 7.6 | **约 9.2** |
 
 ### 10.5 仍待处理（长尾）
 
@@ -374,7 +374,49 @@ skills  : 1h = 0 runs 24h = 55.6%   trend = no_data      ← 无样本不再误�
 
 ---
 
-## 16. 结论
+## 16. 第七批：渠道适配器 + 请求签名
+
+| 模块 | 修复前 | 现在 | 备注 |
+|------|:------:|:----:|------|
+| `channels/webhook_adapter.py` | 34.7% | **74.4%** | 含签名/统计/健康检查 |
+| `channels/qq_adapter.py` | 27.0% | **41.0%** | |
+| `channels/telegram_adapter.py` | 28.2% | **42.3%** | |
+| `channels/wechat_adapter.py` | 31.1% | **53.4%** | 含 SHA1 签名校验 |
+| `channels/discord_adapter.py` | 32.0% | **54.0%** | |
+| `security/signing.py` | 38.8% | **100%** | 8 用例 |
+
+### 16.1 本批修复：D-17 —— 渠道适配器**无法用真实配置构造**
+
+**发现**：`ChannelAdapter.__init__` 对 dict 配置直接 `ChannelConfig(**config)`，
+而 5 个适配器都会传入平台专有键（`url` / `bot_token` / `port` / `corp_id` …）：
+
+```
+WebhookAdapter({"channel_type": WEBHOOK, "url": "http://x"})
+  → TypeError: ChannelConfig.__init__() got an unexpected keyword argument 'url'
+```
+
+若改把配置塞进 `extra`，适配器又读的是**顶层 dict**（`config.get("url")`）→ 拿到空值。
+**后果：所有渠道适配器要么构造崩溃、要么平台参数全为默认值 —— 渠道功能实质不可用。**
+
+**修复**：`ChannelAdapter.__init__` 把专有键归入 `config.extra`、一等字段照常构造，
+并保留 `raw_config` 供适配器读取自身键。实测 `url`/`secret` 正确生效、`extra` 可追溯。
+
+### 16.2 覆盖要点
+
+* **webhook**：start/stop、HMAC-SHA256 签名（确定性与无密钥空串）、发送成功/失败/异常、
+  `X-Signature` 头、`send_message_to_user` 的 direct 元数据、健康检查三态（200/503/无 URL）。
+* **wechat**：`verify_signature`（正确/错误/无 token 放行）。
+* **qq**：`send_message` 按 `group_` / `user_` 前缀路由。
+* **telegram / discord**：`send_message` 经 `_call_api` 的请求构造。
+* **signing**：签名往返、篡改/过期/未来/重放四类拒绝、`sign_dict`、nonce 上限裁剪。
+
+### 16.3 覆盖率变化
+
+全仓 **79.1% → 79.8%**；`<40%` 的较大模块由 **8 → 2**（仅剩 `deployments` 路由与 `hot_reload`）。
+
+---
+
+## 17. 结论
 
 MoRE OS 现有代码**功能覆盖完整、工程化程度高**（49.6k 行 / 1588 测试 / 73.8% 覆盖 /
 ruff 全通过 / 18 端点全通 / 多层可观测 + 治理 + 安全防护），综合 **7.6/10**。
