@@ -96,12 +96,13 @@ async function refresh() {
   err.textContent = '';
   if (!key) { st.textContent = '请输入 API Key'; return; }
   try {
-    const [m, d, rec, g, c] = await Promise.all([
+    const [m, d, rec, g, c, p] = await Promise.all([
       get('/api/v1/metrics/llm?window_s=3600'),
       get('/api/v1/delivery/stats?window_s=86400'),
       get('/api/v1/metrics/llm/recent?limit=15'),
       get('/api/v1/metrics/governance?window_s=3600'),
-      get('/api/v1/metrics/council?window_s=3600')
+      get('/api/v1/metrics/council?window_s=3600'),
+      get('/api/v1/metrics/providers?window_s=3600')
     ]);
     const mm = m.metrics || {}, lat = mm.latency_ms || {}, tok = mm.tokens || {}, ds = d.stats || {};
     const rate = Math.round((mm.success_rate || 0) * 100);
@@ -114,19 +115,23 @@ async function refresh() {
       card('交付成功率', Math.round((ds.success_rate || 0) * 100) + '%', `闸门通过率 ${Math.round((ds.gate_pass_rate||0)*100)}%`)
     ].join('');
 
-    const gm = g.metrics || {}, gbyrule = gm.by_rule || {};
+    const gm = g.metrics || {}, gbyrule = gm.by_rule || {}, pm = p.health || {};
     const grate = Math.round((gm.blocked_rate || 0) * 100);
     document.getElementById('gcards').innerHTML = [
       card('治理请求 (1h)', fmt(gm.requests), `评估 ${fmt(gm.evaluations)} · 通过 ${fmt(gm.passed)}`),
       card('治理拦截率', grate + '%', `拦截 ${fmt(gm.blocked_requests)} / ${fmt(gm.requests)} 请求`, grate >= 60 ? 'bad' : (grate >= 30 ? 'warn' : 'ok')),
       card('破坏性请求拦截', fmt(gm.destructive_blocks), 'destructive_request_detection', (gm.destructive_blocks||0) > 0 ? 'bad' : 'ok'),
       card('Council 复评 (1h)', fmt((c.metrics||{}).reviews), `下修率 ${Math.round(((c.metrics||{}).downgrade_rate||0)*100)}%`),
-      card('Council 平均下修', ((c.metrics||{}).avg_adjustment || 0).toFixed(3), `分歧 ${fmt((c.metrics||{}).divided)} · 高风险 ${fmt((c.metrics||{}).high_risk_reviews)}`, ((c.metrics||{}).avg_adjustment||0) < 0 ? 'warn' : 'ok')
+      card('Council 平均下修', ((c.metrics||{}).avg_adjustment || 0).toFixed(3), `分歧 ${fmt((c.metrics||{}).divided)} · 高风险 ${fmt((c.metrics||{}).high_risk_reviews)}`, ((c.metrics||{}).avg_adjustment||0) < 0 ? 'warn' : 'ok'),
+      card('Provider 健康', `${fmt((pm.n_providers||0) - (pm.n_unhealthy||0))}/${fmt(pm.n_providers||0)}`,
+           `无效模型 ${fmt(pm.n_invalid_model)} · 兜底链 ${pm.degraded ? '降级' : 'OK'}`,
+           ((pm.n_invalid_model||0) > 0 || (pm.n_unhealthy||0) > 0) ? 'bad' : 'ok')
     ].join('');
 
-    document.getElementById('alerts').innerHTML = (g.alerts || []).map(a =>
-      `<div class="alert ${a.level === 'critical' ? 'critical' : 'warning'}">` +
-      `[${a.level.toUpperCase()}] ${a.message}</div>`).join('');
+    document.getElementById('alerts').innerHTML =
+      [...(g.alerts || []), ...(p.alerts || [])].map(a =>
+        `<div class="alert ${a.level === 'critical' ? 'critical' : 'warning'}">` +
+        `[${a.level.toUpperCase()}] ${a.message}</div>`).join('');
 
     const hits = Object.values(gbyrule).reduce((x, y) => x + y, 0) || 1;
     document.querySelector('#govrules tbody').innerHTML =

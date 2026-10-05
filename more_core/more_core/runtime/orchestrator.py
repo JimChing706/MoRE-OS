@@ -243,6 +243,10 @@ class MoRECore:
 
             _pf = await preflight_llm(self.llm, list(getattr(self.llm, "_fallback", []) or []))
             self.llm_preflight = _pf.to_dict()
+            # 预检快照落库 → 供 /metrics/providers 与看板消费（无效模型标识可告警）
+            from ..governance import observability as _obs
+
+            _obs.record_provider_health(self.llm_preflight)
             for _w in _pf.warnings:
                 self.logger.warning("LLM preflight: %s", _w)
             if _pf.ok:

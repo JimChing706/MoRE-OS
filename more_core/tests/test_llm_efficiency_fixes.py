@@ -84,6 +84,20 @@ class _FakeLLM:
         return list(self._providers)
 
 
+class _FakeState:
+    def __init__(self, provider: str, model: str) -> None:
+        self.provider = provider
+        self.model = model
+
+
+class _FakeStateMgr:
+    def __init__(self, provider: str, model: str) -> None:
+        self._s = _FakeState(provider, model)
+
+    def get_state(self) -> _FakeState:
+        return self._s
+
+
 @pytest.mark.asyncio
 async def test_preflight_flags_missing_model(monkeypatch):
     llm = _FakeLLM({"lmstudio": _FakeProvider("http://x/v1", "local-model")}, ["lmstudio"])
@@ -115,8 +129,15 @@ async def test_preflight_passes_with_valid_model_and_full_chain(monkeypatch):
         return ["ornith-1.5-35b-a3b"]
 
     monkeypatch.setattr("more_core.llm.preflight._fetch_models", _models)
+    # 契约强化：预检同时校验 state manager 的"生效模型"（配置漂移会 400）。
+    # 本用例要验证全绿，故把生效模型对齐为服务端确实存在的模型。
+    monkeypatch.setattr(
+        "more_core.llm.state_manager.get_llm_state_manager",
+        lambda: _FakeStateMgr("lmstudio", "ornith-1.5-35b-a3b"),
+    )
     report = await preflight_llm(llm, ["lmstudio", "ollama"])
     assert report.ok is True
+    assert report.state_model_present is True
     assert report.degraded is False
     assert report.chain_registered == ["lmstudio", "ollama"]
 

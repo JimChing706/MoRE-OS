@@ -93,6 +93,22 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
             "alerts": _obs.evaluate_governance_alerts(stats),
         }
 
+    @router.get("/metrics/providers", dependencies=deps)
+    async def provider_metrics(window_s: int = 3600) -> dict[str, Any]:
+        """LLM provider 健康预检指标 + 阈值告警。
+
+        重点暴露"无效模型标识 / provider 健康失败 / 兜底链降级"这类静默故障。
+        """
+        from ...governance import observability as _obs
+
+        health = _obs.query_provider_health(window_s)
+        return {
+            "status": "ok",
+            "window_s": int(window_s),
+            "health": health,
+            "alerts": _obs.evaluate_provider_alerts(health),
+        }
+
     @router.get("/metrics/council", dependencies=deps)
     async def council_metrics(window_s: int = 3600) -> dict[str, Any]:
         """L5 Council 复评指标：下修率 / 共识分布 / 平均调整量。"""
@@ -150,6 +166,39 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
         for cons, n in (cs.get("by_consensus") or {}).items():
             safe = str(cons).replace('"', "")
             lines.append(f'more_os_council_reviews_by_consensus{{consensus="{safe}"}} {int(n)}')
+
+        ph = _obs.query_provider_health(window_s)
+        ok_val = ph.get("ok")
+        lines += [
+            "# HELP more_os_provider_preflight_ok Last LLM preflight passed.",
+            "# TYPE more_os_provider_preflight_ok gauge",
+            f"more_os_provider_preflight_ok {1 if ok_val else 0}",
+            "# HELP more_os_provider_unhealthy Unhealthy LLM providers (last preflight).",
+            "# TYPE more_os_provider_unhealthy gauge",
+            f"more_os_provider_unhealthy {int(ph.get('n_unhealthy') or 0)}",
+            "# HELP more_os_provider_invalid_model Providers whose configured model is missing.",
+            "# TYPE more_os_provider_invalid_model gauge",
+            f"more_os_provider_invalid_model {int(ph.get('n_invalid_model') or 0)}",
+        ]
+        lines.append("# TYPE more_os_provider_healthy gauge")
+        for prov in ph.get("providers") or []:
+            safe = str(prov.get("name") or "?").replace('"', "")
+            hv = 1 if prov.get("healthy") else 0
+            lines.append(f'more_os_provider_healthy{{provider="{safe}"}} {hv}')
+        lines.append("# TYPE more_os_provider_model_present gauge")
+        for prov in ph.get("providers") or []:
+            if prov.get("model_present") is None:
+                continue
+            safe = str(prov.get("name") or "?").replace('"', "")
+            lines.append(
+                f'more_os_provider_model_present{{provider="{safe}"}} '
+                f'{1 if prov.get("model_present") else 0}'
+            )
+        lines.append("# TYPE more_os_provider_alerts gauge")
+        for a in _obs.evaluate_provider_alerts(ph):
+            code = str(a.get("code", "")).replace('"', "")
+            lvl = str(a.get("level", "")).replace('"', "")
+            lines.append(f'more_os_provider_alerts{{level="{lvl}",code="{code}"}} 1')
         return PlainTextResponse("\n".join(lines) + "\n")
 
     @router.get("/metrics/dashboard", include_in_schema=False)

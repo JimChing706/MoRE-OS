@@ -114,6 +114,19 @@ CREATE TABLE IF NOT EXISTS council_reviews (
 );
 CREATE INDEX IF NOT EXISTS idx_council_ts        ON council_reviews(ts);
 CREATE INDEX IF NOT EXISTS idx_council_consensus ON council_reviews(consensus);
+
+-- 5. provider_health_snapshots — 每次 LLM 预检一行（provider 健康 + 兜底链）
+CREATE TABLE IF NOT EXISTS provider_health_snapshots (
+    id              TEXT PRIMARY KEY,
+    ts              REAL NOT NULL,
+    ok              INTEGER NOT NULL DEFAULT 0,
+    degraded        INTEGER NOT NULL DEFAULT 0,
+    n_providers     INTEGER NOT NULL DEFAULT 0,
+    n_unhealthy     INTEGER NOT NULL DEFAULT 0,
+    n_invalid_model INTEGER NOT NULL DEFAULT 0,
+    report          TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_prov_snap_ts ON provider_health_snapshots(ts);
 """
 
 # Hard cap on db size before we stop appending — telemetry must not eat disk.
@@ -658,6 +671,153 @@ def query_council_stats(window_s: int = 3600) -> dict[str, Any]:
         }
     except Exception as exc:  # pragma: no cover - defensive
         return {**empty, "error": str(exc)}
+
+
+def record_provider_health(report: dict[str, Any]) -> None:
+    """Persist one LLM preflight snapshot (providers + fallback chain). Never raises.
+
+    ``report`` is :meth:`more_core.llm.preflight.LLMPreflight.to_dict` output.
+    """
+    try:
+        conn = _get_conn()
+        if conn is None:
+            return
+        import json
+
+        providers = report.get("providers") or []
+        n_unhealthy = sum(1 for p in providers if p.get("healthy") is False)
+        n_invalid = sum(1 for p in providers if p.get("model_present") is False)
+        # 生效模型（state manager）无效同样计入——这正是"假绿灯"的来源
+        if report.get("state_model_present") is False:
+            n_invalid += 1
+        conn.execute(
+            """INSERT INTO provider_health_snapshots
+               (id, ts, ok, degraded, n_providers, n_unhealthy, n_invalid_model, report)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (
+                f"ph_{uuid.uuid4().hex[:14]}",
+                time.time(),
+                1 if report.get("ok") else 0,
+                1 if report.get("degraded") else 0,
+                len(providers),
+                n_unhealthy,
+                n_invalid,
+                json.dumps(report, ensure_ascii=False)[:20000],
+            ),
+        )
+    except Exception:  # pragma: no cover - defensive
+        pass
+
+
+def query_provider_health(window_s: int = 3600) -> dict[str, Any]:
+    """Return the most recent preflight snapshot plus 1h/24h incident counts.
+
+    ``n_invalid_model`` counts providers whose configured model is missing from
+    the server's model list — the silent failure that breaks the whole LLM chain.
+    """
+    empty: dict[str, Any] = {
+        "checked_at": 0.0, "ok": None, "degraded": None,
+        "providers": [], "chain_declared": [], "chain_registered": [],
+        "state_provider": "", "state_model": "", "state_model_present": None,
+        "warnings": [], "n_providers": 0, "n_unhealthy": 0,
+        "n_invalid_model": 0, "snapshots": 0, "window_s": int(window_s),
+    }
+    try:
+        conn = _get_conn()
+        if conn is None:
+            return {**empty, "error": "observability store unavailable"}
+        conn.row_factory = sqlite3.Row
+        since = time.time() - max(0, int(window_s))
+        rows = conn.execute(
+            """SELECT ts, ok, degraded, n_providers, n_unhealthy, n_invalid_model, report
+               FROM provider_health_snapshots WHERE ts >= ? ORDER BY ts DESC""",
+            (since,),
+        ).fetchall()
+        if not rows:
+            return empty
+
+        import json
+
+        latest = rows[0]
+        try:
+            report = json.loads(latest["report"] or "{}")
+        except Exception:
+            report = {}
+        return {
+            "checked_at": float(latest["ts"]),
+            "ok": bool(latest["ok"]),
+            "degraded": bool(latest["degraded"]),
+            "providers": report.get("providers") or [],
+            "chain_declared": report.get("fallback_chain") or [],
+            "chain_registered": report.get("chain_registered") or [],
+            "state_provider": report.get("state_provider") or "",
+            "state_model": report.get("state_model") or "",
+            "state_model_present": report.get("state_model_present"),
+            "warnings": report.get("warnings") or [],
+            "n_providers": int(latest["n_providers"]),
+            "n_unhealthy": int(latest["n_unhealthy"]),
+            "n_invalid_model": int(latest["n_invalid_model"]),
+            "snapshots": len(rows),
+            "window_s": int(window_s),
+        }
+    except Exception as exc:  # pragma: no cover - defensive
+        return {**empty, "error": str(exc)}
+
+
+def evaluate_provider_alerts(health: dict[str, Any]) -> list[dict[str, Any]]:
+    """Pure threshold evaluation over :func:`query_provider_health` output.
+
+    Focus: the "silent" config faults that make every LLM call fail —
+    invalid model identifier, unhealthy provider, degenerate fallback chain.
+    """
+    if not health.get("providers") and not health.get("checked_at"):
+        return [{
+            "level": "warning", "code": "provider_preflight_missing",
+            "message": "尚未执行 LLM provider 预检（无健康快照）",
+        }]
+
+    alerts: list[dict[str, Any]] = []
+    for p in health.get("providers") or []:
+        name = p.get("name") or "?"
+        if p.get("model_present") is False:
+            alerts.append({
+                "level": "critical", "code": "provider_invalid_model", "provider": name,
+                "message": (
+                    f"provider {name} 配置的模型 {p.get('configured_model')!r} 不在服务端模型"
+                    f"列表中（可用 {p.get('models_available', 0)} 个）——请求将全部失败"
+                ),
+            })
+        if p.get("healthy") is False:
+            alerts.append({
+                "level": "critical", "code": "provider_unhealthy", "provider": name,
+                "message": f"provider {name} 健康检查失败",
+            })
+
+    if health.get("state_model_present") is False:
+        alerts.append({
+            "level": "critical", "code": "state_invalid_model",
+            "provider": health.get("state_provider") or "?",
+            "message": (
+                f"生效模型 {health.get('state_model')!r}"
+                f"（provider {health.get('state_provider')!r}）不在服务端模型列表中"
+                f"——每次请求都会失败（provider 自身配置可能正确，属配置漂移）"
+            ),
+        })
+
+    if int(health.get("n_providers") or 0) == 0 and health.get("checked_at"):
+        alerts.append({
+            "level": "critical", "code": "no_provider_registered",
+            "message": "没有任何 LLM provider 注册",
+        })
+    if health.get("degraded"):
+        alerts.append({
+            "level": "warning", "code": "fallback_chain_degraded",
+            "message": (
+                f"兜底链降级：已注册 {health.get('chain_registered')} "
+                f"（声明 {health.get('chain_declared')}）"
+            ),
+        })
+    return alerts
 
 
 def summary(window_s: int = 3600) -> dict[str, Any]:

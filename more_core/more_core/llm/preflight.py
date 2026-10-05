@@ -51,6 +51,11 @@ class LLMPreflight:
     fallback_chain: list[str] = field(default_factory=list)
     chain_registered: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # 生效模型：每次请求实际使用的 provider/model 来自 state manager，
+    # 可能与 provider 自身配置不同（配置漂移 → 静默 400）。
+    state_provider: str = ""
+    state_model: str = ""
+    state_model_present: bool | None = None
 
     @property
     def ok(self) -> bool:
@@ -68,8 +73,16 @@ class LLMPreflight:
             "fallback_chain": list(self.fallback_chain),
             "chain_registered": list(self.chain_registered),
             "warnings": list(self.warnings),
+            "state_provider": self.state_provider,
+            "state_model": self.state_model,
+            "state_model_present": self.state_model_present,
             "providers": [p.to_dict() for p in self.providers],
         }
+
+
+def _model_matches(configured: str, served: str) -> bool:
+    """LM Studio 同一模型可能有多个量化后缀，做归一化比较。"""
+    return served == configured or served.startswith(configured + "-") or configured in served
 
 
 def _list_models_endpoint(name: str, endpoint: str) -> str | None:
@@ -105,6 +118,7 @@ async def preflight_llm(llm: Any, chain: list[str] | None = None) -> LLMPrefligh
     report.fallback_chain = list(chain or getattr(llm, "_fallback", []) or [])
     report.chain_registered = [p for p in report.fallback_chain if p in registered]
 
+    models_by_provider: dict[str, list[str]] = {}
     if not registered:
         report.warnings.append("no LLM provider registered at all")
         return report
@@ -129,11 +143,9 @@ async def preflight_llm(llm: Any, chain: list[str] | None = None) -> LLMPrefligh
                 check.warnings.append(f"cannot list models from {url}")
             else:
                 check.models_available = len(models)
+                models_by_provider[name] = models
                 if model:
-                    # 归一化比较：LM Studio 里同一模型可能有多个量化后缀
-                    check.model_present = any(
-                        m == model or m.startswith(model + "-") or model in m for m in models
-                    )
+                    check.model_present = any(_model_matches(model, m) for m in models)
                     if not check.model_present:
                         check.warnings.append(
                             f"configured model {model!r} not found among "
@@ -141,6 +153,28 @@ async def preflight_llm(llm: Any, chain: list[str] | None = None) -> LLMPrefligh
                         )
         report.warnings.extend(f"[{name}] {w}" for w in check.warnings)
         report.providers.append(check)
+
+    # 生效模型检查：state manager 的 model 才是每次请求真正发送的标识。
+    try:
+        from .state_manager import get_llm_state_manager
+
+        st = get_llm_state_manager().get_state()
+        report.state_provider = str(getattr(st, "provider", "") or "")
+        report.state_model = str(getattr(st, "model", "") or "")
+        if report.state_model:
+            served = models_by_provider.get(report.state_provider)
+            if served is not None:
+                report.state_model_present = any(
+                    _model_matches(report.state_model, m) for m in served
+                )
+                if not report.state_model_present:
+                    report.warnings.append(
+                        f"[state] effective model {report.state_model!r} "
+                        f"(provider {report.state_provider!r}) not found among "
+                        f"{len(served)} served models — per-request calls will fail"
+                    )
+    except Exception:  # pragma: no cover - state check must never break preflight
+        pass
 
     if report.degraded:
         report.warnings.append(
