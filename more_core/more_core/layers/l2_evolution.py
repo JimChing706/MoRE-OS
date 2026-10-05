@@ -34,15 +34,35 @@ class EvolutionLayer(Layer):
         incident_mgr = getattr(ctx.core, "incident_manager", None) or get_incident_manager()
 
         dgm = ctx.core.evolution
-        snapshot = await dgm.snapshot()
-        if ctx.core.settings.enable_evolution_llm_variants:
-            variant = await dgm.propose_variant_llm(snapshot, ctx.request)
-        else:
-            variant = await dgm.propose_variant(snapshot, ctx.request)
-        ctx.scratch["evolution_variant"] = variant
+        # DGM is an *opt-in, non-critical* subsystem: any failure inside the
+        # evolution cycle (snapshot / propose / evaluate) must be contained so
+        # a self-improvement outage can never crash the host task pipeline.
+        try:
+            snapshot = await dgm.snapshot()
+            if ctx.core.settings.enable_evolution_llm_variants:
+                variant = await dgm.propose_variant_llm(snapshot, ctx.request)
+            else:
+                variant = await dgm.propose_variant(snapshot, ctx.request)
+            ctx.scratch["evolution_variant"] = variant
 
-        report = await dgm.evaluate_variant(variant)
-        ctx.scratch["evolution_report"] = report
+            report = await dgm.evaluate_variant(variant)
+            ctx.scratch["evolution_report"] = report
+        except Exception as exc:  # noqa: BLE001 - containment is the contract
+            _log.error("L2 evolution cycle failed (contained): %s", exc, exc_info=True)
+            try:
+                await incident_mgr.handle_dgm_variant_rejected(
+                    variant_id="<cycle-error>",
+                    reason=f"evolution cycle error: {exc}",
+                    verification_output=None,
+                )
+            except Exception:  # pragma: no cover - incident path must not cascade
+                _log.warning("L2 incident recording failed", exc_info=True)
+            return LayerResult(
+                layer=self.layer_id,
+                description=f"evolution degraded (cycle error contained): {exc}",
+                output={"evolved": False, "degraded": True, "error": str(exc)},
+                confidence=0.0,
+            )
 
         if not variant.verified:
             await incident_mgr.handle_dgm_variant_rejected(

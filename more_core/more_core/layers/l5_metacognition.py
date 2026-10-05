@@ -88,10 +88,19 @@ class MetacognitionLayer(Layer):
             ctx.core.settings.enable_metacognition and ctx.request.allow_self_improvement
         )
 
+        self_mod_error: str | None = None
         if enable_self_mod:
-            result = await ctx.core.metacognition.maybe_self_modify(ctx, calibration)
-            if result and result.get("modified"):
-                _log.info("L5 self-modification applied: %s", result.get("changes", []))
+            # HyperAgent self-modification is opt-in and non-critical: a failure
+            # in the proposal/governance path must be contained so it can never
+            # crash the host task pipeline (mirrors L2's DGM containment).
+            try:
+                result = await ctx.core.metacognition.maybe_self_modify(ctx, calibration)
+                if result and result.get("modified"):
+                    _log.info("L5 self-modification applied: %s", result.get("changes", []))
+            except Exception as exc:  # noqa: BLE001 - containment is the contract
+                self_mod_error = str(exc)
+                _log.error("L5 self-modification failed (contained): %s", exc, exc_info=True)
+                ctx.scratch["self_modification_error"] = self_mod_error
 
         description = f"calibration aligned={alignment:.2f}"
         if council_review:
@@ -120,6 +129,9 @@ class MetacognitionLayer(Layer):
                     ctx.request.id,
                 )
 
+        if self_mod_error:
+            description += f", self_mod_degraded={self_mod_error}"
+
         return LayerResult(
             layer=self.layer_id,
             description=description,
@@ -128,6 +140,7 @@ class MetacognitionLayer(Layer):
                 "plan_health": plan_health,
                 "council_review": council_review,
                 "structured_plan": ctx.scratch.get("structured_plan"),
+                "self_modification_error": self_mod_error,
             },
             confidence=alignment,
         )
