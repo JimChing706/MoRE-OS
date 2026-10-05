@@ -6,7 +6,7 @@
 
 .PHONY: help setup install install-dev install-app install-all \
         start stop restart status health \
-        serve serve-app build build-app test lint format typecheck \
+        serve serve-app build build-app test test-layers lint format typecheck \
         check clean check-env setup-hooks docker-build docker-up docker-down
 
 PYTHON  ?= $(CURDIR)/.venv/bin/python
@@ -113,6 +113,10 @@ test-cov: ## Run tests with coverage (enforced gate)
 	@cd more_core && $(PYTHON) -m pytest tests/ -v --tb=short \
 		--cov=more_core --cov-report=term-missing --cov-fail-under=50
 
+test-layers: ## Run L0-L5 layer matrix + fault-isolation gate (mirrors CI layer-gate)
+	@cd more_core && $(PYTHON) -m pytest tests/test_layer_matrix_l0_l5.py -q --tb=short
+	@cd more_core && $(PYTHON) -m pytest tests/ -m fault_isolation -q --tb=short
+
 test-app: ## Run frontend tests
 	@cd app && npm test
 
@@ -129,7 +133,7 @@ format: ## Auto-format with ruff
 typecheck: ## Run mypy type checker
 	@cd more_core && $(PYTHON) -m mypy more_core/ || true
 
-check: lint typecheck test ## Run all quality checks (lint + typecheck + test)
+check: lint typecheck test test-layers ## Run all quality checks (lint + typecheck + full test + layer gate)
 
 # ============================================================
 # Clean

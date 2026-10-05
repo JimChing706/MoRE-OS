@@ -94,10 +94,40 @@ jobs:
           name: frontend-dist
           path: app/dist/
 
+  layer-gate:
+    name: Layer Matrix Gate (L0-L5)
+    # 快速反馈门禁（约 1s）：把分层综合测试矩阵与"自演进/自修改故障隔离"
+    # 固化为 PR 必跑检查，防止 L2/L5 的包含式降级被回退。
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: more_core/pyproject.toml
+
+      - name: Install dependencies
+        working-directory: more_core
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[all]"
+
+      - name: L0-L5 分层综合测试矩阵
+        working-directory: more_core
+        run: python -m pytest tests/test_layer_matrix_l0_l5.py -q --tb=short
+
+      - name: 自演进/自修改故障隔离回归 (L2/L5)
+        working-directory: more_core
+        run: python -m pytest tests/ -m fault_isolation -q --tb=short
+
   docker-build:
     name: Docker Build Check
     runs-on: ubuntu-latest
-    needs: [python-test, frontend-test]
+    needs: [python-test, frontend-test, layer-gate]
 
     steps:
       - uses: actions/checkout@v4

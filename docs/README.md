@@ -33,6 +33,7 @@
 
 | 报告 | 说明 |
 |------|------|
+| [LAYER_TEST_MATRIX_2026-10-05.md](audits/LAYER_TEST_MATRIX_2026-10-05.md) | L0–L5 分层综合测试矩阵 + CI 门禁（含故障隔离负向验证） |
 | [RCA_AND_FIX_2026-10-04.md](audits/RCA_AND_FIX_2026-10-04.md) | 三大硬伤（产出正确性/交付可信度/可观测性）根因分析 |
 | [STAGE_EVALUATION_2026-10-04.md](audits/STAGE_EVALUATION_2026-10-04.md) | 阶段成果评估（需求逐条对照 + 达成度评分） |
 | [HARDENING_BATCH_2026-10-04.md](audits/HARDENING_BATCH_2026-10-04.md) | 加固批次 1–4（R-01…R-19 / D-1…D-4 / 生产效率） |

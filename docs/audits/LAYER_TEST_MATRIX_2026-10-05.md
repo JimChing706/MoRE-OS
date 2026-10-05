@@ -189,3 +189,59 @@
 - `docs/audits/LAYER_TEST_MATRIX_2026-10-05.md` — 本设计书 + 执行结果
 
 *执行人: Codex · 2026-10-05*
+
+---
+
+## 7. CI 门禁接入（PR 必跑）
+
+为把上述矩阵固化为止损线，已将分层用例纳入 CI，并提供本地同源入口。
+
+### 7.1 新增 CI Job
+
+`.github/workflows/ci.yml` 新增独立 job **`Layer Matrix Gate (L0-L5)`**（`layer-gate`），
+触发条件与既有 workflow 一致（`push: main/develop`、`pull_request: main`）。两步：
+
+1. `pytest tests/test_layer_matrix_l0_l5.py -q --tb=short` —— **72 用例**分层矩阵。
+2. `pytest tests/ -m fault_isolation -q --tb=short` —— 跨全仓的**故障隔离回归**（标注该 marker 的用例）。
+
+`docker-build` 的 `needs` 已加入 `layer-gate`，使该门禁成为阻塞式检查。
+
+### 7.2 测试标记（pytest marker）
+
+在 `more_core/pytest.ini` 注册两个标记，避免 `-m` 选择产生未知标记告警：
+
+| 标记 | 含义 | 覆盖 |
+|------|------|------|
+| `layer_matrix` | L0–L5 分层架构综合测试矩阵 | `test_layer_matrix_l0_l5.py` 全模块（模块级 `pytestmark`） |
+| `fault_isolation` | 自演进/自修改故障隔离回归 | L2-E1、L2-E2、L5-E1 三个包含式降级用例 |
+
+> 注：仓库实际生效的是 `more_core/pytest.ini`（`pyproject.toml` 的 pytest 段被忽略），
+> 故标记注册在 `pytest.ini`。
+
+### 7.3 本地同源入口
+
+```bash
+make test-layers     # 与 CI layer-gate 完全同源：矩阵 + 故障隔离
+make check           # lint + typecheck + 全量 test + test-layers
+```
+
+### 7.4 门禁有效性验证（负向测试）
+
+为证明门禁"真能拦"，做了受控回退实验：
+
+| 步骤 | 操作 | 观察 |
+|------|------|------|
+| 1 | 备份 `l2_evolution.py`（sha256 记录） | 13f016a6… |
+| 2 | 临时移除 L2 的 try/except 故障隔离 | — |
+| 3 | 跑 `pytest tests/ -m fault_isolation` | **2 failed**（L2-E1、L2-E2）——门禁拦截成功 |
+| 4 | 从备份还原并校验 sha256 | OK，`git diff` 为空 |
+| 5 | 重跑 `make test-layers` | 72 passed + 3 passed —— 恢复通过 |
+
+结论：一旦 L2/L5 的包含式降级被回退，PR 门禁会立即变红，回归无法合入。
+
+### 7.5 待人工配置（仓库外）
+
+GitHub 分支保护需管理员在 **Settings → Branches → Branch protection rules** 中把
+`Layer Matrix Gate (L0-L5)` 勾选为 **required status check**；此属仓库设置，无法由代码提交完成。
+
+*执行人: Codex · 2026-10-05*

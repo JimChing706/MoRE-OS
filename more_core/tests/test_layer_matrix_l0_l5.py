@@ -15,6 +15,9 @@ import pytest
 from more_core.core.types import LayerId, TaskRequest, TaskStatus, TaskType
 from more_core.layers.base import LayerContext, LayerResult
 
+# 整个矩阵纳入 CI 门禁（PR 必跑）
+pytestmark = pytest.mark.layer_matrix
+
 # ===========================================================================
 # 通用契约矩阵（L-C1 .. L-C5）—— 六层通用
 # ===========================================================================
@@ -270,6 +273,7 @@ async def test_l2_i1_disabled_path_does_not_touch_dgm(core):
 
 
 @pytest.mark.asyncio
+@pytest.mark.fault_isolation
 async def test_l2_e1_dgm_failure_is_contained(core):
     """L2-E1: DGM 抛错时不得让主管道崩溃。"""
     core.settings.enable_evolution = True
@@ -374,6 +378,7 @@ async def test_l2_g3_llm_variant_flag_routes_to_llm_path(core):
 
 
 @pytest.mark.asyncio
+@pytest.mark.fault_isolation
 async def test_l2_e2_propose_failure_is_contained(core):
     """L2-E2: propose_variant 抛错 → 降级返回，不泄漏异常。"""
     core.settings.enable_evolution = True
@@ -636,6 +641,7 @@ async def test_l5_i2_council_review_lowers_optimistic_alignment(core):
 
 
 @pytest.mark.asyncio
+@pytest.mark.fault_isolation
 async def test_l5_e1_self_modification_failure_is_contained(core):
     """L5-E1: 自修改（HyperAgent）失败不得击穿主管道。"""
     core.settings.enable_metacognition = True
