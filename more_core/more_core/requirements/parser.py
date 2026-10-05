@@ -90,8 +90,9 @@ class RequirementsParser:
             line = line.strip()
 
             if not line:
-                if current_item and in_acceptance_criteria:
-                    in_acceptance_criteria = False
+                # 修复：此前空行会立刻清掉 in_acceptance_criteria，导致
+                # "### 验收标准 + 空行 + 列表" 这一常见写法完全失效。
+                # 段落状态改由"新条目创建"与"新 ### 小节"切换，空行不再重置。
                 continue
 
             if line.startswith("# "):
@@ -126,6 +127,8 @@ class RequirementsParser:
                     doc.items.append(current_item)
 
                 # Try different patterns
+                # Markdown 复选框：``- [x]`` 视为已完成（此前被忽略，恒为 pending）
+                checkbox_done = bool(re.match(r"^[-*]\s+\[[xX]\]\s+", line))
                 match = re.match(r"^[-*]\s+\[[ xX]\]\s+(.+)", line)
                 if match:
                     title = match.group(1).strip()
@@ -145,6 +148,7 @@ class RequirementsParser:
                     description=title,
                     priority=self._detect_priority(title),
                     type=self._detect_type(title),
+                    status="done" if checkbox_done else "pending",
                 )
                 in_acceptance_criteria = False
                 in_dependencies = False
@@ -153,8 +157,15 @@ class RequirementsParser:
                 pass
 
             elif line.startswith("- ") and not line.startswith("- ["):
-                if current_item and not in_acceptance_criteria and not in_dependencies:
-                    current_item.labels.append(line[2:].strip())
+                # 修复：此前本分支在"验收标准/依赖"段内既不收进 labels、也不落到
+                # 下方的 acceptance/dependencies 分支（elif 已被吃掉）→ **整行静默丢弃**。
+                stripped = line[2:].strip()
+                if current_item and in_acceptance_criteria and stripped:
+                    current_item.acceptance_criteria.append(stripped)
+                elif current_item and in_dependencies and stripped:
+                    current_item.dependencies.append(stripped)
+                elif current_item and not in_acceptance_criteria and not in_dependencies:
+                    current_item.labels.append(stripped)
 
             elif current_item:
                 if line.startswith("### "):

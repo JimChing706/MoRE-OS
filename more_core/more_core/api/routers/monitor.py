@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 
 from ...runtime.orchestrator import MoRECore
 
@@ -351,6 +351,36 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
             "window_s": int(window_s),
             "health": health,
             "alerts": _obs.evaluate_skill_network_alerts(health),
+        }
+
+    @router.get("/router/scene", dependencies=deps)
+    async def router_scene(q: str, task_type: str = "nlp_task") -> dict[str, Any]:
+        """场景自适应路由内省（P5 scene_router）。
+
+        此前 ``scene_router`` 仅被无调用方的 ``route_with_scene()`` 引用，
+        属**死代码**（0% 覆盖）。本端点把它接通为可内省能力：
+        返回场景分类结果 + 叠加场景提示后的管道（**不改变实际执行链路**）。
+        """
+        from ...core.types import TaskRequest, TaskType as _TT
+        from ...router.scene_router import resolve_scene
+
+        try:
+            tt = _TT(task_type)
+        except ValueError:
+            raise HTTPException(status_code=422, detail=f"Unknown task type: {task_type}")
+
+        scene = resolve_scene(q)
+        req = TaskRequest(type=tt, query=q)
+        base = core.router.route(req)
+        scene_decision = core.router.route_with_scene(req)
+        return {
+            "status": "ok",
+            "query": q,
+            "task_type": tt.value,
+            "scene": scene.to_dict(),
+            "base_pipeline": [lid.value for lid in base.pipeline],
+            "scene_pipeline": [lid.value for lid in scene_decision.pipeline],
+            "reasoning": scene_decision.reasoning,
         }
 
     @router.get("/metrics/dashboard", include_in_schema=False)
