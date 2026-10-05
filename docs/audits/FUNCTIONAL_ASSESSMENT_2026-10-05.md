@@ -117,7 +117,7 @@ api 62.0% · llm 65.8% · runtime 77.4%
 |---|------|------|------|
 | ~~A-1~~ | ~~时间点快照 + 滑窗查询 → 误报~~ | 可观测性 | **已修复（2026-10-05）**：查询改为"取最新快照（不限窗口）"+ 新鲜度（`age_s`/`stale`）；过期时改用 **info 级 `*_stale`**，不再影响 `overall` 裁决。见 §9 |
 | **A-2** | `router/scene_router.py` **0% 覆盖**：仅被 `LayerRouter.route_with_scene()` 使用，而该方法**无任何调用方** → **死代码 ~160 行** | 可维护性 | 低-中 |
-| **A-3** | `delivery success_rate=51.5%` / 技能 55.6% —— 需区分"历史故障期"与"当前状态"（当前 LLM 链路已修复，llm_calls 近 1h 无样本） | 正确性 | 中（缺窗口化/近期对比） |
+| ~~A-3~~ | ~~成功率缺近期窗口（历史样本污染）~~ | 正确性 | **已修复（2026-10-05）**：交付/技能均新增"近 1h / 24h"双窗口 + 趋势；`no_data` 区分"无样本"与"下降"。见 §9 |
 
 ---
 
@@ -127,7 +127,7 @@ api 62.0% · llm 65.8% · runtime 77.4%
 |:------:|------|----------|
 | **P0** | 快照类指标改为"取最新快照（不限窗口）+ 标注新鲜度"，或延长窗口并在过期时给出**独立**的 `*_stale` 提示而非 `missing` | A-1 |
 | **P1** | 为低覆盖核心模块补测试：`requirements/parser`、`council/validators`、`plugins/manager`、`llm/providers/ollama` | 覆盖率 |
-| **P1** | 交付/技能成功率增加"近 1h / 24h"双窗口与趋势，避免历史样本污染当前判断 | A-3 |
+| ~~P1~~ | ~~交付/技能成功率增加"近 1h / 24h"双窗口与趋势~~ ✅ **已执行（见 §9）** | A-3 |
 | **P2** | 清理 `scene_router` 死代码，或为 `route_with_scene` 接入真实调用点并补测试 | A-2 |
 | **P2** | `openai_compat` / `channels/*` 等外部依赖模块补契约测试或显式标注"未覆盖" | 覆盖率 |
 | **P3** | 建立端到端性能基准（当前仅单点测量，无回归基线） | 正确性 |
@@ -162,7 +162,31 @@ api 62.0% · llm 65.8% · runtime 77.4%
 
 ---
 
-## 9. 结论
+## 9. P1（A-3）修复详情：成功率双窗口 + 趋势
+
+**问题**：`delivery.stats()` / `query_skill_stats()` 仅单窗口，历史故障期样本混入当前判断
+（如交付 24h 51.5% 掩盖了修复后的 1h 100%）。
+
+**修复**：
+
+| 项 | 实现 |
+|----|------|
+| 多窗口 | `DeliveryLedger.stats_windows()` / `query_skill_stats_windows()` → `{"windows": {"1h":…,"24h":…}, "trend": …}` |
+| 趋势 | `success_trend(recent, baseline, recent_samples=…)` → `improving`/`declining`/`stable`/**`no_data`** |
+| 语义加固 | **`recent_samples == 0` → `no_data`**：无样本 ≠ 下降（避免二次误报，与 A-1 同类） |
+| 接口 | `/delivery/stats`、`/metrics/skills` 增加 `windows`；`/metrics/overview` 增加 `recent` 块 |
+| 看板 | 交付/技能卡片显示"近1h · 24h · 趋势" |
+
+**实测**：
+
+```
+delivery: 1h = 100%   24h = 61.8%   trend = improving    ← 当前状态与累积区分开
+skills  : 1h = 0 runs 24h = 55.6%   trend = no_data      ← 无样本不再误报 declining
+```
+
+---
+
+## 10. 结论
 
 MoRE OS 现有代码**功能覆盖完整、工程化程度高**（49.6k 行 / 1588 测试 / 73.8% 覆盖 /
 ruff 全通过 / 18 端点全通 / 多层可观测 + 治理 + 安全防护），综合 **7.6/10**。

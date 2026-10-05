@@ -157,6 +157,9 @@ def _stage_percentile(rows: list[Any], q: float = 0.5) -> dict[str, float]:
     return dict(sorted(out.items()))
 
 
+from ..governance.observability import success_trend as _success_trend  # noqa: E402
+
+
 class DeliveryLedger:
     """Append-only delivery ledger backed by SQLite."""
 
@@ -314,6 +317,30 @@ class DeliveryLedger:
     def latest(self, task_id: str) -> DeliveryRecord | None:
         rows = self.list(task_id=task_id, limit=1)
         return rows[0] if rows else None
+
+    # 默认双窗口：近 1h（当前状态）与 24h（历史累积）
+    DEFAULT_WINDOWS: dict[str, int] = {"1h": 3600, "24h": 86400}
+
+    def stats_windows(
+        self, windows: dict[str, int] | None = None
+    ) -> dict[str, Any]:
+        """多窗口成功率 + 趋势。
+
+        单窗口会把"历史故障期样本"混进当前判断（评估发现 A-3）；多窗口可区分。
+        返回 ``{"windows": {label: stats}, "trend": improving|declining|stable}``。
+        """
+        wins = windows or dict(self.DEFAULT_WINDOWS)
+        by_window = {label: self.stats(sec) for label, sec in wins.items()}
+        recent = by_window.get("1h") or next(iter(by_window.values()), {})
+        base = by_window.get("24h") or recent
+        return {
+            "windows": by_window,
+            "trend": _success_trend(
+                float(recent.get("success_rate") or 0.0),
+                float(base.get("success_rate") or 0.0),
+                recent_samples=int(recent.get("total") or 0),
+            ),
+        }
 
     def stats(self, window_s: int = 24 * 3600) -> dict[str, Any]:
         """交付成功率量化模型：按总量/状态/任务类型切分。"""

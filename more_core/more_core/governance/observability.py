@@ -1077,6 +1077,48 @@ def evaluate_skill_network_alerts(health: dict[str, Any]) -> list[dict[str, Any]
     return alerts
 
 
+_DEFAULT_STAT_WINDOWS: dict[str, int] = {"1h": 3600, "24h": 86400}
+
+
+def success_trend(
+    recent: float,
+    baseline: float,
+    *,
+    recent_samples: int | None = None,
+    threshold: float = 0.05,
+) -> str:
+    """比较近窗口与基线成功率 → ``improving`` / ``declining`` / ``stable``。
+
+    ``recent_samples == 0`` 时返回 ``no_data`` —— **无样本 ≠ 下降**：
+    否则"近窗口没流量"会被误报成 declining（与 A-1 同类语义错误）。
+    """
+    if recent_samples == 0:
+        return "no_data"
+    if recent - baseline > threshold:
+        return "improving"
+    if baseline - recent > threshold:
+        return "declining"
+    return "stable"
+
+
+def query_skill_stats_windows(
+    windows: dict[str, int] | None = None,
+) -> dict[str, Any]:
+    """技能成功率多窗口 + 趋势（近 1h 反映当前状态，24h 反映累积）。"""
+    wins = windows or dict(_DEFAULT_STAT_WINDOWS)
+    by_window = {label: query_skill_stats(sec) for label, sec in wins.items()}
+    recent = by_window.get("1h") or next(iter(by_window.values()), {})
+    base = by_window.get("24h") or recent
+    return {
+        "windows": by_window,
+        "trend": success_trend(
+            float(recent.get("success_rate") or 0.0),
+            float(base.get("success_rate") or 0.0),
+            recent_samples=int(recent.get("runs") or 0),
+        ),
+    }
+
+
 def summary(window_s: int = 3600) -> dict[str, Any]:
     """Aggregate core runtime metrics over the trailing *window_s* seconds.
 

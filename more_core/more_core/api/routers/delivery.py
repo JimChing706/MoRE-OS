@@ -32,6 +32,8 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
         return {
             "status": "ok",
             "stats": ledger.stats(window_s),
+            # A-3：双窗口 + 趋势，避免历史故障期样本污染"当前状态"判断
+            "windows": ledger.stats_windows(),
             "ledger_db": str(ledger.db_path),
             "last_error": ledger.last_error,
         }

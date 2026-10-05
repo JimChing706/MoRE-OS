@@ -122,7 +122,8 @@ async function refresh() {
       card('延迟 p50 / p95', `${fmt(lat.p50)} / ${fmt(lat.p95)} ms`, `avg ${fmt(lat.avg)} · max ${fmt(lat.max)}`),
       card('LLM 成功率', rate + '%', '', rate >= 90 ? 'ok' : (rate >= 70 ? 'warn' : 'bad')),
       card('交付总数 (24h)', fmt(ds.total), `已交付 ${fmt(ds.delivered)} · 拦截 ${fmt(ds.blocked)} · 失败 ${fmt(ds.failed)}`),
-      card('交付成功率', Math.round((ds.success_rate || 0) * 100) + '%', `闸门通过率 ${Math.round((ds.gate_pass_rate||0)*100)}%`)
+      card('交付成功率', Math.round((ds.success_rate || 0) * 100) + '%',
+           `近1h ${Math.round(((o.recent||{}).delivery_1h_success_rate||0)*100)}% · 趋势 ${(o.recent||{}).delivery_trend||'-'} · 闸门 ${Math.round((ds.gate_pass_rate||0)*100)}%`)
     ].join('');
 
     const ovMap = {healthy: ['健康', 'ok'], degraded: ['降级', 'warn'], critical: ['严重', 'bad']};
@@ -135,6 +136,9 @@ async function refresh() {
       `更新 ${new Date((o.generated_at || 0) * 1000).toLocaleTimeString()}`;
 
     const gm = g.metrics || {}, gbyrule = gm.by_rule || {}, pm = p.health || {};
+    const skw = (sk.windows || {}).windows || {};
+    const sk1h = ((skw['1h'] || {}).success_rate || 0);
+    const sk24h = ((skw['24h'] || {}).success_rate || 0);
     const grate = Math.round((gm.blocked_rate || 0) * 100);
     document.getElementById('gcards').innerHTML = [
       card('治理请求 (1h)', fmt(gm.requests), `评估 ${fmt(gm.evaluations)} · 通过 ${fmt(gm.passed)}`),
@@ -146,9 +150,9 @@ async function refresh() {
            `无效模型 ${fmt(pm.n_invalid_model)} · 兜底链 ${pm.degraded ? '降级' : 'OK'}`,
            ((pm.n_invalid_model||0) > 0 || (pm.n_unhealthy||0) > 0) ? 'bad' : 'ok'),
       card('技能执行 (1h)', fmt((sk.metrics||{}).runs), `注册 ${fmt((sk.registry||{}).total_skills)} · 活跃 ${fmt((sk.registry||{}).active)}`),
-      card('技能成功率', Math.round(((sk.metrics||{}).success_rate||0)*100) + '%',
-           `平均 ${fmt((sk.metrics||{}).avg_duration_ms)} ms · p95 ${fmt((sk.metrics||{}).p95_duration_ms)} ms`,
-           ((sk.metrics||{}).success_rate||0) >= 0.9 ? 'ok' : 'warn'),
+      card('技能成功率', Math.round(sk1h * 100) + '%',
+           `近1h · 24h ${Math.round(sk24h * 100)}% · 趋势 ${(sk.windows||{}).trend||'-'}`,
+           sk1h >= 0.9 ? 'ok' : 'warn'),
       card('技能出网可达', `${fmt((sn.health||{}).n_reachable)}/${fmt((sn.health||{}).n_targets)}`,
            `依赖技能 ${((sn.health||{}).required_egress||[]).length} 个`,
            ((sn.health||{}).n_targets||0) > 0 && (sn.health||{}).n_reachable < (sn.health||{}).n_targets ? 'bad' : 'ok')

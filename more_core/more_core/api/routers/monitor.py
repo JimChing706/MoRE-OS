@@ -113,9 +113,13 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
         council = _obs.query_council_stats(window_s)
         providers = _obs.query_provider_health(window_s)
         try:
-            delivery = get_default_ledger().stats(delivery_window_s)
+            _ledger = get_default_ledger()
+            delivery = _ledger.stats(delivery_window_s)
+            delivery_windows = _ledger.stats_windows()
         except Exception as exc:  # pragma: no cover - ledger read must not break overview
             delivery = {"error": str(exc)}
+            delivery_windows = {}
+        skill_windows = _obs.query_skill_stats_windows()
 
         skill_network = _obs.query_skill_network_health(window_s)
         alerts = (
@@ -137,6 +141,23 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
             "alerts": alerts,
             "llm": llm,
             "delivery": delivery,
+            # A-3：近期窗口（当前状态）vs 24h（累积），附趋势
+            "recent": {
+                "delivery_1h_success_rate": (
+                    (delivery_windows.get("windows") or {}).get("1h", {}).get("success_rate")
+                ),
+                "delivery_24h_success_rate": (
+                    (delivery_windows.get("windows") or {}).get("24h", {}).get("success_rate")
+                ),
+                "delivery_trend": delivery_windows.get("trend"),
+                "skills_1h_success_rate": (
+                    (skill_windows.get("windows") or {}).get("1h", {}).get("success_rate")
+                ),
+                "skills_24h_success_rate": (
+                    (skill_windows.get("windows") or {}).get("24h", {}).get("success_rate")
+                ),
+                "skills_trend": skill_windows.get("trend"),
+            },
             "governance": governance,
             "council": council,
             "skill_network": {
@@ -314,6 +335,8 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
             "status": "ok",
             "window_s": int(window_s),
             "metrics": _obs.query_skill_stats(window_s),
+            # A-3：双窗口 + 趋势
+            "windows": _obs.query_skill_stats_windows(),
             "registry": core.skill_manager.get_stats(),
         }
 
