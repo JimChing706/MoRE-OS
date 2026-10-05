@@ -113,8 +113,9 @@ test-cov: ## Run tests with coverage (enforced gate)
 	@cd more_core && $(PYTHON) -m pytest tests/ -v --tb=short \
 		--cov=more_core --cov-report=term-missing --cov-fail-under=50
 
-test-layers: ## Run L0-L5 layer matrix + fault-isolation gate (mirrors CI layer-gate)
+test-layers: ## Run L0-L5 layer matrix + retrospective + fault-isolation gate (mirrors CI layer-gate)
 	@cd more_core && $(PYTHON) -m pytest tests/test_layer_matrix_l0_l5.py -q --tb=short
+	@cd more_core && $(PYTHON) -m pytest tests/test_layer_matrix_retrospective.py -q --tb=short
 	@cd more_core && $(PYTHON) -m pytest tests/ -m fault_isolation -q --tb=short
 
 test-app: ## Run frontend tests

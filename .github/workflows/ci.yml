@@ -120,6 +120,10 @@ jobs:
         working-directory: more_core
         run: python -m pytest tests/test_layer_matrix_l0_l5.py -q --tb=short
 
+      - name: 分层权威链路回顾性检验
+        working-directory: more_core
+        run: python -m pytest tests/test_layer_matrix_retrospective.py -q --tb=short
+
       - name: 自演进/自修改故障隔离回归 (L2/L5)
         working-directory: more_core
         run: python -m pytest tests/ -m fault_isolation -q --tb=short

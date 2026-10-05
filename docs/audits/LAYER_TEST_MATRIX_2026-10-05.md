@@ -188,6 +188,20 @@
 - `more_core/tests/test_layer_matrix_l0_l5.py` — 新增 72 用例（本矩阵）
 - `docs/audits/LAYER_TEST_MATRIX_2026-10-05.md` — 本设计书 + 执行结果
 
+---
+
+## 8. 回顾性检验（2026-10-05）
+
+后续系统增强后对本矩阵做了**回顾性检验**，结论：
+* L0–L5 单层契约与故障隔离用例**依然全部有效**（72/72 全绿）。
+* ⚠️ 但 X-I2 / X-I3 / X-I4 断言的 `core.router.route()` **不是权威来源**——
+  生产实际执行由 **Meta-Orchestrator 谱路由**决定（VILLAGE `[L4,L1,L0]` / RIVER `[L4,L3,L1,L0]`）。
+  权威链路已由新增的 `test_layer_matrix_retrospective.py`（17 用例）钉住。
+
+详见: [LAYER_MATRIX_RETROSPECTIVE_2026-10-05.md](LAYER_MATRIX_RETROSPECTIVE_2026-10-05.md)
+
+---
+
 *执行人: Codex · 2026-10-05*
 
 ---
