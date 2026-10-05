@@ -66,22 +66,26 @@ class MetacognitionLayer(Layer):
         plan_data = ctx.scratch.get("plan", {})
         council_result = plan_data.get("council_result")
         if council_result:
+            _alignment_before = alignment
             council_review = self._review_council_output(
                 council_result, calibration, alignment,
             )
             ctx.scratch["council_review"] = council_review
             if council_review.get("confidence_adjustment", 0.0) < 0:
-                old_alignment = alignment
                 alignment = max(0.0, alignment + council_review["confidence_adjustment"])
                 _log.info(
                     "L5 council review adjusted alignment: %.2f → %.2f (reason: %s)",
-                    old_alignment, alignment, council_review.get("adjustment_reason", ""),
+                    _alignment_before, alignment, council_review.get("adjustment_reason", ""),
                 )
             if council_review.get("risks", []):
                 _log.info(
                     "L5 council review flagged %d risks for task %s",
-                    len(council_review["risks"]), ctx.request.id,
+                    council_review.get("risk_count", len(council_review["risks"])),
+                    ctx.request.id,
                 )
+            self._record_council_review(
+                ctx, council_review, _alignment_before, alignment
+            )
 
         # --- Self-modification (opt-in) ---
         enable_self_mod = (
@@ -144,6 +148,31 @@ class MetacognitionLayer(Layer):
             },
             confidence=alignment,
         )
+
+    def _record_council_review(
+        self,
+        ctx: LayerContext,
+        review: dict[str, Any],
+        before: float,
+        after: float,
+    ) -> None:
+        """Emit one council-review telemetry row. Never raises."""
+        try:
+            from ..governance import observability as _obs
+
+            risks = review.get("risks") or []
+            _obs.record_council_review(
+                request_id=ctx.request.id,
+                consensus=str(review.get("consensus_level", "")),
+                risk_count=int(review.get("risk_count", len(risks)) or 0),
+                high_risks=int(review.get("high_risk_count", 0) or 0),
+                errors=int(review.get("council_errors", 0) or 0),
+                alignment_before=float(before),
+                adjustment=float(review.get("confidence_adjustment", 0.0) or 0.0),
+                alignment_after=float(after),
+            )
+        except Exception:  # pragma: no cover - telemetry must never break L5
+            pass
 
     async def _monitor_plan(self, ctx: LayerContext, confidence: float) -> dict[str, Any]:
         """Monitor active plan execution and apply adaptive interventions.
@@ -250,6 +279,8 @@ class MetacognitionLayer(Layer):
             "confidence_adjustment": adjustment,
             "adjustment_reason": "; ".join(reasons) if reasons else "no adjustment needed",
             "risks": risks[:5],
+            "risk_count": risk_count,
+            "high_risk_count": high_risks,
             "consensus_level": consensus_level,
             "core_conclusion": (core_conclusion[:200] if core_conclusion else ""),
             "council_errors": len(errors),

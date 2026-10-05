@@ -93,6 +93,14 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
             "alerts": _obs.evaluate_governance_alerts(stats),
         }
 
+    @router.get("/metrics/council", dependencies=deps)
+    async def council_metrics(window_s: int = 3600) -> dict[str, Any]:
+        """L5 Council 复评指标：下修率 / 共识分布 / 平均调整量。"""
+        from ...governance import observability as _obs
+
+        return {"status": "ok", "window_s": int(window_s),
+                "metrics": _obs.query_council_stats(window_s)}
+
     @router.get("/metrics/governance/prometheus", include_in_schema=False)
     async def governance_prometheus(window_s: int = 3600) -> Any:
         """治理指标的 Prometheus 文本导出（供 scrape / Grafana 直接消费）。"""
@@ -125,6 +133,23 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
             code = str(a.get("code", "")).replace('"', "")
             lvl = str(a.get("level", "")).replace('"', "")
             lines.append(f'more_os_governance_alerts{{level="{lvl}",code="{code}"}} 1')
+
+        cs = _obs.query_council_stats(window_s)
+        lines += [
+            "# HELP more_os_council_reviews L5 council reviews in window.",
+            "# TYPE more_os_council_reviews gauge",
+            f"more_os_council_reviews {int(cs.get('reviews') or 0)}",
+            "# HELP more_os_council_downgrade_rate Share of reviews that lowered confidence.",
+            "# TYPE more_os_council_downgrade_rate gauge",
+            f"more_os_council_downgrade_rate {float(cs.get('downgrade_rate') or 0.0)}",
+            "# HELP more_os_council_avg_adjustment Mean confidence adjustment.",
+            "# TYPE more_os_council_avg_adjustment gauge",
+            f"more_os_council_avg_adjustment {float(cs.get('avg_adjustment') or 0.0)}",
+        ]
+        lines.append("# TYPE more_os_council_reviews_by_consensus gauge")
+        for cons, n in (cs.get("by_consensus") or {}).items():
+            safe = str(cons).replace('"', "")
+            lines.append(f'more_os_council_reviews_by_consensus{{consensus="{safe}"}} {int(n)}')
         return PlainTextResponse("\n".join(lines) + "\n")
 
     @router.get("/metrics/dashboard", include_in_schema=False)

@@ -97,6 +97,23 @@ CREATE TABLE IF NOT EXISTS governance_events (
 CREATE INDEX IF NOT EXISTS idx_gov_ts      ON governance_events(ts);
 CREATE INDEX IF NOT EXISTS idx_gov_blocked ON governance_events(blocked);
 CREATE INDEX IF NOT EXISTS idx_gov_layer   ON governance_events(layer);
+
+-- 4. council_reviews — 每次 L5 Council 复评一行（高风险/分歧 → 置信度下修）
+CREATE TABLE IF NOT EXISTS council_reviews (
+    id               TEXT PRIMARY KEY,
+    ts               REAL NOT NULL,
+    request_id       TEXT NOT NULL DEFAULT '',
+    consensus        TEXT NOT NULL DEFAULT '',
+    risk_count       INTEGER NOT NULL DEFAULT 0,
+    high_risks       INTEGER NOT NULL DEFAULT 0,
+    errors           INTEGER NOT NULL DEFAULT 0,
+    alignment_before REAL NOT NULL DEFAULT 0,
+    adjustment       REAL NOT NULL DEFAULT 0,
+    alignment_after  REAL NOT NULL DEFAULT 0,
+    downgraded       INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_council_ts        ON council_reviews(ts);
+CREATE INDEX IF NOT EXISTS idx_council_consensus ON council_reviews(consensus);
 """
 
 # Hard cap on db size before we stop appending — telemetry must not eat disk.
@@ -546,6 +563,101 @@ def evaluate_governance_alerts(
             "message": f"破坏性请求拦截 {destructive} 次 ≥ 告警阈值 {int(cfg['destructive_blocks_warn'])}",
         })
     return alerts
+
+
+def record_council_review(
+    *,
+    request_id: str = "",
+    consensus: str = "",
+    risk_count: int = 0,
+    high_risks: int = 0,
+    errors: int = 0,
+    alignment_before: float = 0.0,
+    adjustment: float = 0.0,
+    alignment_after: float = 0.0,
+) -> None:
+    """Append one L5 Council-review row (高风险/分歧 → 置信度下修). Never raises."""
+    try:
+        conn = _get_conn()
+        if conn is None:
+            return
+        conn.execute(
+            """INSERT INTO council_reviews
+               (id, ts, request_id, consensus, risk_count, high_risks, errors,
+                alignment_before, adjustment, alignment_after, downgraded)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                f"cr_{uuid.uuid4().hex[:14]}",
+                time.time(),
+                request_id or "",
+                consensus or "",
+                int(risk_count),
+                int(high_risks),
+                int(errors),
+                float(alignment_before),
+                float(adjustment),
+                float(alignment_after),
+                1 if float(adjustment) < 0 else 0,
+            ),
+        )
+    except Exception:  # pragma: no cover - defensive
+        pass
+
+
+def query_council_stats(window_s: int = 3600) -> dict[str, Any]:
+    """Aggregate L5 Council reviews: 下修率 / 共识分布 / 平均调整量。"""
+    empty: dict[str, Any] = {
+        "reviews": 0, "downgraded": 0, "downgrade_rate": 0.0,
+        "divided": 0, "weak": 0, "high_risk_reviews": 0,
+        "avg_adjustment": 0.0, "min_adjustment": 0.0,
+        "by_consensus": {}, "window_s": int(window_s),
+    }
+    try:
+        conn = _get_conn()
+        if conn is None:
+            return {**empty, "error": "observability store unavailable"}
+        conn.row_factory = sqlite3.Row
+        since = time.time() - max(0, int(window_s))
+        rows = conn.execute(
+            """SELECT consensus, risk_count, high_risks, errors, adjustment, downgraded
+               FROM council_reviews WHERE ts >= ?""",
+            (since,),
+        ).fetchall()
+        if not rows:
+            return empty
+
+        by_consensus: dict[str, int] = {}
+        adjustments: list[float] = []
+        downgraded = divided = weak = high_risk = 0
+        for r in rows:
+            cons = r["consensus"] or "unknown"
+            by_consensus[cons] = by_consensus.get(cons, 0) + 1
+            adj = float(r["adjustment"] or 0.0)
+            adjustments.append(adj)
+            if int(r["downgraded"]):
+                downgraded += 1
+            if cons == "divided":
+                divided += 1
+            if cons == "weak":
+                weak += 1
+            if int(r["high_risks"] or 0) > 0:
+                high_risk += 1
+
+        n = len(rows)
+        return {
+            "reviews": n,
+            "downgraded": downgraded,
+            "downgrade_rate": round(downgraded / n, 3) if n else 0.0,
+            "divided": divided,
+            "weak": weak,
+            "high_risk_reviews": high_risk,
+            "avg_adjustment": round(sum(adjustments) / n, 3) if n else 0.0,
+            "min_adjustment": round(min(adjustments), 3) if adjustments else 0.0,
+            "by_consensus": dict(sorted(by_consensus.items(), key=lambda kv: -kv[1])),
+            "window_s": int(window_s),
+        }
+    except Exception as exc:  # pragma: no cover - defensive
+        return {**empty, "error": str(exc)}
 
 
 def summary(window_s: int = 3600) -> dict[str, Any]:
