@@ -98,9 +98,44 @@ state.provider 恒为 `lmstudio` → 调用点 `chain = [provider] if provider e
 
 ---
 
-## 5. 变更文件
+## 5. 配置修复（已写入 more_core/.env）
+
+在代码修复之外，落地了运维配置（备份：`more_core/.env.bak.20261005`）：
+
+| 配置 | 值 | 作用 |
+|------|-----|------|
+| `MORE_LLM_FALLBACK_CHAIN` | `ollama,lmstudio` | **把已验证可用的 7B 排到链首**，消除 35B 白耗 150s |
+| `MORE_OLLAMA_TIMEOUT` | `240` | Ollama 大 prompt 需 ~118s，原硬编码 120s 太紧 |
+| `MORE_LLM_FALLBACK_DEADLINE_S` | `300` | 链级预算 90s → 300s |
+| `MORE_LLM_MAX_TOKENS` | `512` | 单次输出 2048 → 512，避免耗尽预算 |
+
+配套代码改动：`MORE_OLLAMA_TIMEOUT` / `MORE_LMSTUDIO_TIMEOUT` 可配（原硬编码 120s）；
+`MORE_LLM_MAX_TOKENS` 在 bootstrap 初始化 state manager。
+
+### 实测效果（写入后）
+
+| 指标 | 修复前 | 写入配置后 |
+|------|:---:|:---:|
+| 生效 provider | lmstudio/35B（必超时） | **ollama/qwen2.5:7b** |
+| `ollama:qwen2.5:7b` 成功率 | —（从不执行） | **连续 11 次全成功**（真实产出 ct=367~512） |
+| 整体 LLM 成功率（30min） | 0% | **40.8%** |
+| 失败原因可读性 | `err=''` | `provider timeout after 150094ms` |
+
+### 残留：重负载任务仍超预算
+
+Council 单次任务会发起 ~11 次串行 LLM 调用，本地 7B 单次 11–91s，合计 ~550s，
+仍超过任务级预算（280s）。属**本地算力/工作负载**问题，需按需：
+提高任务超时、削减 Council 角色/轮次，或换用更强算力。
+
+---
+
+## 6. 变更文件
 
 - `more_core/more_core/llm/manager.py` — 失败诊断 + 可配置预算 + 公平分配 + **兜底链去塌缩**
+- `more_core/more_core/runtime/bootstrap.py` — `MORE_LLM_MAX_TOKENS` 初始化生效 state
+- `more_core/more_core/core/config.py` — `MORE_OLLAMA_TIMEOUT` / `MORE_LMSTUDIO_TIMEOUT` 可配
 - `more_core/tests/test_llm_fallback.py` — 8 个回归用例（诊断 3 + 去塌缩 4 + 公平分配 1）
+- `more_core/tests/test_bootstrap.py` — 2 个 env 用例
+- `more_core/.env` — 链序 / 超时 / 预算 / max_tokens（含备份）
 
 *执行人: Codex · 2026-10-05*

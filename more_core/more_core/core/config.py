@@ -211,6 +211,7 @@ class Settings(BaseModel):
                     provider="ollama",
                     endpoint=os.getenv("MORE_OLLAMA_ENDPOINT", "http://localhost:11434"),
                     model=os.getenv("MORE_OLLAMA_MODEL", "qwen2.5:7b"),
+                    timeout_s=int(os.getenv("MORE_OLLAMA_TIMEOUT", "120")),
                 )
             )
         # LMStudio
@@ -222,6 +223,7 @@ class Settings(BaseModel):
                     endpoint=os.getenv("MORE_LMSTUDIO_ENDPOINT", "http://localhost:1234/v1"),
                     model=os.getenv("MORE_LMSTUDIO_MODEL", "ornith-1.5-35b-a3b"),
                     api_key=os.getenv("MORE_LMSTUDIO_API_KEY"),
+                    timeout_s=int(os.getenv("MORE_LMSTUDIO_TIMEOUT", "120")),
                 )
             )
         # OpenAI-compatible (OpenAI / DeepSeek / Kimi / Zhipu ... )

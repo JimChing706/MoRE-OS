@@ -65,6 +65,54 @@ class TestInitCapabilities:
             "dynamic_guardrails", "council_orchestrator",
         }
 
+    def test_honours_max_tokens_and_provider_env(self, monkeypatch) -> None:
+        """启动时用主 provider + MORE_LLM_MAX_TOKENS 初始化生效 state。"""
+        import more_core.llm.state_manager as sm_mod
+        from more_core.core.config import LLMProviderConfig
+        from more_core.runtime.bootstrap import init_capabilities
+
+        monkeypatch.setenv("MORE_LLM_MAX_TOKENS", "512")
+        settings = _settings(
+            providers=[
+                LLMProviderConfig(
+                    name="lmstudio",
+                    provider="lmstudio",
+                    endpoint="http://x/v1",
+                    model="ornith-1.5-35b-a3b",
+                )
+            ],
+            fallback_chain=["lmstudio"],
+        )
+        init_capabilities(settings)
+
+        sm_mod.get_llm_state_manager.return_value.update_state.assert_any_call(
+            provider="lmstudio",
+            model="ornith-1.5-35b-a3b",
+            max_tokens=512,
+        )
+
+    def test_invalid_max_tokens_env_is_ignored(self, monkeypatch) -> None:
+        import more_core.llm.state_manager as sm_mod
+        from more_core.core.config import LLMProviderConfig
+        from more_core.runtime.bootstrap import init_capabilities
+
+        monkeypatch.setenv("MORE_LLM_MAX_TOKENS", "not-a-number")
+        settings = _settings(
+            providers=[
+                LLMProviderConfig(
+                    name="lmstudio",
+                    provider="lmstudio",
+                    endpoint="http://x/v1",
+                    model="m",
+                )
+            ],
+            fallback_chain=["lmstudio"],
+        )
+        init_capabilities(settings)
+
+        calls = sm_mod.get_llm_state_manager.return_value.update_state.call_args_list
+        assert all("max_tokens" not in c.kwargs for c in calls)
+
     def test_all_values_are_objects(self) -> None:
         from more_core.runtime.bootstrap import init_capabilities
 

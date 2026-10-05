@@ -57,8 +57,17 @@ def init_capabilities(settings: Settings) -> dict[str, Any]:
         primary = next(
             (p for p in settings.providers if p.name == primary_name), None
         ) or (settings.providers[0] if settings.providers else None)
+        _state_overrides: dict[str, Any] = {}
         if primary is not None and primary.model:
-            state_manager.update_state(provider=primary.name, model=primary.model)
+            _state_overrides["provider"] = primary.name
+            _state_overrides["model"] = primary.model
+        # 输出预算可配：慢的本地模型需降低 max_tokens，否则单次调用会耗尽
+        # 链级预算（默认 90s）→ 超时（历史"成功率 0%"事故的因素之一）。
+        _max_tokens_env = os.getenv("MORE_LLM_MAX_TOKENS", "").strip()
+        if _max_tokens_env.isdigit() and int(_max_tokens_env) > 0:
+            _state_overrides["max_tokens"] = int(_max_tokens_env)
+        if _state_overrides:
+            state_manager.update_state(**_state_overrides)
     except Exception:  # pragma: no cover - 初始化失败不阻断启动
         pass
 
