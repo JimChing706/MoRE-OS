@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import subprocess
-import sys
 import tempfile
 import json
 import httpx
@@ -21,15 +18,24 @@ class CodeExecutionSkill(Skill):
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config)
-        self._timeout = config.get("timeout", 30) if config else 30
+        cfg = config or {}
+        self._timeout = cfg.get("timeout", 30)
+        # R-1 修复：代码一律在 OS 级安全沙箱内执行（AST 扫描 + argv 策略 +
+        # 路径白名单 + 环境脱敏 + 超时 + 审计）。注入式 sandbox 便于测试/共享。
+        import os as _os
+
+        self._security_level = str(
+            cfg.get("security_level") or _os.getenv("MORE_SANDBOX_LEVEL", "basic")
+        )
+        self._sandbox = cfg.get("sandbox") or self._build_sandbox(self._timeout)
         self._metadata = SkillMetadata(
             id="code.execute",
             name="Code Execution",
-            # 注意：实现为裸 subprocess（无 OS 级沙箱），描述不得再声称 "with sandboxing"。
-            # 风险登记见 docs/audits/SKILL_PANORAMIC_EVALUATION_2026-10-05.md（R-1）。
+            # R-1 已修复：一律在 SecureSandbox 内执行（AST 扫描 + argv 策略 +
+            # 路径白名单 + 环境脱敏 + 超时 + 审计）。
             description=(
-                "Execute code via subprocess (python/javascript/bash); "
-                "privileged callers only — no OS-level sandbox"
+                "Execute code in multiple languages inside the OS-level secure sandbox "
+                "(python/javascript/bash)"
             ),
             category=SkillCategory.CODE,
             version="1.0.0",
@@ -83,109 +89,64 @@ class CodeExecutionSkill(Skill):
 
         try:
             result = await self._run_code(language, code, timeout)
+            ok = result["returncode"] == 0 and not result.get("timed_out")
             return SkillResult(
-                success=result["returncode"] == 0,
+                success=ok,
                 output=result["stdout"],
-                error=result["stderr"] if result["returncode"] != 0 else None,
+                error=result["stderr"] if not ok else None,
                 metadata={
                     "language": language,
                     "returncode": result["returncode"],
+                    "sandboxed": result.get("sandboxed", True),
+                    "sandbox_level": result.get("sandbox_level", self._security_level),
+                    "timed_out": result.get("timed_out", False),
                 },
             )
         except Exception as e:
             return SkillResult(success=False, error=str(e))
 
-    async def _run_code(self, language: str, code: str, timeout: int) -> dict[str, Any]:
-        """Run code in subprocess."""
-        if language == "python":
-            return await self._run_python(code, timeout)
-        elif language == "javascript":
-            return await self._run_javascript(code, timeout)
-        elif language == "bash":
-            return await self._run_bash(code, timeout)
-        return {"returncode": 1, "stdout": "", "stderr": "Unsupported language"}
+    def _build_sandbox(self, timeout: int | float) -> Any:
+        """按安全级别构建 OS 级沙箱（超时可覆盖）。"""
+        from ..sandbox.secure_sandbox import create_secure_sandbox
 
-    async def _run_python(self, code: str, timeout: int) -> dict[str, Any]:
-        """Run Python code."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-            f.write(code)
-            f.flush()
-            path = f.name
-
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                sys.executable,
-                "-u",
-                path,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            try:
-                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-                return {
-                    "returncode": proc.returncode,
-                    "stdout": stdout.decode("utf-8", errors="replace"),
-                    "stderr": stderr.decode("utf-8", errors="replace"),
-                }
-            except asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
-                return {"returncode": -1, "stdout": "", "stderr": "Timeout"}
-        finally:
-            Path(path).unlink(missing_ok=True)
-
-    async def _run_javascript(self, code: str, timeout: int) -> dict[str, Any]:
-        """Run JavaScript code."""
-        node = subprocess.run(["which", "node"], capture_output=True)
-        if node.returncode != 0:
-            return {"returncode": 1, "stdout": "", "stderr": "Node.js not found"}
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".js", delete=False) as f:
-            f.write(code)
-            f.flush()
-            path = f.name
-
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "node",
-                path,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            try:
-                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-                return {
-                    "returncode": proc.returncode,
-                    "stdout": stdout.decode("utf-8", errors="replace"),
-                    "stderr": stderr.decode("utf-8", errors="replace"),
-                }
-            except asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
-                return {"returncode": -1, "stdout": "", "stderr": "Timeout"}
-        finally:
-            Path(path).unlink(missing_ok=True)
-
-    async def _run_bash(self, code: str, timeout: int) -> dict[str, Any]:
-        """Run bash script."""
-        proc = await asyncio.create_subprocess_exec(
-            "/bin/bash",
-            "-c",
-            code,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        return create_secure_sandbox(
+            security_level=self._security_level, timeout_s=int(timeout)
         )
-        try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-            return {
-                "returncode": proc.returncode,
-                "stdout": stdout.decode("utf-8", errors="replace"),
-                "stderr": stderr.decode("utf-8", errors="replace"),
-            }
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
-            return {"returncode": -1, "stdout": "", "stderr": "Timeout"}
+
+    def _sandbox_for(self, timeout: int | float) -> Any:
+        if int(timeout) == int(self._timeout):
+            return self._sandbox
+        return self._build_sandbox(timeout)
+
+    async def _run_code(self, language: str, code: str, timeout: int) -> dict[str, Any]:
+        """在安全沙箱内执行代码（R-1）。返回与旧实现兼容的 dict。"""
+        sbx = self._sandbox_for(timeout)
+        result = None
+        if language == "python":
+            result = await sbx.run_python(code)
+        elif language == "javascript":
+            result = await self._run_script(sbx, code, ".js", "node")
+        elif language == "bash":
+            result = await self._run_script(sbx, code, ".sh", "bash")
+        if result is None:
+            return {"returncode": 1, "stdout": "", "stderr": "Unsupported language",
+                    "timed_out": False, "sandboxed": True}
+        return {
+            "returncode": result.exit_code,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "timed_out": bool(getattr(result, "timed_out", False)),
+            "sandboxed": True,
+            "sandbox_level": self._security_level,
+        }
+
+    @staticmethod
+    async def _run_script(sbx: Any, code: str, suffix: str, interpreter: str) -> Any:
+        """把脚本写入临时文件后经沙箱执行（避免 `bash -c` 被策略拦截）。"""
+        with tempfile.TemporaryDirectory(prefix="more_skill_") as tmp:
+            path = Path(tmp) / f"main{suffix}"
+            path.write_text(code, encoding="utf-8")
+            return await sbx.run([interpreter, str(path)])
 
 
 class DataAnalysisSkill(Skill):

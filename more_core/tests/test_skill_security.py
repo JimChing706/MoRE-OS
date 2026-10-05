@@ -40,3 +40,65 @@ def test_ssrf_guard_allows_public_urls():
 
     for url in ("https://example.com/x", "http://8.8.8.8/"):
         assert validate_http_url(url) == url
+
+
+# ---------------------------------------------------------------------------
+# R-1：code.execute 必须在 OS 级安全沙箱内执行
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_code_execute_blocks_dangerous_python():
+    from more_core.skills import CodeExecutionSkill
+
+    r = await CodeExecutionSkill().execute(
+        {"code": "import os; os.system('echo pwned')", "language": "python", "timeout": 10}
+    )
+    assert r.success is False
+    assert "Blocked" in (r.error or "")
+    assert r.metadata.get("sandboxed") is True
+
+
+@pytest.mark.asyncio
+async def test_code_execute_blocks_destructive_bash():
+    from more_core.skills import CodeExecutionSkill
+
+    r = await CodeExecutionSkill().execute({"code": "rm -rf /", "language": "bash", "timeout": 10})
+    assert r.success is False
+
+
+@pytest.mark.asyncio
+async def test_code_execute_subprocess_is_sandboxed():
+    from more_core.skills import CodeExecutionSkill
+
+    r = await CodeExecutionSkill().execute(
+        {"code": "import subprocess; subprocess.run(['echo','x'])",
+         "language": "python", "timeout": 10}
+    )
+    assert r.success is False
+    assert "subprocess" in (r.error or "")
+
+
+@pytest.mark.asyncio
+async def test_code_execute_allows_safe_code_all_languages():
+    from more_core.skills import CodeExecutionSkill
+
+    skill = CodeExecutionSkill()
+    cases = [
+        ("python", "print(6 * 7)", "42"),
+        ("javascript", "console.log(6 * 7)", "42"),
+        ("bash", "echo $((6 * 7))", "42"),
+    ]
+    for lang, code, needle in cases:
+        r = await skill.execute({"code": code, "language": lang, "timeout": 10})
+        assert r.success is True, (lang, r.error)
+        assert needle in str(r.output), (lang, r.output)
+        assert r.metadata.get("sandboxed") is True
+
+
+def test_create_secure_sandbox_accepts_positional_security_level():
+    """容错回归：位置传安全级别曾导致 AttributeError('str' has no 'timeout_s')。"""
+    from more_core.sandbox.secure_sandbox import SecurityLevel, create_secure_sandbox
+
+    sbx = create_secure_sandbox("strict")
+    assert sbx.config.security_level is SecurityLevel.STRICT

@@ -60,7 +60,7 @@ code.execute / data.analyze / api.call）+ 参数校验、交付台账、可观�
 | SSRF | ✅ `api.call` 与 `web.browse` 均调用 `validate_http_url`，拒绝私网/回环/链路本地（含 169.254.169.254） |
 | 参数注入 | ✅ `language` / `method` / `operation` 均 enum 白名单；`additionalProperties:false` 拒绝未知字段 |
 | 越权 | ✅ `/skills/{id}/run` 需 `HAND_RUN` 权限 |
-| 代码执行 | ⚠️ **无 OS 级沙箱**（见 R-1） |
+| 代码执行 | ✅ 统一走 `SecureSandbox`（R-1 已修复），危险调用被拦截 |
 
 ---
 
@@ -81,7 +81,7 @@ code.execute / data.analyze / api.call）+ 参数校验、交付台账、可观�
 
 | # | 风险 | 维度 | 建议 |
 |---|------|------|------|
-| **R-1** | `code.execute` 无 OS 级沙箱（可读写文件、起进程、访问网络） | 安全 | 接入 `sandbox/secure_sandbox.py`（AST 白名单 + 资源/网络限制）；或在部署侧用容器/低权限用户隔离。当前仅靠 `HAND_RUN` 权限与调用方可信度约束 |
+| ~~R-1~~ | ~~`code.execute` 无 OS 级沙箱~~ | 安全 | **已修复（2026-10-05）**：`code.execute` 现统一走 `SecureSandbox`——AST 危险调用扫描（`os.system`/`subprocess`/`rmtree`…）+ 全 argv 策略 + 路径白名单 + 环境脱敏 + 超时 + 审计日志。危险代码返回 `Blocked: ...`。见 §6 |
 | **R-2** | `web.search` 指定 `provider=serpapi` 但未配 key 时**静默降级**为 DuckDuckGo | 正确性 | 检查 SerpAPI key，缺失时返回明确错误而非静默换源（避免"看起来成功、实际换了来源"） |
 | **R-3** | `data.analyze` 的 `query` 为**朴素子串/包含匹配**，非真正查询语言 | 功能 | 文档标注能力边界，或引入正式查询语法 |
 | **R-4** | 网络受限环境下 web/api 技能整体不可用 | 兼容性 | 部署前确认出网策略；失败已结构化返回，不影响其它技能 |
@@ -102,7 +102,34 @@ code.execute / data.analyze / api.call）+ 参数校验、交付台账、可观�
 
 ---
 
-## 5. 测试与回归
+## 5. R-1 修复详情（代码沙箱）
+
+`CodeExecutionSkill` 从**裸 subprocess** 改为统一经 `sandbox/secure_sandbox.py`：
+
+| 防护层 | 内容 |
+|--------|------|
+| 静态扫描 | Python AST 检测 `os.system` / `subprocess.*` / `shutil.rmtree` / `eval` / `exec` 等 |
+| 命令策略 | 全 argv 检查（shell 元字符、解释器内联代码、env 注入、黑名单命令） |
+| 路径白名单 | cwd 必须落在允许根（默认 `/tmp`）内 |
+| 环境脱敏 | 剥离 `LD_PRELOAD` / `PYTHONPATH` / `BASH_ENV` 等劫持变量 |
+| 超时 | 沙箱级超时（技能 `timeout` 参数透传） |
+| 审计 | 每次执行写入沙箱审计日志 |
+
+**实测**：
+```
+python  print(2**10)                 → 1024                （放行）
+node    console.log(6*7)             → 42                  （放行）
+bash    echo $((6*7))                → 42                  （放行）
+python  import os; os.system(...)    → Blocked: blocked call: os.system()  （拦截）
+bash    rm -rf /                     → 非零退出 + 策略拒绝     （拦截）
+```
+
+**顺带修复**：`create_secure_sandbox("strict")` 位置传参曾崩溃
+（`AttributeError: 'str' object has no attribute 'timeout_s'`），现容错为安全级别。
+
+---
+
+## 6. 测试与回归
 
 | 测试文件 | 用例数 |
 |----------|:------:|

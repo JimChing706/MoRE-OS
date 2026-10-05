@@ -329,6 +329,10 @@ def create_secure_sandbox(
 
     This is the **primary public API** for sandbox creation.
     """
+    if isinstance(config, str) and security_level == "basic":
+        # 容错：create_secure_sandbox("strict") 的位置参数会被当成 config，
+        # 旧实现随后 AttributeError('str' has no 'timeout_s')——语义上应为安全级别。
+        security_level, config = config, None
     if config is None:
         config = SandboxConfig(security_level=SecurityLevel(security_level), **kwargs)
     if inner is None:
