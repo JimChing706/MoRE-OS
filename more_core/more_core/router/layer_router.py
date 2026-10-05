@@ -22,6 +22,8 @@ from ..core.types import LayerId, TaskRequest, TaskType
 class RoutingDecision:
     pipeline: list[LayerId]
     reasoning: str
+    # 决策来源：meta_orchestrator（权威）| router（基座，advisory/fallback）
+    source: str = "router"
 
 
 DEFAULT_PIPELINES: dict[TaskType, list[LayerId]] = {
@@ -80,6 +82,10 @@ class LayerRouter:
         available_providers: set[str] | None = None,
     ) -> RoutingDecision:
         """Produce the layer pipeline for *request*.
+
+        ⚠️ **本条路由是 advisory / fallback，不是权威来源**：
+        ``MoRECore`` 启用 Meta-Orchestrator 谱路由后，其决策会**完全覆盖**本结果。
+        生产执行管道请以 :meth:`MoRECore.resolve_pipeline` 为准。
 
         When *available_providers* is supplied and empty, the pipeline is
         downgraded to a minimal [L1, L0] path — skipping LLM-dependent

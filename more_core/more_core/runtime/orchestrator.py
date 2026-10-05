@@ -348,6 +348,43 @@ class MoRECore:
 
     # -- execution ---------------------------------------------------------
 
+    def resolve_pipeline(
+        self,
+        request: TaskRequest,
+        *,
+        available_providers: set[str] | None = None,
+    ) -> tuple[RoutingDecision, Any]:
+        """**唯一权威**的层管道解析入口。
+
+        * 启用 Meta-Orchestrator 谱路由 → 采用其决策（`source="meta_orchestrator"`），
+          基座 :class:`LayerRouter` 被跳过；
+        * 未启用 → 回退基座 :class:`LayerRouter`（`source="router"`，advisory/fallback）。
+
+        返回 ``(decision, meta_decision)``；回退时 ``meta_decision`` 为 ``None``。
+        注意：深度模式只由 ``require_metacognitive_monitoring`` 触发——
+        不能用 ``allow_self_improvement`` 触发，否则会出现
+        "L5/L2 先自修改 → L3 才以 policy.metacog_review 拒绝" 的危险顺序。
+        """
+        if getattr(self, "meta_orchestrator", None) is not None:
+            meta_decision = self.meta_orchestrator.route(
+                request.type,
+                request.query,
+                context=request.context,
+                require_metacognitive=request.require_metacognitive_monitoring,
+            )
+            return (
+                RoutingDecision(
+                    pipeline=list(meta_decision.pipeline),
+                    reasoning=meta_decision.reasoning,
+                    source="meta_orchestrator",
+                ),
+                meta_decision,
+            )
+        return (
+            self.router.route(request, available_providers=available_providers),
+            None,
+        )
+
     async def execute(self, request: TaskRequest) -> TaskResult:
         start = time.perf_counter()
 
@@ -427,30 +464,14 @@ class MoRECore:
 
             available = set(self.llm.list_providers()) if self.llm else set()
 
-            # ── v3.0 Meta-Orchestrator spectral routing ─────────────────
-            # When Meta-Orchestrator is active it fully overrides the
-            # pipeline decision, so the base LayerRouter pass is skipped
-            # (avoids duplicate keyword classification per request).
-            meta_decision = None
+            # ── 管道解析（唯一权威入口） ────────────────────────────
+            # resolve_pipeline() 内部：Meta-Orchestrator 优先，否则回退基座路由。
+            decision, meta_decision = self.resolve_pipeline(
+                request, available_providers=available
+            )
             guardrail_config = None
-            if hasattr(self, "meta_orchestrator") and self.meta_orchestrator is not None:
-                # 注意：**不要**用 allow_self_improvement 触发深度模式。
-                # L3 的 policy.metacog_review 要求显式 require_metacognitive_monitoring；
-                # 若仅凭 allow_self_improvement 进入深度模式，会先执行 L5/L2（自修改），
-                # 随后才被 L3 拒绝——"先自修改、后拒绝"的顺序是治理缺陷。
-                # 因此深度模式只由 require_metacognitive_monitoring 触发。
-                meta_decision = self.meta_orchestrator.route(
-                    request.type,
-                    request.query,
-                    context=request.context,
-                    require_metacognitive=request.require_metacognitive_monitoring,
-                )
-                # Override pipeline with spectral decision
-                decision = RoutingDecision(
-                    pipeline=meta_decision.pipeline,
-                    reasoning=meta_decision.reasoning,
-                )
-                # Compute dynamic guardrails
+            if meta_decision is not None:
+                # Compute dynamic guardrails from the spectral decision
                 if hasattr(self, "dynamic_guardrails") and self.dynamic_guardrails is not None:
                     guardrail_config = self.dynamic_guardrails.adjust(
                         u=meta_decision.uncertainty_assessment.aggregated_u,
@@ -464,8 +485,6 @@ class MoRECore:
                         "v3.0 DynamicGuardrails applied: %s",
                         guardrail_config.reasoning,
                     )
-            else:
-                decision = self.router.route(request, available_providers=available)
 
             actor = str(request.context.get("actor") or "anonymous")
             ctx = LayerContext(core=self, request=request, user_id=actor)
@@ -1087,7 +1106,10 @@ class MoRECore:
             taint.track("query", request.query, TaintLabel.USER_INPUT, "api")
 
             available = set(self.llm.list_providers()) if self.llm else set()
-            decision = self.router.route(request, available_providers=available)
+            # 统一权威入口：流式与非流式必须使用同一管道来源
+            decision, _meta = self.resolve_pipeline(
+                request, available_providers=available
+            )
             actor_s = str(request.context.get("actor") or "anonymous")
             ctx = LayerContext(core=self, request=request, user_id=actor_s)
 

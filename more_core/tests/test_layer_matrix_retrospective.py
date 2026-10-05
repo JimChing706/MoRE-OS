@@ -139,3 +139,61 @@ async def test_deep_self_improvement_runs_l5_then_l2(core):
     finally:
         core.settings.enable_evolution = False
         core.settings.enable_metacognition = False
+
+
+# ---------------------------------------------------------------------------
+# 建议 1：单一权威管道解析入口 resolve_pipeline()
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_pipeline_prefers_meta_orchestrator(core):
+    req = TaskRequest(type=TaskType.NLP_TASK, query="你好")
+    decision, meta = core.resolve_pipeline(req)
+
+    assert meta is not None
+    assert decision.source == "meta_orchestrator"
+    assert [lid.value for lid in decision.pipeline] == [lid.value for lid in meta.pipeline]
+
+
+def test_resolve_pipeline_falls_back_to_router(core):
+    """关闭谱路由后，基座 LayerRouter 成为 fallback 来源（source=router）。"""
+    saved = core.meta_orchestrator
+    core.meta_orchestrator = None
+    try:
+        req = TaskRequest(type=TaskType.NLP_TASK, query="你好")
+        decision, meta = core.resolve_pipeline(req)
+        assert meta is None
+        assert decision.source == "router"
+        assert decision.pipeline == core.router.route(req).pipeline
+    finally:
+        core.meta_orchestrator = saved
+
+
+def test_routing_decision_default_source_is_router():
+    from more_core.router.layer_router import RoutingDecision
+
+    assert RoutingDecision(pipeline=[LayerId.L0], reasoning="x").source == "router"
+
+
+@pytest.mark.asyncio
+async def test_stream_and_execute_share_pipeline_source(core):
+    """统一入口回归：流式曾始终走基座路由，与非流式管道不一致。"""
+    import json
+
+    req = TaskRequest(type=TaskType.NLP_TASK, query="统一管道")
+    expected = [lid.value for lid in core.resolve_pipeline(req)[0].pipeline]
+
+    layers: list[str] | None = None
+    async for chunk in core.stream_execute(
+        TaskRequest(type=TaskType.NLP_TASK, query="统一管道")
+    ):
+        if chunk.startswith("data: "):
+            event = json.loads(chunk[len("data: "):].strip())
+            if event.get("event") == "pipeline":
+                layers = event.get("layers")
+                break
+    assert layers == expected, "流式管道必须与非流式同源"
+
+    result = await core.execute(TaskRequest(type=TaskType.NLP_TASK, query="统一管道"))
+    executed = _executed(result)
+    assert executed == expected

@@ -124,6 +124,33 @@ river_deep = [L5, L2, L4, L3, L1, L0]      ← 现：L2 可达；门控关闭时
 
 ---
 
+### 3.4 建议 1 已执行：单一权威管道解析入口 `resolve_pipeline()`
+
+**发现（顺带）**：`stream_execute()` **始终**调用基座 `router.route()`，
+即**流式与非流式使用不同来源的管道** —— 同一请求可能跑不同层。
+
+**修复**：`MoRECore` 新增**唯一权威**入口：
+
+```python
+def resolve_pipeline(request, *, available_providers=None) -> (RoutingDecision, meta_decision)
+    # 有 Meta-Orchestrator → 用谱路由，source="meta_orchestrator"
+    # 无 → 回退基座 LayerRouter，source="router"（advisory/fallback）
+```
+
+- `execute()` 与 `stream_execute()` 均改走该入口 → **流式/非流式同源**；
+- `RoutingDecision` 新增 `source` 字段，决策来源**显式可查**；
+- `LayerRouter.route()` docstring 标注 **advisory / fallback，不是权威来源**。
+
+**实测**：
+
+| 场景 | source | pipeline |
+|------|--------|----------|
+| 启用谱路由 | `meta_orchestrator` | `[L4, L1, L0]` |
+| 关闭谱路由 | `router` | `[L4, L3, L1, L0]` |
+| 流式 pipeline 事件 | — | 与 `execute` 实际执行层**完全一致** |
+
+---
+
 ## 4. 结论与建议
 
 ### 结论
@@ -132,8 +159,9 @@ river_deep = [L5, L2, L4, L3, L1, L0]      ← 现：L2 可达；门控关闭时
 * 实际执行链路自洽、可观测（`stage_timings` 即真相），已用 17 个回顾性用例钉住。
 
 ### 建议（待决策）
-1. **对齐语义**：让 `LayerRouter` 成为谱路由的降级实现，或明确标注其为"advisory"，
-   避免继续被误读为权威管道。
+1. ~~**对齐语义**：让 `LayerRouter` 成为谱路由的降级实现，或明确标注其为"advisory"~~
+   ✅ **已执行（见 §3.4）**：新增权威入口 `resolve_pipeline()`；基座路由标注 advisory/fallback；
+   并顺带修复"流式绕过谱路由"的不一致。
 2. ~~**改造矩阵**：把 X-I2/I3/I4 的断言对象从 `core.router.route()` 改为
    `meta_orchestrator.route()`~~ ✅ **已执行（见 §3.1）**。
 3. **CI 门禁**：把本回顾性套件纳入 `layer-gate`（`make test-layers`），防止分歧漂移。
@@ -142,6 +170,8 @@ river_deep = [L5, L2, L4, L3, L1, L0]      ← 现：L2 可达；门控关闭时
 
 ## 5. 变更文件
 
+- `more_core/more_core/runtime/orchestrator.py`（新增 `resolve_pipeline()`；execute/stream 统一）
+- `more_core/more_core/router/layer_router.py`（`RoutingDecision.source` + advisory 标注）
 - `more_core/tests/test_layer_matrix_l0_l5.py`（X-I2/I3/I3b/I4 迁移到权威来源）
 - `more_core/tests/test_layer_matrix_retrospective.py`（新增 17 用例）
 - 本报告
