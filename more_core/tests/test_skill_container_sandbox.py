@@ -61,8 +61,9 @@ def test_container_argv_security_flags(language, interpreter, script):
         assert flag in argv and argv[argv.index(flag) + 1] == value
     assert "--read-only" in argv
     assert "-v" in argv and "<workdir>:/work:ro" in argv
-    assert argv[-2:] == [interpreter, f"/work/{script}"]
-    assert argv[-3] == "img"
+    # 必须显式覆盖 ENTRYPOINT，否则镜像自带 entrypoint 会吞掉解释器命令
+    assert "--entrypoint" in argv and argv[argv.index("--entrypoint") + 1] == interpreter
+    assert argv[-2:] == ["img", f"/work/{script}"]
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +94,11 @@ async def test_run_in_container_mounts_script_readonly(monkeypatch):
 
     async def fake_exec(*argv, **kw):
         captured["argv"] = list(argv)
+        # 在"调用时刻"捕获脚本确实被写入并被只读挂载
+        mount = argv[argv.index("-v") + 1]
+        host_dir = Path(mount.split(":")[0])
+        captured["script_exists"] = (host_dir / "main.py").exists()
+        captured["script_text"] = (host_dir / "main.py").read_text()
         return _FakeProc(out=b"42\n")
 
     monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
@@ -103,8 +109,8 @@ async def test_run_in_container_mounts_script_readonly(monkeypatch):
     assert result["returncode"] == 0 and result["stdout"] == "42\n"
     mount = captured["argv"][captured["argv"].index("-v") + 1]
     assert mount.endswith(":/work:ro")
-    # 临时目录里确实写入了脚本
-    assert Path(mount.split(":")[0], "main.py").exists() is False or True
+    assert captured["script_exists"] is True          # 脚本已写入挂载目录
+    assert captured["script_text"] == "print(42)"      # 内容一致
 
 
 @pytest.mark.asyncio

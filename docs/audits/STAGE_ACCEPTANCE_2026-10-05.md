@@ -186,7 +186,9 @@ river_deep = [L5, L2, L4, L3, L1, L0]        # 高（U≥0.7 或 require_metacog
 | 隔离收益 | 网络隔离 + 内存/CPU/进程上限 + 只读根文件系统 → 覆盖原 `SubprocessSandbox` "非安全边界"的短板 |
 | 可观测 | 结果 metadata 暴露 `sandbox_mode`（`container` / `secure_sandbox`），便于审计 |
 | 回退 | 未配置镜像 / runtime 不可用 → 自动回退进程内 `SecureSandbox`，行为不变 |
-| 实测 | 默认 `sandbox_mode=secure_sandbox`（`print(41+1)`→42）；容器 argv 安全参数逐项校验通过 |
+| 实测（默认） | `sandbox_mode=secure_sandbox`（`print(41+1)`→42） |
+| **实测（真实容器）** | 用本机镜像 `try-omarchy-guest-builder` 实跑：`print(6*7)` → **`42`**（mode=container）；`urlopen('http://example.com')` → **`NETWORK-BLOCKED / URLError`**；`open('/etc/evil','w')` → **`WRITE-BLOCKED / OSError`** —— **网络隔离与只读根文件系统均实际生效** |
+| 排障记录 | 首轮实跑失败：镜像自带 `ENTRYPOINT` 会吞掉解释器命令；已改为显式 `--entrypoint <interpreter>` 并加回归断言 |
 
 > 说明：容器后端为**纵深防御**——生产启用后，即便 AST/策略层被绕过，仍有容器边界兜底。
 > 未配置时保持既有行为，不引入回归。

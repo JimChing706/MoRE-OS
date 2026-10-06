@@ -150,10 +150,10 @@ class CodeExecutionSkill(Skill):
             language, "main.txt"
         )
         interpreter = {
-            "python": ["python", f"/work/{script}"],
-            "javascript": ["node", f"/work/{script}"],
-            "bash": ["bash", f"/work/{script}"],
-        }.get(language, [])
+            "python": "python",
+            "javascript": "node",
+            "bash": "bash",
+        }.get(language, "")
         return [
             "run", "--rm",
             "--network", "none",          # 网络隔离
@@ -165,8 +165,11 @@ class CodeExecutionSkill(Skill):
             "-e", "PYTHONDONTWRITEBYTECODE=1",
             "-v", "<workdir>:/work:ro",   # 代码只读挂载（占位，运行前替换）
             "-w", "/work",
+            # 必须显式覆盖 ENTRYPOINT：否则镜像自带 entrypoint 会把解释器
+            # 当成它的参数（实测 try-omarchy-guest-builder 镜像即因此失败）。
+            "--entrypoint", interpreter,
             image,
-            *interpreter,
+            f"/work/{script}",
         ]
 
     async def _run_in_container(
