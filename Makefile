@@ -7,7 +7,8 @@
 .PHONY: help setup install install-dev install-app install-all \
         start stop restart status health \
         serve serve-app build build-app test test-layers lint format typecheck \
-        check clean check-env setup-hooks docker-build docker-up docker-down
+        check clean check-env setup-hooks setup-branch-protection \
+        docker-build docker-up docker-down
 
 PYTHON  ?= $(CURDIR)/.venv/bin/python
 PIP     ?= $(CURDIR)/.venv/bin/pip
@@ -185,9 +186,14 @@ docker-down: ## Stop docker-compose
 # Git Hooks
 # ============================================================
 
-setup-hooks: ## Install pre-commit hook (runs lint-check on commit)
-	@echo "Installing pre-commit hook..."
+setup-hooks: ## Install pre-commit + pre-push hooks (layer gate on push)
+	@echo "Installing git hooks..."
 	@mkdir -p .git/hooks
 	@printf '#!/bin/sh\nmake check\n' > .git/hooks/pre-commit
 	@chmod +x .git/hooks/pre-commit
-	@echo "Pre-commit hook installed."
+	@printf '#!/bin/sh\n# P0 补偿控制：本地推送前跑分层门禁（无分支保护时的兜底）\nmake test-layers || { echo "✗ layer gate failed — push blocked"; exit 1; }\n' > .git/hooks/pre-push
+	@chmod +x .git/hooks/pre-push
+	@echo "Pre-commit + pre-push hooks installed."
+
+setup-branch-protection: ## Configure GitHub branch protection (required check: Layer Matrix Gate)
+	@bash scripts/setup-branch-protection.sh "$(BRANCH)" "$(CHECK_NAME)"

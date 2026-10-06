@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 import tempfile
 import json
@@ -100,6 +101,7 @@ class CodeExecutionSkill(Skill):
                     "returncode": result["returncode"],
                     "sandboxed": result.get("sandboxed", True),
                     "sandbox_level": result.get("sandbox_level", self._security_level),
+                    "sandbox_mode": result.get("sandbox_mode", "secure_sandbox"),
                     "timed_out": result.get("timed_out", False),
                 },
             )
@@ -119,8 +121,100 @@ class CodeExecutionSkill(Skill):
             return self._sandbox
         return self._build_sandbox(timeout)
 
+    # ── 容器化纵深防御（P1 / RR-1） ─────────────────────────────────
+    # 设置 MORE_SKILL_CONTAINER_IMAGE（+可选 MORE_SKILL_CONTAINER_RUNTIME）
+    # 即启用容器后端；不可用时自动回退到进程内 SecureSandbox。
+    def _container_runtime(self) -> str:
+        import os as _os
+        import shutil as _shutil
+
+        runtime = str(
+            self._config.get("container_runtime")
+            or _os.getenv("MORE_SKILL_CONTAINER_RUNTIME")
+            or "docker"
+        ).strip()
+        return runtime if _shutil.which(runtime) else ""
+
+    def _container_image(self) -> str:
+        import os as _os
+
+        return str(
+            self._config.get("container_image")
+            or _os.getenv("MORE_SKILL_CONTAINER_IMAGE")
+            or ""
+        ).strip()
+
+    @staticmethod
+    def _container_argv(image: str, language: str) -> list[str]:
+        script = {"python": "main.py", "javascript": "main.js", "bash": "main.sh"}.get(
+            language, "main.txt"
+        )
+        interpreter = {
+            "python": ["python", f"/work/{script}"],
+            "javascript": ["node", f"/work/{script}"],
+            "bash": ["bash", f"/work/{script}"],
+        }.get(language, [])
+        return [
+            "run", "--rm",
+            "--network", "none",          # 网络隔离
+            "--memory", "256m",           # 内存上限
+            "--cpus", "0.5",              # CPU 上限
+            "--pids-limit", "64",         # 进程数上限（防 fork 炸弹）
+            "--read-only",                # 根文件系统只读
+            "--tmpfs", "/tmp:rw,size=64m",  # 仅 /tmp 可写
+            "-e", "PYTHONDONTWRITEBYTECODE=1",
+            "-v", "<workdir>:/work:ro",   # 代码只读挂载（占位，运行前替换）
+            "-w", "/work",
+            image,
+            *interpreter,
+        ]
+
+    async def _run_in_container(
+        self, runtime: str, image: str, language: str, code: str, timeout: int
+    ) -> dict[str, Any]:
+        script = {"python": "main.py", "javascript": "main.js", "bash": "main.sh"}[language]
+        with tempfile.TemporaryDirectory(prefix="more_skill_c_") as tmp:
+            (Path(tmp) / script).write_text(code, encoding="utf-8")
+            argv = [runtime, *self._container_argv(image, language)]
+            argv[argv.index("<workdir>:/work:ro")] = f"{tmp}:/work:ro"
+
+            start = asyncio.get_running_loop().time()
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *argv,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+            except FileNotFoundError as exc:
+                return {"returncode": 1, "stdout": "", "stderr": f"container runtime missing: {exc}",
+                        "timed_out": False, "sandboxed": True, "sandbox_mode": "container"}
+
+            try:
+                out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+                timed_out = False
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                return {"returncode": -1, "stdout": "",
+                        "stderr": "container timeout", "timed_out": True,
+                        "sandboxed": True, "sandbox_mode": "container"}
+            return {
+                "returncode": proc.returncode if proc.returncode is not None else -1,
+                "stdout": out.decode("utf-8", "replace"),
+                "stderr": err.decode("utf-8", "replace"),
+                "timed_out": timed_out,
+                "sandboxed": True,
+                "sandbox_mode": "container",
+                "sandbox_level": self._security_level,
+                "duration_ms": (asyncio.get_running_loop().time() - start) * 1000,
+            }
+
     async def _run_code(self, language: str, code: str, timeout: int) -> dict[str, Any]:
-        """在安全沙箱内执行代码（R-1）。返回与旧实现兼容的 dict。"""
+        """执行代码：**容器优先**（若配置），否则进程内 SecureSandbox（R-1/P1）。"""
+        runtime, image = self._container_runtime(), self._container_image()
+        if runtime and image and language in ("python", "javascript", "bash"):
+            return await self._run_in_container(runtime, image, language, code, timeout)
+
         sbx = self._sandbox_for(timeout)
         result = None
         if language == "python":
@@ -131,7 +225,7 @@ class CodeExecutionSkill(Skill):
             result = await self._run_script(sbx, code, ".sh", "bash")
         if result is None:
             return {"returncode": 1, "stdout": "", "stderr": "Unsupported language",
-                    "timed_out": False, "sandboxed": True}
+                    "timed_out": False, "sandboxed": True, "sandbox_mode": "secure_sandbox"}
         return {
             "returncode": result.exit_code,
             "stdout": result.stdout,
@@ -139,6 +233,7 @@ class CodeExecutionSkill(Skill):
             "timed_out": bool(getattr(result, "timed_out", False)),
             "sandboxed": True,
             "sandbox_level": self._security_level,
+            "sandbox_mode": "secure_sandbox",
         }
 
     @staticmethod

@@ -154,12 +154,42 @@ river_deep = [L5, L2, L4, L3, L1, L0]        # 高（U≥0.7 或 require_metacog
 
 | 优先级 | 建议 | 对应 |
 |:------:|------|------|
-| **P0** | 管理员配置 GitHub 分支保护，把 `Layer Matrix Gate (L0-L5)` 设为 required check | RR-3 |
-| **P1** | 生产部署把 `code.execute` 外层包容器/低权限用户，落实纵深防御 | RR-1 |
+| ~~P0~~ | ~~配置 GitHub 分支保护~~ → **代码侧就绪**（脚本 + pre-push 补偿），执行受阻于无 remote/token 失效 | RR-3 · §8.1 |
+| ~~P1~~ | ~~`code.execute` 容器化纵深防御~~ ✅ **已实现**（容器后端 + 自动回退，13 用例） | RR-1 · §8.1 |
 | **P2** | 为本地模型建立**端到端性能基准**（当前仅单点测量），并据此设定 `max_tokens`/链序基线 | RR-2 |
 | **P2** | 统一关闭 core 持有的 SQLite 句柄，消除 ResourceWarning | RR-5 |
 | **P3** | 把 `LayerRouter` 正式定为 advisory（或让其成为谱路由的降级实现），消除双路由历史包袱 | §2.2 #1 |
 | **P3** | 覆盖率向 85% 推进（剩余长尾已无 <40% 大模块，可转向 API 边界与异常路径） | §6 |
+
+---
+
+## 8.1 P0/P1 推进结果（2026-10-06 追加）
+
+### P0（RR-3 分支保护）—— **代码侧已就绪，执行受阻于环境**
+
+| 项 | 结果 |
+|----|------|
+| 前置检查 | **仓库无 git remote**；`gh auth status` 显示 **token 已失效** → 无法调用 GitHub API 配置分支保护 |
+| 交付物① | `scripts/setup-branch-protection.sh`：一键把 `Layer Matrix Gate (L0-L5)` 设为 required check（含 `enforce_admins` / 禁强推 / 禁删分支）；已通过 `bash -n` 与实跑（正确报出 token 失效） |
+| 交付物② | `make setup-branch-protection` 目标 |
+| 补偿控制③ | `make setup-hooks` 现同时安装 **pre-push** 钩子（推送前跑 `make test-layers`，失败即阻断）——**在无分支保护的环境下提供本地强制力** |
+| 待人工 | ①`git remote add origin <url>` ②`gh auth login` ③`make setup-branch-protection` |
+
+### P1（RR-1 沙箱纵深防御）—— **已实现容器化后端**
+
+`code.execute` 新增**容器执行后端**（可选，配置即启用，不可用时自动回退 SecureSandbox）：
+
+| 项 | 内容 |
+|----|------|
+| 开关 | `MORE_SKILL_CONTAINER_IMAGE`（必需）、`MORE_SKILL_CONTAINER_RUNTIME`（默认 `docker`，支持 podman） |
+| 容器参数 | `--rm --network none --memory 256m --cpus 0.5 --pids-limit 64 --read-only --tmpfs /tmp:rw,size=64m`，代码 **只读挂载** 到 `/work` |
+| 隔离收益 | 网络隔离 + 内存/CPU/进程上限 + 只读根文件系统 → 覆盖原 `SubprocessSandbox` "非安全边界"的短板 |
+| 可观测 | 结果 metadata 暴露 `sandbox_mode`（`container` / `secure_sandbox`），便于审计 |
+| 回退 | 未配置镜像 / runtime 不可用 → 自动回退进程内 `SecureSandbox`，行为不变 |
+| 实测 | 默认 `sandbox_mode=secure_sandbox`（`print(41+1)`→42）；容器 argv 安全参数逐项校验通过 |
+
+> 说明：容器后端为**纵深防御**——生产启用后，即便 AST/策略层被绕过，仍有容器边界兜底。
+> 未配置时保持既有行为，不引入回归。
 
 ---
 
