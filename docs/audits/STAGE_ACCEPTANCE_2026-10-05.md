@@ -283,10 +283,42 @@ CI **首次真实执行**（此前仓库无 remote，工作流从未被触发）
 | # | 维度 | 状态 | 结论 |
 |---|------|:----:|------|
 | **RR-1** | 安全 | ✅ 已缓解 | 容器后端已实现并**真实容器实测**（网络隔离、只读根文件系统均生效）；未配置镜像时自动回退 `SecureSandbox`，行为不变 |
-| **RR-3** | 流程 | ⚠️ **受限，需人工决策** | 脚本 + 补偿控制（pre-push 本地门禁）已就绪；但 `POST /repos/.../branches/main/protection` 与 Rulesets API 对本仓库均返回 **403 `Upgrade to GitHub Pro or make this repository public to enable this feature.`** —— **免费版私有仓库不支持分支保护**。二选一：①升级 GitHub Pro ②仓库转 public；否则只能依赖补偿控制 |
-| **RR-6** | 交付 | ⚠️ **阻塞** | 本机出网**全阻断**（`pypi.org` / `registry.npmjs.org` / `github.com` / `api.github.com` 一律 `connection reset by peer`），且 `gh` token 已失效（`The token in keyring is invalid`）。修复提交 `28ba602` 已在**本地就绪**，恢复出网 + `gh auth login` 后 `git push origin main` 即可触发 CI 复跑 |
+| **RR-3** | 流程 | ⚠️ **受限，需人工决策（已用有效凭据复核）** | 仓库确认为 **private**；`make setup-branch-protection` 实跑仍返回 **403 `Upgrade to GitHub Pro or make this repository public to enable this feature.`** ⇒ **GitHub 免费账号的私有仓库不支持分支保护**。补偿控制**已实际安装并验证**：`.git/hooks/pre-push`（推送前跑 `make test-layers`，实测退出码 0）。二选一解锁强制力：①升级 GitHub Pro ②仓库转 public |
+| **RR-6** | 交付 | ✅ 已解除 | 期间出现出网中断 + `gh` token 失效，已恢复：`gh auth status` 正常（scopes: gist/read:org/repo/workflow），`git push` 成功，CI 实际跑通 |
 | **RR-8** | 质量 | 📋 已登记 | ruff 0.16 默认规则集（`BLE001`/`I001`/`UP`/`S`…）**未收编**，共 ~1109 项（562 项可自动修复）；当前门禁只覆盖 `E4/E7/E9/F`，属**已知、已量化、待排期**的债务，非隐藏项 |
-| **RR-7** | 兼容性 | ⚠️ 待 CI 判定 | 本地 venv 为 **Python 3.14.3**；已静态核查无 3.12+ 专有语法（无 PEP 695 `type`、无 `except*`），但 3.10/3.11 实跑结论仍需 CI 给出 |
+| **RR-7** | 兼容性 | ✅ 已判定通过 | `Python Tests (3.10)` / `(3.11)` / `(3.12)` 三个矩阵**全部绿灯**（本地无法验证的 3.10/3.11 由 CI 补齐） |
+
+
+### 8.2.7 CI 收敛过程与最终结论（2026-10-07）
+
+远端 CI 首次真正被触发后，**连续 6 轮**才收敛到全绿 —— 每一轮都暴露一个此前从未被验证过的真实问题：
+
+| # | run | 提交 | 失败点 | 根因 | 修复 |
+|:-:|-----|------|--------|------|------|
+| 1 | `37630324423` | `7cbcc87` | `Lint (ruff)` ×3 + `Lint (eslint)` | 工作流扫**全仓**，本地历来只 lint 改动文件；仓库从未跑过全仓 lint/format | **D-18** 81→0 + 格式基线；**D-19** eslint 26→0 |
+| 2 | `37633313957` | `da3683f` | `Python Tests` 仍败：本地 0 / CI **1109** | `[tool.ruff]` 从未声明 `select`，门禁继承 **ruff 版本默认规则集**（0.16.x 起显著扩大） | **D-20** 显式 `select` + 钉版本 `ruff==0.16.10` |
+| 3 | `37633751615` | `40b2a04` | `Python Tests` 3 个矩阵各 **7 例**失败 | `unshare: unshare failed: Operation not permitted` —— `unshare` 二进制存在但受限 runner 内核拒绝创建命名空间 | **D-21** 运行期识别包装器失败 → 降级基础沙箱并重试 |
+| 4 | `37634999934` | `bc2bbcc` | 剩 **1 例** | `test_run_falls_back_to_base_sandbox_when_no_unshare` 断言"构造后 `_use_unshare` 必为 False"，该前提只在**非 Linux**成立 | 用例改为**平台无关**（显式置 False） |
+| 5 | `37637052230` | `322c295` | 5/6 绿；`Docker Build Check` 败 | trivy：基础镜像 `nginx:alpine` 残留 2 个**已有修复版本**的 HIGH 包（`libexpat` CVE-2026-93990、`pcre2` CVE-2026-103111） | **D-22** 运行时阶段 `apk upgrade --no-cache` |
+| 6 | `37638589927` | `5f74c0a` | — | — | ✅ **6/6 全绿** |
+
+**最终绿（run `37638589927`）**：
+
+| Job | 结果 |
+|-----|------|
+| `Python Tests (3.10)` | ✅ |
+| `Python Tests (3.11)` | ✅ |
+| `Python Tests (3.12)` | ✅ |
+| `Frontend Tests & Build` | ✅ |
+| `Layer Matrix Gate (L0-L5)` | ✅ |
+| `Docker Build Check`（含 trivy `CRITICAL,HIGH` 门禁） | ✅ |
+
+**D-22 本地实证**：构建镜像后读包版本 → `libexpat-2.8.5-r0`、`pcre2-10.49-r0`，
+均等于 trivy 给出的 Fixed Version，CVE 消解有据。
+
+> 复盘：这 6 轮全部是"**门禁从未真正执行过**"造成的。此前"1898 用例全绿"只证明**在本机 macOS + 当时的依赖版本**下成立；
+> 换成 Linux + 锁定的依赖版本后，先后暴露 lint 漂移、沙箱能力假设、平台相关断言、基础镜像 CVE 四类不同性质的问题。
+> 这正是**交付可信度**维度最需要补的一课：**"本地绿" ≠ "可交付"**，必须有独立环境复现。
 
 ---
 
@@ -322,6 +354,11 @@ f6a93fa feat(skills): 错误隔离/超时/真实指标 + 遥测看板
 **2026-10-06 ~ 10-07 追加提交线**（见 §8.1 / §8.2）:
 
 ```
+5f74c0a fix(docker): 运行时镜像补 Alpine 安全更新，消解 2 个 HIGH CVE（D-22）
+322c295 test(sandbox): 回退用例改为平台无关（原断言只在非 Linux 成立）
+bc2bbcc fix(sandbox): unshare 存在 != 内核允许，运行期 EPERM 自动降级并重试（D-21）
+40b2a04 fix(ci): 显式固定 ruff 规则集与版本（D-20），门禁不再随工具版本漂移
+da3683f docs(audit): §8.2 远端接入 + CI 首次真跑收口（D-18/D-19）与残留风险更新
 28ba602 fix(lint,web): 清零全仓 ruff/eslint 欠债 + 修复 6 处真实缺陷（D-18/D-19）
 7cbcc87 merge: 合并 GitHub 初始骨架（LICENSE/README）  [远端接入]
 9796981 fix(skills): 容器后端显式覆盖 ENTRYPOINT + 真实容器验证
