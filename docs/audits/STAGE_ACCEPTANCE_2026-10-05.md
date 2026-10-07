@@ -313,6 +313,16 @@ CI **首次真实执行**（此前仓库无 remote，工作流从未被触发）
 | `Layer Matrix Gate (L0-L5)` | ✅ |
 | `Docker Build Check`（含 trivy `CRITICAL,HIGH` 门禁） | ✅ |
 
+**顺带对齐本地门禁**（原 `make lint` 只跑 `ruff check`，比 CI 少一步 `format --check`，
+正是 D-18/D-20 那类"本地绿、CI 红"的温床）：
+
+| 项 | 变更 |
+|----|------|
+| `make lint` | 由 `ruff check` → `ruff check` **+ `ruff format --check`**（与 CI `Lint` / `Format check` 两步一一对应） |
+| `pre-commit` 钩子 | 由 `make check`（lint+typecheck+**全量 1913 用例**，实测每次提交约 5 分钟）→ `make lint typecheck`（实测 **0.3s**） |
+| 全量门禁 | 仍在：`pre-push` → `make test-layers`；CI → 6 个 job；发版前 `make check` |
+| 理由 | 每次提交等 5 分钟会直接诱发 `git commit --no-verify`，**反而削弱**补偿控制的可信度 |
+
 **D-22 本地实证**：构建镜像后读包版本 → `libexpat-2.8.5-r0`、`pcre2-10.49-r0`，
 均等于 trivy 给出的 Fixed Version，CVE 消解有据。
 

@@ -126,8 +126,9 @@ test-app: ## Run frontend tests
 # Code Quality
 # ============================================================
 
-lint: ## Run ruff linter on Python code
+lint: ## Run ruff linter + format check on Python code (mirrors CI)
 	@cd more_core && $(PYTHON) -m ruff check more_core/ tests/
+	@cd more_core && $(PYTHON) -m ruff format --check more_core/ tests/
 
 format: ## Auto-format with ruff
 	@cd more_core && $(PYTHON) -m ruff format more_core/ tests/
@@ -189,7 +190,7 @@ docker-down: ## Stop docker-compose
 setup-hooks: ## Install pre-commit + pre-push hooks (layer gate on push)
 	@echo "Installing git hooks..."
 	@mkdir -p .git/hooks
-	@printf '#!/bin/sh\nmake check\n' > .git/hooks/pre-commit
+	@printf '#!/bin/sh\n# 快速门禁：只跑 lint(format)+typecheck（秒级）。\n# 全量 make check / 分层门禁分别由 pre-push 与 CI 承担，\n# 避免"每个 commit 等 5 分钟"而诱发 --no-verify 绕过。\nmake lint typecheck\n' > .git/hooks/pre-commit
 	@chmod +x .git/hooks/pre-commit
 	@printf '#!/bin/sh\n# P0 补偿控制：本地推送前跑分层门禁（无分支保护时的兜底）\nmake test-layers || { echo "✗ layer gate failed — push blocked"; exit 1; }\n' > .git/hooks/pre-push
 	@chmod +x .git/hooks/pre-push
