@@ -99,7 +99,7 @@ def _install_code_provider(core, content: str):
     class _CodeProvider:
         name = "fake"
 
-        async def generate(self, request):  # noqa: ANN001
+        async def generate(self, request):
             return LLMResponse(
                 content=content,
                 provider="fake",
@@ -109,7 +109,7 @@ def _install_code_provider(core, content: str):
                 latency_ms=1.0,
             )
 
-        async def stream(self, request):  # noqa: ANN001
+        async def stream(self, request):
             yield content
 
         async def health(self):
@@ -189,7 +189,7 @@ def test_l1_c2_missing_key_rejected(core, missing):
 @pytest.mark.parametrize("bad", [True, False, "4096", 3.5, None])
 def test_l1_c3_token_budget_type_rejected(core, bad):
     layer = core.get_layer(LayerId.L1)
-    ok, reason = layer._validate_omac_output(_omac(token_budget=bad))
+    ok, _reason = layer._validate_omac_output(_omac(token_budget=bad))
     assert ok is False, f"token_budget={bad!r} 应被拒绝"
 
 

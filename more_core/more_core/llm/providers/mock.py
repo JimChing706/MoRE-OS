@@ -7,7 +7,7 @@ Useful for testing iteration flows, output creation, and UI without real LLM bac
 from __future__ import annotations
 
 import time
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from ..provider import LLMProvider, LLMRequest, LLMResponse
 

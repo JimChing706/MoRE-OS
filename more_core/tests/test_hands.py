@@ -1,11 +1,12 @@
 """Tests for the Hands subsystem."""
 
 import pytest
+
 from more_core.core.errors import PluginError
 from more_core.hands.base import Hand, HandManifest, HandResult, HandStatus
-from more_core.hands.registry import HandRegistry
-from more_core.hands.manager import HandManager
 from more_core.hands.builtins import register_builtin_hands
+from more_core.hands.manager import HandManager
+from more_core.hands.registry import HandRegistry
 
 
 class _TestHand(Hand):

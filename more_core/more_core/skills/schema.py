@@ -22,9 +22,10 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
-__all__ = ["SchemaError", "validate_params", "check_params", "is_valid"]
+__all__ = ["SchemaError", "check_params", "is_valid", "validate_params"]
 
 _TYPE_MAP: dict[str, tuple[type, ...]] = {
     "string": (str,),

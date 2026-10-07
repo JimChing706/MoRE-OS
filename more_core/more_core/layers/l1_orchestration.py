@@ -72,7 +72,7 @@ def _to_clamped_int(value: Any, default: int, lo: int = 0, hi: int = 10) -> int:
         elif value is None:
             v = default
         elif isinstance(value, (int, float)):
-            v = int(round(float(value))) if isinstance(value, float) else int(value)
+            v = round(float(value)) if isinstance(value, float) else int(value)
         else:
             v = int(str(value).strip())
     except (TypeError, ValueError, ArithmeticError):
@@ -84,7 +84,7 @@ def _safe_str(value: Any, default: str = "") -> str:
     """Best-effort str cast — never raises on weird inputs."""
     try:
         return default if value is None else str(value)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return default
 
 
@@ -258,7 +258,7 @@ class OrchestrationLayer(Layer):
                 rctx["model_hint"] = model_hint.value
                 if not isinstance(getattr(ctx.request, "context", None), dict):
                     ctx.request.context = rctx
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
 
             return LayerResult(
@@ -273,7 +273,7 @@ class OrchestrationLayer(Layer):
                 output=plan,
                 confidence=confidence,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             # L1 invariant: never raises under any input.  Fallback plan is
             # balanced / standard model with conservative medium tokens so the
             # rest of the pipeline still has something to work on.
@@ -289,7 +289,7 @@ class OrchestrationLayer(Layer):
             }
             try:
                 ctx.scratch["orchestration_plan"] = plan
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
             return LayerResult(
                 layer=self.layer_id,

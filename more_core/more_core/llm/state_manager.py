@@ -5,8 +5,9 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 _log = logging.getLogger(__name__)
 
@@ -83,7 +84,7 @@ class LLMStateManager:
             for callback in self._callbacks:
                 try:
                     callback(self._state)
-                except Exception:
+                except Exception:  # noqa: BLE001
                     _log.exception("LLM state change callback failed")
 
             return self._state

@@ -10,15 +10,15 @@ from __future__ import annotations
 import asyncio
 import json as _json
 import re
-
-from ..core.errors import MoREError
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, cast
+from typing import TYPE_CHECKING, Any, cast
 
+from ..core.errors import MoREError
 from ..governance.audit import AuditLogger
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -139,7 +139,7 @@ class SandboxValidator:
             safe, reason = policy.is_safe(code)
             if not safe:
                 return False, reason
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             # Fallback: policy unavailable (bootstrap edge-case)
             pass
 
@@ -160,7 +160,7 @@ class SandboxValidator:
                 cwd=tmp,
             )
             try:
-                out, err = await asyncio.wait_for(
+                _out, err = await asyncio.wait_for(
                     proc.communicate(),
                     timeout=self._timeout,
                 )
@@ -178,8 +178,8 @@ class HyperAgent:
         self,
         version_control: VersionControl | None = None,
         sandbox_executor: Callable[[str], bool] | None = None,
-        sandbox_validator: "SandboxValidator | None" = None,
-        audit_logger: "AuditLogger | None" = None,
+        sandbox_validator: SandboxValidator | None = None,
+        audit_logger: AuditLogger | None = None,
         project_root: str | None = None,
         event_bus: Any | None = None,
     ) -> None:
@@ -199,7 +199,7 @@ class HyperAgent:
             "more_core/core/config.py",
         ]
 
-    def register_audit_logger(self, logger: "AuditLogger") -> None:
+    def register_audit_logger(self, logger: AuditLogger) -> None:
         self._audit_logger = logger
 
     def set_allowed_targets(self, targets: list[str]) -> None:
@@ -214,7 +214,7 @@ class HyperAgent:
     def register_sandbox_executor(self, executor: Callable[[str], bool]) -> None:
         self._sandbox_executor = executor
 
-    def register_sandbox_validator(self, validator: "SandboxValidator") -> None:
+    def register_sandbox_validator(self, validator: SandboxValidator) -> None:
         self._sandbox_validator = validator
 
     def _parse_diff(self, diff: str, target: str) -> SelfModProposal | None:
@@ -244,7 +244,7 @@ class HyperAgent:
         return None
 
     async def consider(
-        self, ctx: "LayerContext", calibration: dict[str, object]
+        self, ctx: LayerContext, calibration: dict[str, object]
     ) -> SelfModProposal | None:
         alignment = cast(float, calibration.get("alignment", 1.0))
         if alignment >= 0.85:
@@ -273,7 +273,7 @@ class HyperAgent:
         return proposal
 
     async def _llm_generate_proposal(
-        self, ctx: "LayerContext", calibration: dict[str, object]
+        self, ctx: LayerContext, calibration: dict[str, object]
     ) -> SelfModProposal | None:
         """Use LLM to generate intelligent self-modification proposals."""
         try:
@@ -294,13 +294,13 @@ class HyperAgent:
             resp = await core.llm.generate(llm_req)
             return self._parse_llm_response(resp.content, ctx, calibration)
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             import logging
 
             logging.getLogger(__name__).warning(f"LLM proposal generation failed: {e}")
             return None
 
-    def _build_llm_prompt(self, ctx: "LayerContext", calibration: dict[str, object]) -> str:
+    def _build_llm_prompt(self, ctx: LayerContext, calibration: dict[str, object]) -> str:
         steps_summary = "\n".join(
             [
                 f"  {s.layer.value}: {s.description} (conf={s.confidence:.2f}, {s.duration_ms:.1f}ms)"
@@ -347,14 +347,13 @@ Generate a self-modification proposal in JSON format:
 Output ONLY valid JSON wrapped in <proposal> tags:"""
 
     def _parse_llm_response(
-        self, response: str, ctx: "LayerContext", calibration: dict[str, object]
+        self, response: str, ctx: LayerContext, calibration: dict[str, object]
     ) -> SelfModProposal | None:
         import re
 
         match = re.search(r"<proposal>\s*(\{.*?\})\s*</proposal>", response, re.DOTALL)
-        if not match:
-            if "```json" in response:
-                match = re.search(r"```json\s*(\{.*?\})\s*```", response, re.DOTALL)
+        if not match and "```json" in response:
+            match = re.search(r"```json\s*(\{.*?\})\s*```", response, re.DOTALL)
 
         if not match:
             return None
@@ -502,8 +501,8 @@ Output ONLY valid JSON wrapped in <proposal> tags:"""
 
             target_path.write_text("\n".join(lines), encoding="utf-8")
             return True, f"Applied modification to {proposal.target}"
-        except Exception as e:
-            return False, f"Failed to apply modification: {str(e)}"
+        except Exception as e:  # noqa: BLE001
+            return False, f"Failed to apply modification: {e!s}"
 
     def _apply_difficulty_heuristic_change(self, lines: list[str], content: str) -> list[str]:
         new_lines = []

@@ -69,7 +69,7 @@ class SymbolicLayer(Layer):
                 rules=rules,
                 violations=all_violations,
             )
-        except Exception:  # pragma: no cover - telemetry must never break L3
+        except Exception:  # pragma: no cover - telemetry must never break L3  # noqa: BLE001, S110
             pass
 
     async def process(self, ctx: LayerContext) -> LayerResult:

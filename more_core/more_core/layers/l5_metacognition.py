@@ -14,7 +14,6 @@ Includes incident response for unauthorized modification attempts.
 from __future__ import annotations
 
 import logging
-
 from typing import Any
 
 from ..core.errors import MoREError
@@ -173,7 +172,7 @@ class MetacognitionLayer(Layer):
                 adjustment=float(review.get("confidence_adjustment", 0.0) or 0.0),
                 alignment_after=float(after),
             )
-        except Exception:  # pragma: no cover - telemetry must never break L5
+        except Exception:  # pragma: no cover - telemetry must never break L5  # noqa: BLE001, S110
             pass
 
     async def _monitor_plan(self, ctx: LayerContext, confidence: float) -> dict[str, Any]:

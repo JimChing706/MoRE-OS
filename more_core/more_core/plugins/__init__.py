@@ -1,15 +1,15 @@
 """Plugin subsystem."""
 
-from .interface import PluginInterface, PluginMetadata, PluginContext
+from .interface import PluginContext, PluginInterface, PluginMetadata
 from .manager import PluginManager
-from .sdk import PluginBase, scaffold_plugin, generate_plugin_manifest
+from .sdk import PluginBase, generate_plugin_manifest, scaffold_plugin
 
 __all__ = [
-    "PluginInterface",
-    "PluginMetadata",
-    "PluginContext",
-    "PluginManager",
     "PluginBase",
-    "scaffold_plugin",
+    "PluginContext",
+    "PluginInterface",
+    "PluginManager",
+    "PluginMetadata",
     "generate_plugin_manifest",
+    "scaffold_plugin",
 ]

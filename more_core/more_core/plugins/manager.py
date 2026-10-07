@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import builtins
 import importlib.metadata as _ilm
 import importlib.util
 import json
 import re
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 
 from ..core.errors import PluginError
 from .interface import PluginContext, PluginInterface, PluginMetadata
@@ -98,7 +99,7 @@ class PluginManager:
 
     # -- activation --------------------------------------------------------
 
-    async def activate(self, name: str, core: "MoRECore") -> None:
+    async def activate(self, name: str, core: MoRECore) -> None:
         if name in self._active:
             return
         plugin = self.load(name)
@@ -145,8 +146,8 @@ class PluginManager:
     def is_active(self, name: str) -> bool:
         return name in self._active
 
-    def list(self) -> List[PluginMetadata]:
+    def list(self) -> builtins.list[PluginMetadata]:
         return list(self._metadata.values())
 
-    def active(self) -> List[PluginMetadata]:
+    def active(self) -> builtins.list[PluginMetadata]:
         return [self._metadata[n] for n in self._active]

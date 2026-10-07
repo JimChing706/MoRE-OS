@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import time
 
-
 from more_core.codegen.delivery_ledger import DeliveryLedger
 from more_core.governance import observability as obs
 

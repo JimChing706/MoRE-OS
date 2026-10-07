@@ -1,6 +1,7 @@
 """Tests for the plugin SDK."""
 
 import json
+from typing import ClassVar
 
 from more_core.plugins.sdk import PluginBase, generate_plugin_manifest, scaffold_plugin
 
@@ -27,7 +28,7 @@ def test_plugin_base_capabilities():
     class TestPlugin(PluginBase):
         NAME = "test"
         VERSION = "0.2.0"
-        CAPABILITIES = ["code"]
+        CAPABILITIES: ClassVar[list[str]] = ["code"]
 
     p = TestPlugin()
     caps = p.capabilities()

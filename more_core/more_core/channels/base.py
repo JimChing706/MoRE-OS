@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, fields
 from enum import Enum
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 
 class ChannelType(Enum):
@@ -137,22 +138,18 @@ class ChannelAdapter(ABC):
     @abstractmethod
     def platform_name(self) -> str:
         """Return the platform name."""
-        pass
 
     @abstractmethod
     async def start(self) -> None:
         """Start the adapter and connect to the platform."""
-        pass
 
     @abstractmethod
     async def stop(self) -> None:
         """Stop the adapter and disconnect from the platform."""
-        pass
 
     @abstractmethod
     async def send_message(self, response: Response) -> bool:
         """Send a response message to the platform."""
-        pass
 
     def set_handler(self, handler: MessageHandler) -> None:
         """Set the message handler callback."""

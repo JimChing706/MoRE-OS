@@ -25,7 +25,7 @@ class _SlowLLM:
         self.max_concurrent = 0
         self.requests: list[LLMRequest] = []
 
-    async def generate(self, req, provider=None, model_override=None, **kw):  # noqa: ANN001
+    async def generate(self, req, provider=None, model_override=None, **kw):
         self.active += 1
         self.max_concurrent = max(self.max_concurrent, self.active)
         self.requests.append(req)
@@ -51,7 +51,7 @@ class _Tools:
         self.output = output
         self.calls = 0
 
-    async def invoke(self, name, params, user_id="anonymous"):  # noqa: ANN001
+    async def invoke(self, name, params, user_id="anonymous"):
         self.calls += 1
         return ToolResult(tool=name, success=self.success, output=self.output)
 
@@ -207,7 +207,7 @@ async def test_differential_disagreement_still_detected_in_parallel():
     """并行不得改变选择语义：候选输出不一致时必须标记 differential。"""
 
     class _DivergentLLM(_SlowLLM):
-        async def generate(self, req, provider=None, model_override=None, **kw):  # noqa: ANN001
+        async def generate(self, req, provider=None, model_override=None, **kw):
             self.active += 1
             self.max_concurrent = max(self.max_concurrent, self.active)
             self.requests.append(req)
@@ -229,7 +229,7 @@ async def test_differential_disagreement_still_detected_in_parallel():
     outputs = iter(["a", "b", "c"])
 
     class _OutTools:
-        async def invoke(self, name, params, user_id="anonymous"):  # noqa: ANN001
+        async def invoke(self, name, params, user_id="anonymous"):
             return ToolResult(tool=name, success=True, output=next(outputs, "z"))
 
     ctx = _ctx(_DivergentLLM(delay=0.05), _OutTools(), parallel=True)

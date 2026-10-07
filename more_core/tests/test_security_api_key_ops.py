@@ -12,10 +12,10 @@ No runtime.*, no layers.*, no tools.* dependencies — G-2-6 零侵入.
 from __future__ import annotations
 
 import os
-import sys
-import time
-import tempfile
 import shutil
+import sys
+import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -32,7 +32,6 @@ from more_core.security.api_key_ops import (
     validate_api_key_report,
     verify_rotation_proof,
 )
-
 
 # ---------------------------------------------------------------------------
 # Group 1 — generate_api_key 3 cases (compat/modern/hex)
@@ -134,7 +133,7 @@ class TestInjectEnv:
     def test_new_env_file_created_600_perms(self, td):
         target = os.path.join(td, "brand_new.env")
         key = generate_api_key("modern")
-        path, backup, prev = inject_api_key_into_env(key, target, backup=True, strict=True)
+        _path, backup, _prev = inject_api_key_into_env(key, target, backup=True, strict=True)
         assert os.path.exists(target)
         perms = oct(os.stat(target).st_mode)[-3:]
         assert perms == "600", f"perms={perms} want 600"
@@ -151,7 +150,7 @@ class TestInjectEnv:
             fh.write(old_line + "\n")
             fh.write("KEEP_ME=yes\n")
         new_key = generate_api_key("modern")
-        path, backup, prev = inject_api_key_into_env(new_key, target, backup=True, strict=True)
+        path, backup, _prev = inject_api_key_into_env(new_key, target, backup=True, strict=True)
         assert backup is not None and os.path.exists(backup)
         with open(path) as fh:
             content = fh.read()

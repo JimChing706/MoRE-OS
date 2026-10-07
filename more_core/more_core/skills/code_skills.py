@@ -3,20 +3,21 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import tempfile
-import json
-import httpx
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
-from .base import Skill, SkillMetadata, SkillResult, SkillCategory
+import httpx
+
+from .base import Skill, SkillCategory, SkillMetadata, SkillResult
 
 
 class CodeExecutionSkill(Skill):
     """代码执行技能 - 支持 Python/JavaScript."""
 
-    SUPPORTED_LANGUAGES = ["python", "javascript", "bash"]
+    SUPPORTED_LANGUAGES: ClassVar[list[str]] = ["python", "javascript", "bash"]
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config)
@@ -112,16 +113,16 @@ class CodeExecutionSkill(Skill):
                     "timed_out": result.get("timed_out", False),
                 },
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return SkillResult(success=False, error=str(e))
 
-    def _build_sandbox(self, timeout: int | float) -> Any:
+    def _build_sandbox(self, timeout: float) -> Any:
         """按安全级别构建 OS 级沙箱（超时可覆盖）。"""
         from ..sandbox.secure_sandbox import create_secure_sandbox
 
         return create_secure_sandbox(security_level=self._security_level, timeout_s=int(timeout))
 
-    def _sandbox_for(self, timeout: int | float) -> Any:
+    def _sandbox_for(self, timeout: float) -> Any:
         if int(timeout) == int(self._timeout):
             return self._sandbox
         return self._build_sandbox(timeout)
@@ -371,7 +372,7 @@ class DataAnalysisSkill(Skill):
                     return SkillResult(success=False, error=f"Unknown operation: {operation}")
 
             return SkillResult(success=True, output=result, metadata={"operation": operation})
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return SkillResult(success=False, error=str(e))
 
     def _parse_data(self, data: str, format: str) -> dict[str, Any]:
@@ -596,5 +597,5 @@ class APICallSkill(Skill):
                         "headers": dict(r.headers),
                     },
                 )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return SkillResult(success=False, error=str(e))

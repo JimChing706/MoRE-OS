@@ -21,7 +21,6 @@ from more_core.core.unicode_utils import (
     truncate_display,
 )
 
-
 # ---- unicode_utils unit tests ----
 
 
@@ -189,8 +188,8 @@ class TestL4CJKDifficulty:
 class TestL0LanguageDetection:
     def test_chinese_system_prompt_selected(self):
         """Chinese queries should trigger the Chinese system prompt."""
-        from more_core.layers.l0_execution import _SYSTEM_PROMPTS
         from more_core.core.unicode_utils import detect_language
+        from more_core.layers.l0_execution import _SYSTEM_PROMPTS
 
         query = "请帮我实现一个快速排序算法"
         lang = detect_language(query)

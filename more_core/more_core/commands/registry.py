@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Flag, auto
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 _log = logging.getLogger(__name__)
 

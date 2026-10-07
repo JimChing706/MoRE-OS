@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
@@ -62,7 +62,7 @@ class QQAdapter(ChannelAdapter):
                     _log.info(
                         f"QQ bot connected: {data.get('data', {}).get('nickname', 'unknown')}"
                     )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             _log.warning(f"QQ bot connection check failed: {e}")
 
         self._running = True
@@ -88,7 +88,7 @@ class QQAdapter(ChannelAdapter):
                 return await self._send_private_message(int(user_id), response.content)
             else:
                 return await self._send_private_message(int(chat_id), response.content)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             _log.error(f"QQ send failed: {e}")
             return False
 
@@ -118,7 +118,7 @@ class QQAdapter(ChannelAdapter):
         """Send direct message to user."""
         try:
             return await self._send_private_message(int(user_id), content)
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False
 
     async def _event_loop(self) -> None:
@@ -133,7 +133,7 @@ class QQAdapter(ChannelAdapter):
             r = await self._session.get(f"{self.base_url}/get_login_info")
             data: Any = r.json()
             return bool(data.get("status") == "ok")
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False
 
     async def get_group_list(self) -> list[dict[str, Any]]:

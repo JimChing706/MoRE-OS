@@ -20,7 +20,6 @@ from more_core.metacognition.hyperagent import (
     VersionControl,
 )
 
-
 # ---------------------------------------------------------------------------
 # H1: EventBus stop() drains pending handlers
 # ---------------------------------------------------------------------------
@@ -98,7 +97,7 @@ def test_sqlite_memory_store_thread_safe() -> None:
         def bg():
             try:
                 store._conn.execute("SELECT 1").fetchone()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 errors.append(e)
 
         t = threading.Thread(target=bg)
@@ -184,7 +183,7 @@ def test_audit_logger_concurrent_writes() -> None:
                     logger.log(
                         actor=f"t-{threading.current_thread().name}", action=f"a{i}", entity="test"
                     )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 errors.append(e)
 
         threads = [threading.Thread(target=write_batch, args=(20,)) for _ in range(4)]

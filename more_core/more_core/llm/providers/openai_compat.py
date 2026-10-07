@@ -10,7 +10,7 @@ import asyncio
 import json
 import logging
 import random
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import httpx
 
@@ -259,7 +259,7 @@ class OpenAICompatProvider:
                         try:
                             error_data = json.loads(body)
                             error_msg = error_data.get("error", {}).get("message", str(body))
-                        except (json.JSONDecodeError, Exception):
+                        except (json.JSONDecodeError, Exception):  # noqa: BLE001
                             error_msg = body.decode("utf-8", errors="replace")[:500]
 
                         formatted = self._format_error(r.status_code, error_msg)
@@ -326,5 +326,5 @@ class OpenAICompatProvider:
             client = self._get_client()
             r = await client.get(f"{self._base}/models", headers=self._headers())
             return r.status_code == 200
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False

@@ -5,6 +5,6 @@ All commands live in one registry with categories, aliases,
 and per-surface filtering (CLI / Channel / Web).
 """
 
-from .registry import CommandRegistry, Command, CommandSurface
+from .registry import Command, CommandRegistry, CommandSurface
 
-__all__ = ["CommandRegistry", "Command", "CommandSurface"]
+__all__ = ["Command", "CommandRegistry", "CommandSurface"]

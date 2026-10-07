@@ -4,8 +4,6 @@ Phase 1: Meta-Orchestrator + Dynamic Guardrails
 Phase 2: SOUL Personality Profiles + Silver Habits Engineering
 """
 
-from .uncertainty import UncertaintyAssessor, UncertaintyAssessment
-from .meta_orchestrator import MetaOrchestrator, MetaRoutingDecision, RoutingMode
 from .dynamic_guardrails import (
     DynamicGuardrails,
     GuardrailConfig,
@@ -13,67 +11,69 @@ from .dynamic_guardrails import (
     get_dynamic_guardrails,
     reset_dynamic_guardrails,
 )
+from .meta_orchestrator import MetaOrchestrator, MetaRoutingDecision, RoutingMode
+from .silver_habits import (
+    CalibratedOutput,
+    ChaosInjector,
+    CircuitBreakerState,
+    CollaborationBonus,
+    ConvergenceDetector,
+    ConvergenceSignal,
+    ExpertDiversifier,
+    InfoCostBenefit,
+    TiltDetector,
+)
 from .soul_profile import (
-    SoulProfile,
-    SilverHabit,
-    DecisionStyle,
-    ConfidenceStyle,
-    RecoveryStyle,
+    ARCHETYPE_DIPLOMAT,
+    ARCHETYPE_ENGINEER,
+    ARCHETYPE_INNOVATOR,
+    ARCHETYPE_RISK_ANALYST,
     CollaborationPreference,
+    ConfidenceStyle,
+    DecisionStyle,
+    RecoveryStyle,
+    SilverHabit,
+    SoulProfile,
     get_archetype,
     list_archetypes,
     register_archetype,
-    ARCHETYPE_RISK_ANALYST,
-    ARCHETYPE_INNOVATOR,
-    ARCHETYPE_DIPLOMAT,
-    ARCHETYPE_ENGINEER,
 )
-from .silver_habits import (
-    CalibratedOutput,
-    CircuitBreakerState,
-    TiltDetector,
-    ChaosInjector,
-    ConvergenceDetector,
-    ConvergenceSignal,
-    InfoCostBenefit,
-    ExpertDiversifier,
-    CollaborationBonus,
-)
+from .uncertainty import UncertaintyAssessment, UncertaintyAssessor
 
 __all__ = [
-    # Phase 1
-    "UncertaintyAssessor",
-    "UncertaintyAssessment",
-    "MetaOrchestrator",
-    "MetaRoutingDecision",
-    "RoutingMode",
-    "DynamicGuardrails",
-    "GuardrailConfig",
-    "SandboxLevel",
-    "get_dynamic_guardrails",
-    "reset_dynamic_guardrails",
-    # Phase 2 — SOUL
-    "SoulProfile",
-    "SilverHabit",
-    "DecisionStyle",
-    "ConfidenceStyle",
-    "RecoveryStyle",
-    "CollaborationPreference",
-    "get_archetype",
-    "list_archetypes",
-    "register_archetype",
-    "ARCHETYPE_RISK_ANALYST",
-    "ARCHETYPE_INNOVATOR",
     "ARCHETYPE_DIPLOMAT",
     "ARCHETYPE_ENGINEER",
+    "ARCHETYPE_INNOVATOR",
+    "ARCHETYPE_RISK_ANALYST",
     # Phase 2 — Silver Habits
     "CalibratedOutput",
-    "CircuitBreakerState",
-    "TiltDetector",
     "ChaosInjector",
+    "CircuitBreakerState",
+    "CollaborationBonus",
+    "CollaborationPreference",
+    "ConfidenceStyle",
     "ConvergenceDetector",
     "ConvergenceSignal",
-    "InfoCostBenefit",
+    "DecisionStyle",
+    "DynamicGuardrails",
     "ExpertDiversifier",
-    "CollaborationBonus",
+    "GuardrailConfig",
+    "InfoCostBenefit",
+    "MetaOrchestrator",
+    "MetaRoutingDecision",
+    "RecoveryStyle",
+    "RoutingMode",
+    "SandboxLevel",
+    "SilverHabit",
+    # Phase 2 — SOUL
+    "SoulProfile",
+    "TiltDetector",
+    "UncertaintyAssessment",
+    # Phase 1
+    "UncertaintyAssessor",
+    "get_archetype",
+    "get_dynamic_guardrails",
+    "list_archetypes",
+    "register_archetype",
+    "reset_dynamic_guardrails",
 ]

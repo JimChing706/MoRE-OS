@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 from .scheduler import CronScheduler, JobResult
-from .trigger import TriggerEngine, TriggerEvent, TriggerEventType, EventPattern
+from .trigger import EventPattern, TriggerEngine, TriggerEvent, TriggerEventType
 
 _log = logging.getLogger(__name__)
 
@@ -303,7 +304,7 @@ class TaskManager:
                 if asyncio.iscoroutine(maybe_coro):
                     await maybe_coro
                 result.append((rec.name, True, ""))
-            except Exception as exc:  # pragma: no cover - defensive
+            except Exception as exc:  # pragma: no cover - defensive  # noqa: BLE001
                 result.append((rec.name, False, repr(exc)))
         return result
 
@@ -327,7 +328,7 @@ class TaskManager:
         for callback in self._delivery_callbacks:
             try:
                 await callback(task_id, result)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 _log.error(f"Delivery callback error: {e}")
 
     def _create_wrapper(self, task: TaskDefinition) -> Callable[[], Awaitable[Any]]:

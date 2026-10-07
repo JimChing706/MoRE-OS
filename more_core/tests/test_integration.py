@@ -1,9 +1,10 @@
 """Integration tests for MoRE OS core components."""
 
-import pytest
 import asyncio
-import sys
 import os
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -85,11 +86,11 @@ class TestIntegrationOptimizationAndCaching:
         breaker = CircuitBreaker(failure_threshold=2, recovery_timeout=0.05)
 
         async def failing_func():
-            raise Exception("test failure")
+            raise RuntimeError("test failure")
 
         # Trigger failures to open circuit
         for _ in range(2):
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeError):
                 asyncio.run(breaker.call(failing_func))
 
         assert breaker.state == "OPEN"
@@ -120,7 +121,7 @@ class TestIntegrationZENRulesAndEnforcement:
 
     def test_zen_rules_with_severity_callbacks(self):
         """Test ZEN rules with severity-specific callbacks."""
-        from more_core.zen_rules import ZENRulesEnforcer, RuleSeverity
+        from more_core.zen_rules import RuleSeverity, ZENRulesEnforcer
 
         ZENRulesEnforcer._instance = None
         enforcer = ZENRulesEnforcer()
@@ -137,7 +138,7 @@ class TestIntegrationZENRulesAndEnforcement:
 
     def test_zen_rules_violation_recording(self):
         """Test violation recording and tracking."""
-        from more_core.zen_rules import ZENRulesEnforcer, ZENRule, RuleCategory, RuleSeverity
+        from more_core.zen_rules import RuleCategory, RuleSeverity, ZENRule, ZENRulesEnforcer
 
         ZENRulesEnforcer._instance = None
         enforcer = ZENRulesEnforcer()
@@ -166,6 +167,7 @@ class TestIntegrationGovernanceAndAudit:
     def test_audit_log_writing(self):
         """Test audit log writing."""
         import tempfile
+
         from more_core.governance.audit import AuditLogger
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jsonl") as f:
@@ -190,7 +192,7 @@ class TestIntegrationGovernanceAndAudit:
 
     def test_rbac_permission_check(self):
         """Test RBAC permission checking with UnifiedRBAC (replaces governance RBAC)."""
-        from more_core.security.rbac import UnifiedRBAC, Permission
+        from more_core.security.rbac import Permission, UnifiedRBAC
 
         rbac = UnifiedRBAC(admin_users=["admin1"])
         rbac.assign_role("user1", "operator")
@@ -212,8 +214,8 @@ class TestIntegrationIncidentResponse:
 
     def test_incident_creation_and_tracking(self):
         """Test incident creation and tracking."""
-        from more_core.incident_response import IncidentManager, IncidentType, Severity
         from more_core.core.types import LayerId
+        from more_core.incident_response import IncidentManager, IncidentType, Severity
 
         manager = IncidentManager()
 

@@ -12,13 +12,23 @@ import hashlib
 import logging
 import os
 import time
-from pathlib import Path
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
+from ..commands.registry import register_builtin_commands
 from ..core.config import Settings
+from ..core.convergence import ConvergenceTracker
+from ..core.deliverable import (
+    DeliverableContract,
+    DeliverableKind,
+    KillCriterion,
+    KillSeverity,
+    TaskExpectation,
+)
 from ..core.errors import GovernanceError, MoREError
 from ..core.event_bus import EventBus
+from ..core.request_context import RequestContext, clear_context, set_context
 from ..core.service_registry import ServiceRegistry
 from ..core.types import (
     EngineStatus,
@@ -29,32 +39,21 @@ from ..core.types import (
     TaskStatus,
     TaskType,
 )
+from ..core.unicode_utils import detect_language
 from ..evolution.archive import EvolutionArchive
+from ..evolution.benchmark import BenchmarkRunner, SimpleBenchmark
+from ..hands.browser_hand import BrowserHand
+from ..hands.builtins import register_builtin_hands
+from ..incident_response import get_incident_manager
 from ..layers.base import Layer, LayerContext
 from ..llm.model_aliases import ModelAliasRegistry
 from ..llm.provider import LLMRequest
 from ..memory.store import MemoryStore
-from ..evolution.benchmark import BenchmarkRunner, SimpleBenchmark
-from ..router.layer_router import RoutingDecision
-from ..tools.builtins import register_builtins
-from ..core.request_context import RequestContext, set_context, clear_context
-from ..core.unicode_utils import detect_language
-from ..core.deliverable import (
-    DeliverableContract,
-    DeliverableKind,
-    TaskExpectation,
-    KillCriterion,
-    KillSeverity,
-)
-from ..core.convergence import ConvergenceTracker
 from ..metrics import get_collector
-from ..incident_response import get_incident_manager
-from ..hands.builtins import register_builtin_hands
-from ..commands.registry import register_builtin_commands
+from ..router.layer_router import RoutingDecision
 from ..security.taint import TaintContext, TaintLabel
+from ..tools.builtins import register_builtins
 from ..zen_rules import ZENRulesEnforcer, get_enforcer
-
-from ..hands.browser_hand import BrowserHand
 from .bootstrap import init_capabilities, init_layers, init_services
 
 
@@ -211,7 +210,7 @@ class MoRECore:
     # -- factories ---------------------------------------------------------
 
     @classmethod
-    def from_env(cls) -> "MoRECore":
+    def from_env(cls) -> MoRECore:
         return cls(Settings.from_env())
 
     @staticmethod
@@ -270,7 +269,7 @@ class MoRECore:
                 self.logger.warning("LLM preflight: %s", _w)
             if _pf.ok:
                 self.logger.info("LLM preflight OK (chain=%s)", ",".join(_pf.chain_registered))
-        except Exception as exc:  # pragma: no cover - 预检失败不阻断启动
+        except Exception as exc:  # pragma: no cover - 预检失败不阻断启动  # noqa: BLE001
             self.logger.warning("LLM preflight skipped: %s", exc)
         # Wire benchmark runner into DGM for evaluation loop
         self.benchmark_runner = BenchmarkRunner(self)
@@ -298,7 +297,7 @@ class MoRECore:
         # Build reverse-dependency graph
         deps = {md.name: set(md.dependencies) for md in active}
         deactivated = set()
-        remaining = set(d.name for d in active)
+        remaining = {d.name for d in active}
         while remaining:
             # Find plugins with no remaining dependents
             dep_on_remaining = {n: deps[n] & remaining for n in remaining}
@@ -312,7 +311,7 @@ class MoRECore:
             for name in ready:
                 try:
                     await self.plugins.deactivate(name)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     self.logger.warning("deactivate %s failed: %s", name, exc)
                 remaining.discard(name)
                 deactivated.add(name)
@@ -442,7 +441,7 @@ class MoRECore:
         cache_key = (
             f"{request.type.value}"
             f"|{hashlib.sha256(request.query.encode('utf-8')).hexdigest()}"
-            f"|{str(request.context.get('actor') or 'anonymous')}"
+            f"|{request.context.get('actor') or 'anonymous'!s}"
         )
         cached = None if _no_cache else await self._request_cache.get(cache_key, "task")
         if cached is not None:
@@ -467,7 +466,7 @@ class MoRECore:
             # resolve_pipeline() 内部：Meta-Orchestrator 优先，否则回退基座路由。
             decision, meta_decision = self.resolve_pipeline(request, available_providers=available)
             guardrail_config = None
-            if meta_decision is not None:
+            if meta_decision is not None:  # noqa: SIM102 - 保留嵌套以承载逐条件注释
                 # Compute dynamic guardrails from the spectral decision
                 if hasattr(self, "dynamic_guardrails") and self.dynamic_guardrails is not None:
                     guardrail_config = self.dynamic_guardrails.adjust(
@@ -643,7 +642,7 @@ class MoRECore:
             layer_transitions=max(0, len(ctx.accumulated_steps) - 1),
         )
         # --- ZEN-17: LLM output safety check ---
-        if status == TaskStatus.SUCCESS and output:
+        if status == TaskStatus.SUCCESS and output:  # noqa: SIM102 - 保留嵌套以承载逐条件注释
             if zen.check_violation("ZEN-17", {"output": str(output), "task_id": request.id}):
                 self.audit.log(
                     actor=actor,
@@ -714,7 +713,7 @@ class MoRECore:
                         coverage_pct=report.coverage_pct,
                         backfill_items=report.backfill_items,
                     )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             self.logger.warning("pipeline self-check failed for task %s: %s", request.id, exc)
 
         # ── 产出正确性闸门 + 交付可信度台账（P0 修复） ──────────────
@@ -886,7 +885,7 @@ class MoRECore:
                 model=str(request.context.get("model", "")),
                 request_excerpt=str(request.query or ""),
             )
-        except Exception as exc:  # pragma: no cover - 台账失败不得影响用户链路
+        except Exception as exc:  # pragma: no cover - 台账失败不得影响用户链路  # noqa: BLE001
             self.logger.warning("delivery ledger write failed for %s: %s", request.id, exc)
 
         await self.event_bus.publish(
@@ -1014,14 +1013,14 @@ class MoRECore:
                 rules=rules or [],
                 violations=violations or [],
             )
-        except Exception:  # pragma: no cover - telemetry must never break execution
+        except Exception:  # noqa: BLE001, S110 - telemetry must never break execution
             pass
 
     async def _run_pipeline(
         self,
         decision: RoutingDecision,
         ctx: LayerContext,
-        convergence_tracker: "ConvergenceTracker | None" = None,
+        convergence_tracker: ConvergenceTracker | None = None,
     ) -> None:
         """Execute the layer pipeline; extracted to support timeout wrapping.
 
@@ -1127,7 +1126,7 @@ class MoRECore:
 
             # Stream L0 execution — use the same ctx.scratch that L4/L3/L1
             # populated, so code detection / plan / annotations are preserved.
-            from ..layers.l0_execution import ExecutionLayer, _CODE_SYSTEM_PROMPTS, _SYSTEM_PROMPTS
+            from ..layers.l0_execution import _CODE_SYSTEM_PROMPTS, _SYSTEM_PROMPTS, ExecutionLayer
 
             is_code = request.type in (
                 TaskType.CODE_GENERATION,
@@ -1206,8 +1205,8 @@ class MoRECore:
     def mcp_server(self) -> Any:
         """Lazy-init MCP Server — exposes MoRE tools via MCP protocol."""
         if not hasattr(self, "_mcp_server_instance"):
-            from ..mcp.server import MCPServer
             from ..mcp.protocol import ToolCallResult
+            from ..mcp.server import MCPServer
             from ..version import __version__
 
             srv = MCPServer("QNMing MoRE OS", __version__)
@@ -1221,7 +1220,7 @@ class MoRECore:
                             content=[{"type": "text", "text": str(result.output)}],
                             isError=not result.success,
                         )
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001
                         return ToolCallResult(
                             content=[{"type": "text", "text": str(e)}],
                             isError=True,
@@ -1260,7 +1259,7 @@ class MoRECore:
     def a2a_server(self) -> Any:
         """Lazy-init A2A Server — handles Agent-to-Agent task delegation."""
         if not hasattr(self, "_a2a_server_instance"):
-            from ..a2a.client import A2AServer, create_agent_card, A2ATaskState
+            from ..a2a.client import A2AServer, A2ATaskState, create_agent_card
 
             card = create_agent_card(
                 name="QNMing MoRE OS",
@@ -1271,7 +1270,7 @@ class MoRECore:
             srv = A2AServer(card)
 
             async def _a2a_handler(task: Any) -> Any:
-                from ..core.types import TaskRequest, TaskType, TaskStatus
+                from ..core.types import TaskRequest, TaskStatus, TaskType
 
                 # ── Step-4 P2: task_type from A2A message metadata ──────
                 # BaiLongma bridge sends content = {text, task_type, context}.
@@ -1294,7 +1293,7 @@ class MoRECore:
                     # Also inspect message.metadata["task_type"] / qnm_origin
                     # which may be populated by chassis without rewriting body.
                     meta = m.metadata if isinstance(m.metadata, dict) else {}
-                    if task_type_hint is None and meta.get("qnm_origin") == "delegate_v1":
+                    if task_type_hint is None and meta.get("qnm_origin") == "delegate_v1":  # noqa: SIM102 - 保留嵌套以承载逐条件注释
                         if meta.get("task_type"):
                             task_type_hint = str(meta["task_type"])
                 if not text:
@@ -1363,7 +1362,7 @@ class MoRECore:
                                     qg = req.context.get("contract_quality_gates")
                                     if isinstance(qg, dict) and qg:
                                         contract.quality_gates.update(qg)
-                        except Exception:
+                        except Exception:  # noqa: BLE001
                             contract = DeliverableContract()
                         try:
                             elapsed = getattr(result, "elapsed_s", None)
@@ -1417,9 +1416,9 @@ class MoRECore:
                                 if not isinstance(task.metadata, dict):
                                     task.metadata = {}
                                 task.metadata["deliverable_check"] = check_res.to_metadata()
-                            except Exception:
+                            except Exception:  # noqa: BLE001, S110
                                 pass
-                        except Exception:
+                        except Exception:  # noqa: BLE001
                             # Contract check is best-effort; never leak an
                             # error that would mask the real result.
                             final_state = (
@@ -1445,7 +1444,7 @@ class MoRECore:
                             },
                         )
                         task.messages.append(msg)
-                    except Exception as exc:  # pragma: no cover - defensive
+                    except Exception as exc:  # pragma: no cover - defensive  # noqa: BLE001
                         task.state = A2ATaskState.FAILED
                         task.messages.append(
                             A2AMessage(

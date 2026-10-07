@@ -16,10 +16,9 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 from ..core.errors import CouncilError
-
 from .roles import InMemoryCharterProvider, RoleCharterProvider
 
 _log = logging.getLogger(__name__)
@@ -213,7 +212,13 @@ class CouncilOrchestrator:
         )
     """
 
-    DEFAULT_CORE_ROLES = ["analyst", "architect", "critic", "pragmatist", "innovator"]
+    DEFAULT_CORE_ROLES: ClassVar[list[str]] = [
+        "analyst",
+        "architect",
+        "critic",
+        "pragmatist",
+        "innovator",
+    ]
 
     def __init__(
         self,
@@ -365,11 +370,11 @@ class CouncilOrchestrator:
                     session_id,
                     synthesis.get("consensus_level", "?"),
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 result.errors.append(f"综合裁决失败: {e}")
                 _log.warning("[%s] 综合裁决失败: %s", session_id, e)
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             result.errors.append(f"辩论流程异常: {e}")
             _log.error("[%s] 辩论流程异常: %s", session_id, e)
 
@@ -403,7 +408,7 @@ class CouncilOrchestrator:
                 charter,
                 ISOLATION_CONSTRAINT,
                 mode_instruction,
-                scene_ctx if scene_ctx else "",
+                scene_ctx or "",
                 f"=== 用户问题 ===\n{question}",
                 SCHEMA_INSTRUCTION,
             ]
@@ -450,7 +455,7 @@ class CouncilOrchestrator:
                 f"=== 其他角色的独立分析（已揭示） ===\n{revealed}",
                 DIRECTED_RESPONSE_INSTRUCTION,
                 mode_instruction,
-                scene_ctx if scene_ctx else "",
+                scene_ctx or "",
                 SCHEMA_INSTRUCTION,
             ]
         ).strip()
@@ -475,7 +480,7 @@ class CouncilOrchestrator:
             [
                 SYNTHESIS_PROMPT,
                 mode_instruction,
-                scene_ctx if scene_ctx else "",
+                scene_ctx or "",
                 f"=== 用户问题 ===\n{question.strip()}",
                 f"=== 完整辩论记录 ===\n{full}",
             ]

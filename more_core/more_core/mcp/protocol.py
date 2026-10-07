@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 
 class ErrorCode(Enum):
@@ -237,7 +238,7 @@ class JSONRPCProtocol:
 
     def _parse_response(self, data: dict[str, Any]) -> MCPResponse:
         """Parse JSON-RPC response."""
-        if "error" in data and data["error"]:
+        if data.get("error"):
             error_data = data["error"]
             error = JSONRPCError(
                 code=error_data.get("code", -32603),
@@ -287,7 +288,7 @@ class JSONRPCProtocol:
                 try:
                     result = await self._request_handlers[msg.method](msg.params)
                     return MCPResponse(id=msg.id, result=result)
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     return MCPResponse(
                         id=msg.id,
                         error=JSONRPCError(code=ErrorCode.INTERNAL_ERROR.value, message=str(e)),

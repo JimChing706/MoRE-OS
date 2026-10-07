@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ..core.config import Settings
@@ -68,7 +68,7 @@ def init_capabilities(settings: Settings) -> dict[str, Any]:
             _state_overrides["max_tokens"] = int(_max_tokens_env)
         if _state_overrides:
             state_manager.update_state(**_state_overrides)
-    except Exception:  # pragma: no cover - 初始化失败不阻断启动
+    except Exception:  # pragma: no cover - 初始化失败不阻断启动  # noqa: BLE001, S110
         pass
 
     llm = LLMManager(
@@ -113,8 +113,8 @@ def init_capabilities(settings: Settings) -> dict[str, Any]:
     tools = ToolRegistry()
 
     # ── v3.0 Meta-Orchestrator + Dynamic Guardrails ──────────────────────
-    from ..v3.meta_orchestrator import MetaOrchestrator
     from ..v3.dynamic_guardrails import get_dynamic_guardrails
+    from ..v3.meta_orchestrator import MetaOrchestrator
 
     meta_orchestrator = MetaOrchestrator(
         layer_router=None,  # Wired later in orchestrator post-bootstrap
@@ -176,6 +176,7 @@ def init_services(settings: Settings) -> dict[str, Any]:
     import os as _os
 
     from ..channels.manager import ChannelManager
+    from ..channels.reconnect import ReconnectManager
     from ..commands.registry import CommandRegistry
     from ..cron.scheduler import CronScheduler
     from ..deploy.manager import DeploymentManager
@@ -188,13 +189,12 @@ def init_services(settings: Settings) -> dict[str, Any]:
     from ..planning.token_predictor import TokenPredictor
     from ..planning.workflow_bridge import PlanWorkflowBridge
     from ..plugins.manager import PluginManager
-    from ..channels.reconnect import ReconnectManager
     from ..security.output_filter import OutputFilter
     from ..security.rbac import UnifiedRBAC, set_rbac_instance
     from ..security.taint import TaintTracker
-    from .sessions import SessionManager
     from ..skills import create_default_skill_manager
     from ..workflows.engine import WorkflowEngine
+    from .sessions import SessionManager
 
     _admin_raw = _os.environ.get("MORE_ADMIN_USERS", "")
     _admin_users = _admin_raw.split(",") if _admin_raw else None
@@ -216,7 +216,7 @@ def init_services(settings: Settings) -> dict[str, Any]:
 
         _archived = archive_skill_manager(_skill_manager)
         _log.info("skill deliverables archived: %d", _archived)
-    except Exception:  # pragma: no cover - 台账失败不得阻断启动
+    except Exception:  # pragma: no cover - 台账失败不得阻断启动  # noqa: BLE001
         _log.warning("skill deliverable archival failed", exc_info=True)
 
     return {
@@ -264,6 +264,7 @@ def init_services(settings: Settings) -> dict[str, Any]:
 
 def _create_memory(settings: Settings) -> object:
     import os as _os
+
     from ..memory.store import MemoryStore
 
     db = _os.getenv("MORE_MEMORY_DB")

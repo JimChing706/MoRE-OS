@@ -3,13 +3,12 @@
 Task6 Step1: RED→GREEN。
 """
 
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import asyncio
-
 
 CS_ITD_DOC = """---
 title: CS 风格第一人称射击游戏
@@ -43,8 +42,6 @@ tags: [tetris]
 
 class _FakeCore:
     """MoRECore 替身 — _execute_task_background_v2 当前未使用 core。"""
-
-    pass
 
 
 def _fresh_task_store(tmp_path, task_id, status="pending"):
@@ -199,7 +196,7 @@ def test_sync_executor_bad_cargo_blocks_release(tmp_path, monkeypatch):
     )
 
     # 2) status endpoint override → status=failed progress≤90
-    report2, new_status, new_progress = layer.audit_with_status_override(
+    _report2, new_status, new_progress = layer.audit_with_status_override(
         task_id,
         raw_status=task.get("status", "unknown"),
         raw_progress=int(task.get("progress", 0) or 0),

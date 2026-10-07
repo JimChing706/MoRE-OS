@@ -15,7 +15,7 @@ import sqlite3
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 VALID_CHANNELS = {"pending", "native_planner_loop", "external_tool_chain", "unknown"}
 ChannelType = Literal["pending", "native_planner_loop", "external_tool_chain", "unknown"]
@@ -105,12 +105,12 @@ class ProvenanceLayer:
     def mark(
         self,
         task_id: str,
-        channel: Optional[ChannelType] = None,
+        channel: ChannelType | None = None,
         *,
-        token_count: Optional[int] = None,
-        files_written: Optional[int] = None,
-        iterations: Optional[int] = None,
-        payload: Optional[dict[str, Any]] = None,
+        token_count: int | None = None,
+        files_written: int | None = None,
+        iterations: int | None = None,
+        payload: dict[str, Any] | None = None,
     ) -> None:
         """Append a provenance marker row for a task.
 
@@ -182,11 +182,11 @@ class ProvenanceLayer:
                     return None
                 try:
                     ctx = json.loads(row[0] or "{}")
-                except Exception:
+                except Exception:  # noqa: BLE001
                     return None
                 if isinstance(ctx, dict) and ctx.get("validation_blocking_level"):
                     return str(ctx["validation_blocking_level"]).lower()
-        except Exception:
+        except Exception:  # noqa: BLE001
             return None
         return None
 
@@ -223,7 +223,7 @@ class ProvenanceLayer:
 
         try:
             latest_payload_local = json.loads(latest["payload_json"] or "{}")
-        except Exception:
+        except Exception:  # noqa: BLE001
             latest_payload_local = {}
         bl_src = None
         if isinstance(latest_payload_local, dict):
@@ -281,7 +281,7 @@ class ProvenanceLayer:
         *,
         raw_status: str = "unknown",
         raw_progress: int = 0,
-    ) -> tuple["AuditReport", str, int]:
+    ) -> tuple[AuditReport, str, int]:
         """Return (report, overridden_status, overridden_progress)。
 
         阻断策略（HARD_BLOCK 等级）：
@@ -297,7 +297,7 @@ class ProvenanceLayer:
                 p = 90
             try:
                 p_clamped = int(min(max(p, 0), 90))
-            except Exception:
+            except Exception:  # noqa: BLE001
                 p_clamped = 90
             return report, "failed", p_clamped
         return report, str(raw_status), int(raw_progress)
@@ -314,12 +314,12 @@ class ProvenanceLayer:
             d = dict(r)
             try:
                 d["payload"] = json.loads(d.get("payload_json") or "{}")
-            except Exception:
+            except Exception:  # noqa: BLE001
                 d["payload"] = {}
             out.append(d)
         return out
 
-    def reset(self, task_id: Optional[str] = None) -> None:
+    def reset(self, task_id: str | None = None) -> None:
         """Delete records for one task (or all) — testing helper."""
         with self._lock:
             if task_id is None:
@@ -335,7 +335,7 @@ class ProvenanceLayer:
         introducing a Prometheus client dependency. Each distinct task_id
         is attributed to the channel of its *latest* (max seq) record.
         """
-        counters: dict[str, int] = {c: 0 for c in VALID_CHANNELS}
+        counters: dict[str, int] = dict.fromkeys(VALID_CHANNELS, 0)
         with self._lock:
             rows = self._conn.execute(
                 """SELECT channel, COUNT(DISTINCT task_id) AS cnt
@@ -368,7 +368,7 @@ class ProvenanceLayer:
             d = dict(r)
             try:
                 d["payload"] = json.loads(d.get("payload_json") or "{}")
-            except Exception:
+            except Exception:  # noqa: BLE001
                 d["payload"] = {}
             out.append(d)
         return out
@@ -406,7 +406,7 @@ def _default_db_path() -> Path:
     return data_dir / "provenance.db"
 
 
-_default_layer: Optional[ProvenanceLayer] = None
+_default_layer: ProvenanceLayer | None = None
 _default_lock = threading.RLock()
 
 
@@ -420,8 +420,8 @@ def get_default_layer() -> ProvenanceLayer:
 
 __all__ = [
     "VALID_CHANNELS",
-    "ChannelType",
     "AuditReport",
+    "ChannelType",
     "ProvenanceLayer",
     "get_default_layer",
 ]

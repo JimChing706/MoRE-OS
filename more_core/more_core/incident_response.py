@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable
-from collections import deque
+from typing import Any
 
 from .core.types import LayerId
 
@@ -146,7 +147,7 @@ class IncidentManager:
                     await callback(incident)
                 else:
                     callback(incident)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 self._log.error("Escalation callback failed: %s", e)
 
     async def handle_unauthorized_access(
@@ -211,9 +212,8 @@ class IncidentManager:
     def get_active_incidents(self, severity: Severity | None = None) -> list[Incident]:
         result = []
         for inc in self._incidents:
-            if not inc.resolved:
-                if severity is None or inc.severity == severity:
-                    result.append(inc)
+            if not inc.resolved and (severity is None or inc.severity == severity):
+                result.append(inc)
         return sorted(result, key=lambda x: x.timestamp, reverse=True)
 
     def is_variant_quarantined(self, variant_id: str) -> bool:

@@ -1,24 +1,24 @@
 """Tests for Workflow Engine, Deployment Manager, and Session Manager."""
 
 import asyncio
+
 import pytest
 
-from more_core.workflows.engine import (
-    WorkflowEngine,
-    WorkflowDefinition,
-    WorkflowStep,
-    WorkflowRun,
-    WorkflowStatus,
-    StepStatus,
-    StepType,
-)
 from more_core.deploy.manager import (
     DeploymentManager,
     DeploymentStatus,
     DeploymentType,
 )
 from more_core.runtime.sessions import SessionManager
-
+from more_core.workflows.engine import (
+    StepStatus,
+    StepType,
+    WorkflowDefinition,
+    WorkflowEngine,
+    WorkflowRun,
+    WorkflowStatus,
+    WorkflowStep,
+)
 
 # -- Workflow Engine -------------------------------------------------------
 

@@ -4,20 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os as _os
 from datetime import timezone
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field as _Field
+from pydantic import BaseModel
+from pydantic import Field as _Field
 
-from ...security.rbac import Permission, require_permission
-from ..auth import require_scope
 from ...core.types import TaskRequest, TaskStatus, TaskType
 from ...persistence.task_store import SQLiteTaskStore
 from ...runtime.orchestrator import MoRECore
-
-import os as _os
-from pathlib import Path
+from ...security.rbac import Permission, require_permission
+from ..auth import require_scope
 
 
 class ExecuteTaskPayload(BaseModel):
@@ -44,12 +44,12 @@ _db_norm = _os.path.normpath(_db_path)
 try:
     _os.makedirs(_os.path.dirname(_db_norm), exist_ok=True)
     _task_store = SQLiteTaskStore(_db_norm)
-except Exception:
+except Exception:  # noqa: BLE001
     # Fallback to /tmp when project data/ dir is TCC-protected
     try:
         _os.makedirs("/tmp/more_os_data", exist_ok=True)
         _task_store = SQLiteTaskStore("/tmp/more_os_data/more_tasks.db")
-    except Exception:
+    except Exception:  # noqa: BLE001
         _task_store = SQLiteTaskStore("/tmp/more_tasks.db")
 
 
@@ -69,14 +69,16 @@ async def _execute_task_background_v2(
       6) provenance.mark × 2 两次独立幂等写 + finally 兜底
     """
     import os as _os
-    from datetime import datetime, timezone as _tz
+    from datetime import datetime
+    from datetime import timezone as _tz
+
     from ...core.guardrails.provenance_audit import get_default_layer
     from ...core.native_executor import (
-        Planner,
-        Writer,
-        Validator,
         Delivery,
+        Planner,
         TemplateDispatcher,
+        Validator,
+        Writer,
     )
     from ...core.native_executor.types import AggregatedValidationResult, ValidationBlockingLevel
 
@@ -129,7 +131,7 @@ async def _execute_task_background_v2(
                 iterations=total_iterations,
                 payload=dict(final_prov_payload),
             )
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             # 极端情况：mark 本身异常（DB 被锁），不中断外层流程 —— 下一次幂等调用再试
             pass
 
@@ -202,7 +204,7 @@ async def _execute_task_background_v2(
                 }
                 approx_tokens += 1200
                 total_iterations += 1
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 warnings.append(
                     f"TemplateDispatcher failed, fallback Planner: {type(e).__name__}: {e}"
                 )
@@ -210,10 +212,11 @@ async def _execute_task_background_v2(
                 try:
                     planner = Planner()
                     steps = planner.plan(req_obj, project_root, itd_doc)
-                except Exception as e2:
+                except Exception as e2:  # noqa: BLE001
                     warnings.append(f"Planner fallback to RULE_BASED_GENERIC: {e2}")
-                    from ...core.native_executor.planner import RULE_BASED_GENERIC_SCAFFOLD_PLAN
                     import copy as _copy
+
+                    from ...core.native_executor.planner import RULE_BASED_GENERIC_SCAFFOLD_PLAN
 
                     steps = _copy.deepcopy(RULE_BASED_GENERIC_SCAFFOLD_PLAN)
                 payload_map = Writer().build_payload_map(
@@ -234,12 +237,12 @@ async def _execute_task_background_v2(
                     m = _re.search(r"(?im)^max_iterations\s*:\s*(\d+)", itd_doc)
                     if m:
                         self_iters_total = max(4, min(8, int(m.group(1))))
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
             if isinstance(ctx, dict) and ctx.get("max_iterations"):
                 try:
                     self_iters_total = max(4, min(8, int(ctx["max_iterations"])))
-                except Exception:
+                except Exception:  # noqa: BLE001, S110
                     pass
             warnings.append(f"native self-iteration rounds = {self_iters_total}")
 
@@ -297,7 +300,7 @@ async def _execute_task_background_v2(
                     )
                     approx_tokens += 1800 if self_iter_idx == 1 else 1200
                     total_iterations += 1
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     writer_error = f"{type(e).__name__}: {e}"
                     warnings.append(f"Writer.iter{self_iter_idx} error: {writer_error}")
                 artifacts.append(
@@ -359,7 +362,7 @@ async def _execute_task_background_v2(
                         )
                     approx_tokens += 500 if self_iter_idx == 1 else 300
                     total_iterations += 1
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     warnings.append(f"Validator.source.iter{self_iter_idx} skipped: {e}")
                     artifacts.append(
                         {
@@ -390,7 +393,7 @@ async def _execute_task_background_v2(
                         payload_map = writer2.build_payload_map(
                             req_obj, itd_doc, steps, template_key=template_key
                         )
-                    except Exception:
+                    except Exception:  # noqa: BLE001, S110
                         pass
 
             # ===== Phase 4: Delivery =====
@@ -426,7 +429,7 @@ async def _execute_task_background_v2(
                     delivery_artifacts_for_validator["zip"] = art.zip_path
                 artifacts.append(delivery_info)
                 total_iterations += 1
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 warnings.append(f"Delivery partial: {e}")
                 artifacts.append({"phase": "delivery", "tar_gz_path": None, "zip_path": None})
 
@@ -464,14 +467,14 @@ async def _execute_task_background_v2(
                         "passed_commands": passed_commands_arc,
                     }
                 )
-                if not arc_pass_bool:
+                if not arc_pass_bool:  # noqa: SIM102 - 保留嵌套以承载逐条件注释
                     # 无归档命令是正常情况（command_results=0），不额外告警；仅在 ≥1 命令失败时告警
                     if total_commands_arc > 0:
                         warnings.append(
                             f"Validator.archives failed {passed_commands_arc}/{total_commands_arc}"
                         )
                 total_iterations += 1
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 warnings.append(f"Validator.archives skipped: {e}")
                 artifacts.append(
                     {
@@ -529,7 +532,7 @@ async def _execute_task_background_v2(
                             else "archives_validator_failed"
                         )
                     )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 warnings.append(f"Aggregate fallback (assume NOT pass): {e}")
                 validation_pass = False
 
@@ -570,7 +573,7 @@ async def _execute_task_background_v2(
                         "performance": {"iterations": total_iterations},
                     }
                 )
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 # _auto_create_output 抛异常不影响 provenance.final 双写
                 pass
 
@@ -594,7 +597,7 @@ async def _execute_task_background_v2(
                             _txt = (Path(project_root) / _rel).read_text(
                                 encoding="utf-8", errors="ignore"
                             )
-                        except Exception:
+                        except Exception:  # noqa: BLE001, S112
                             continue
                         _artifact_parts.append(_txt)
                         _budget -= len(_txt)
@@ -602,7 +605,7 @@ async def _execute_task_background_v2(
                             break
                     # 需求里常写"存在 X.toml / 提供 Y 模块"，这类判定依据是
                     # **文件清单**而非文件内容，因此把交付路径一并纳入待检文本。
-                    _manifest = "\n".join(f"# delivered file: {_p}" for _p in written_map.keys())
+                    _manifest = "\n".join(f"# delivered file: {_p}" for _p in written_map)
                     _artifact_text = _manifest + "\n\n" + "\n\n".join(_artifact_parts)
 
                     for _child in _kids:
@@ -649,7 +652,7 @@ async def _execute_task_background_v2(
                                     "missing": _verdict.missing[:10],
                                 },
                             )
-                        except Exception:
+                        except Exception:  # noqa: BLE001, S110
                             pass
                         children_summary.append(_verdict.to_dict())
                     artifacts.append(
@@ -665,7 +668,7 @@ async def _execute_task_background_v2(
                         warnings.append(
                             f"{children_failed}/{len(_kids)} REQ 子任务未达标（见子任务结果）"
                         )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 warnings.append(f"requirement dispatch skipped: {exc}")
 
             # ===== Final Provenance: 双写第 1 次（正常路径） =====
@@ -737,14 +740,14 @@ async def _execute_task_background_v2(
                         _txt = (Path(project_root) / _rel).read_text(
                             encoding="utf-8", errors="ignore"
                         )
-                    except Exception:
+                    except Exception:  # noqa: BLE001, S112
                         continue
                     _artifact_parts_gate.append(_txt)
                     _budget -= len(_txt)
                     if _budget <= 0:
                         break
                 _artifact = (
-                    "\n".join(f"# delivered file: {_p}" for _p in written_map.keys())
+                    "\n".join(f"# delivered file: {_p}" for _p in written_map)
                     + "\n\n"
                     + "\n\n".join(_artifact_parts_gate)
                 )
@@ -776,7 +779,7 @@ async def _execute_task_background_v2(
                     actor=str((task_info.get("context") or {}).get("actor", "system")),
                     request_excerpt=str(description or ""),
                 )
-            except Exception as _ledger_exc:  # pragma: no cover
+            except Exception as _ledger_exc:  # pragma: no cover  # noqa: BLE001
                 warnings.append(f"delivery ledger skipped: {_ledger_exc}")
 
         finally:
@@ -790,7 +793,7 @@ async def _execute_task_background_v2(
                     import shutil as _shutil
 
                     _shutil.rmtree(project_root, ignore_errors=True)
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
             # F-兜底：若 final_prov_payload 没写（任何抛异常路径），强制执行一次写 failed
             if final_prov_payload is None:
@@ -800,7 +803,7 @@ async def _execute_task_background_v2(
                 )
             import shutil as _shutil
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         warnings.append(f"Fatal executor error: {type(e).__name__}: {e}")
         # F-outer: 终极兜底
         _write_final_provenance(
@@ -833,7 +836,7 @@ async def _execute_task_background_v2(
 
                 if "project_root" in locals() and _os.path.isdir(project_root):
                     _shutil2.rmtree(project_root, ignore_errors=True)
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
 
 
@@ -854,8 +857,8 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         ],
     )
     async def execute(payload: ExecuteTaskPayload) -> dict[str, Any]:
-        from ...core.types import LayerId
         from ...core.guardrails.provenance_audit import get_default_layer as _get_prov
+        from ...core.types import LayerId
 
         target = LayerId(payload.target_layer) if payload.target_layer else None
         req = TaskRequest(
@@ -885,7 +888,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                     "require_monitoring": bool(payload.require_metacognitive_monitoring),
                 },
             )
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
 
         if result.status == TaskStatus.SUCCESS:
@@ -922,7 +925,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         # R-07: 父任务状态需连带暴露子任务（REQ）执行情况
         try:
             children = _task_store.list_children(task_id)
-        except Exception:
+        except Exception:  # noqa: BLE001
             children = []
         subtask_summary = {
             "total": len(children),
@@ -1012,7 +1015,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                     "prior_status": task.get("status", "unknown"),
                 },
             )
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
         asyncio.create_task(_execute_task_background(task_id, task, core))
         return {"status": "started", "task_id": task_id, "message": "Task execution started"}
@@ -1046,6 +1049,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     async def stream_execute(payload: ExecuteTaskPayload) -> Any:
         """Stream task execution as Server-Sent Events (SSE)."""
         from fastapi.responses import StreamingResponse
+
         from ...core.types import TaskRequest as TR
 
         req = TR(
@@ -1070,8 +1074,8 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
 
 # Re-export for other routers that need the task store
 __all__ = [
-    "_task_store",
     "_execute_task_background",
     "_execute_task_background_v2",
+    "_task_store",
     "create_router",
 ]

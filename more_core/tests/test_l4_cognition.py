@@ -9,8 +9,8 @@ import pytest
 from more_core.core.types import LayerId, TaskType
 from more_core.layers.base import LayerContext
 from more_core.layers.l4_cognition import (
-    CognitionLayer,
     _DIFFICULTY_BASE,
+    CognitionLayer,
     _estimate_complexity_bonus,
 )
 

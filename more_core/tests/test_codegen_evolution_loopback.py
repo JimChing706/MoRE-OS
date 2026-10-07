@@ -15,9 +15,8 @@ historical codegen runs are stored → next generation / fix decision
 
 from __future__ import annotations
 
-from typing import Any
-
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -33,7 +32,6 @@ from more_core.core.types import TaskType
 from more_core.layers.base import LayerContext
 from more_core.llm.provider import LLMRequest
 from more_core.tools.registry import ToolResult
-
 
 # ── Fixture: seeding evolution DB with a known history ────────────────────
 
@@ -54,7 +52,7 @@ def seed_db(monkeypatch, tmp_path: Path):
         sbx_ok = bool(det)
         scratch = {
             "code_fix_iterations": 2 if det else 3,
-            "code_fix_deterministic": True if det else False,
+            "code_fix_deterministic": bool(det),
             "sandbox_result": type(
                 "SB",
                 (),
@@ -208,7 +206,7 @@ class TestDynamicKLoopback:
         assert ExecutionLayer._candidate_k(ctx2) == 1
 
     def test_candidate_k_settings_1_disables_dynamic(self, seed_db: Path):
-        from more_core.layers.l0_execution import ExecutionLayer, _MAX_CODE_CANDIDATES
+        from more_core.layers.l0_execution import _MAX_CODE_CANDIDATES, ExecutionLayer
 
         ctx = self._ctx(
             TaskType.CODE_DEBUGGING,

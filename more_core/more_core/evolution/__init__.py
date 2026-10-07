@@ -4,13 +4,13 @@ from .dgm import DGMEngine
 from .sqlite_archive import SQLiteEvolutionArchive
 
 __all__ = [
-    "EvolutionArchive",
-    "EvolvedAgent",
-    "DGMEngine",
     "Benchmark",
     "BenchmarkCase",
     "BenchmarkReport",
     "BenchmarkRunner",
-    "SimpleBenchmark",
+    "DGMEngine",
+    "EvolutionArchive",
+    "EvolvedAgent",
     "SQLiteEvolutionArchive",
+    "SimpleBenchmark",
 ]

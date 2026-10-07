@@ -116,6 +116,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[all]"
 
+      - name: 规则集漂移守卫 (ruff rule-set drift)
+        # 门禁收编的是 ruff 0.16.10 的默认规则集（413 条）；升级 ruff 或改
+        # select/ignore 都会让口径静默漂移 —— 与基线不一致即失败。
+        run: ./scripts/ruff_rules_snapshot.sh --check
+
       - name: L0-L5 分层综合测试矩阵
         working-directory: more_core
         run: python -m pytest tests/test_layer_matrix_l0_l5.py -q --tb=short

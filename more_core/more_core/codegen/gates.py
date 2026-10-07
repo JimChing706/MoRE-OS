@@ -22,13 +22,13 @@ from typing import Any
 
 __all__ = [
     "GateFinding",
-    "derive_required_symbols",
     "GateReport",
+    "derive_required_symbols",
     "extract_code_blocks",
-    "syntax_gate",
     "logic_gate",
     "requirement_gate",
     "run_gates",
+    "syntax_gate",
 ]
 
 _CODE_FENCE_RE = re.compile(r"```([A-Za-z0-9_+-]*)\s*\n(.*?)```", re.DOTALL)
@@ -183,9 +183,8 @@ def _balanced(code: str) -> tuple[bool, str]:
             i = len(code) if nl == -1 else nl
         elif ch in "([{":
             stack.append(ch)
-        elif ch in pairs:
-            if not stack or stack.pop() != pairs[ch]:
-                return False, f"unbalanced '{ch}'"
+        elif ch in pairs and (not stack or stack.pop() != pairs[ch]):
+            return False, f"unbalanced '{ch}'"
         i += 1
     if stack:
         return False, f"unclosed '{stack[-1]}'"

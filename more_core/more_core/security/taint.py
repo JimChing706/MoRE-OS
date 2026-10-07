@@ -29,7 +29,7 @@ class TaintContext:
     ``try: / finally: taint.cleanup()`` for explicit lifecycle control.
     """
 
-    __slots__ = ("_tracker", "_scope")
+    __slots__ = ("_scope", "_tracker")
 
     def __init__(self, tracker: TaintTracker, scope_id: str) -> None:
         self._tracker = tracker
@@ -95,7 +95,7 @@ class TaintedValue:
             return bool(self.labels & TaintLabel.SANITIZED)
         return True
 
-    def sanitize(self, sanitizer: str) -> "TaintedValue":
+    def sanitize(self, sanitizer: str) -> TaintedValue:
         """Mark as sanitized."""
         return TaintedValue(
             value=self.value,
@@ -128,7 +128,7 @@ class TaintTracker:
 
     # -- scoped API (recommended for concurrent requests) ------------------
 
-    def scope(self, scope_id: str) -> "TaintContext":
+    def scope(self, scope_id: str) -> TaintContext:
         """Create a request-scoped taint context.
 
         Returns a lightweight proxy that prefixes all keys with *scope_id*,

@@ -24,9 +24,9 @@ import sys
 import tarfile
 import zipfile
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -109,7 +109,7 @@ class Delivery:
         self,
         project_root: str,
         project_prefix: str = "tetris_project-20260927",
-        output_dir: Optional[str] = None,
+        output_dir: str | None = None,
     ) -> DeliveryArtifact:
         """完整交付流程：生成文档 → 生成 manifest → 打包 tar.gz + zip。
 
@@ -183,62 +183,70 @@ class Delivery:
             self._write_readme_cs(path, project_prefix)
             return
         lines: list[str] = []
-        lines.append(f"# {project_prefix} — 工业级俄罗斯方块\n")
-        lines.append(
-            "> Rust 核心算法 + HTML5 Canvas 前端，SRS/7-Bag/Hold/Ghost/Lock Delay 全特性实现。\n"
+        lines.extend(
+            (
+                f"# {project_prefix} — 工业级俄罗斯方块\n",
+                "> Rust 核心算法 + HTML5 Canvas 前端，SRS/7-Bag/Hold/Ghost/Lock Delay 全特性实现。\n",
+                "## 快速开始\n",
+                "```bash\n",
+                "# 1) 编译 Rust 核心\ncargo build --release\n",
+                "# 2) 运行单元测试\ncargo test --release -q\n",
+                "# 3) 启动前端（任选其一）\n",
+                "python3 -m http.server 8080 -d frontend  # 然后浏览器访问 http://localhost:8080\n",
+                "```\n",
+                "## 已实现功能清单 (AC)\n",
+            )
         )
-        lines.append("## 快速开始\n")
-        lines.append("```bash\n")
-        lines.append("# 1) 编译 Rust 核心\ncargo build --release\n")
-        lines.append("# 2) 运行单元测试\ncargo test --release -q\n")
-        lines.append("# 3) 启动前端（任选其一）\n")
-        lines.append(
-            "python3 -m http.server 8080 -d frontend  # 然后浏览器访问 http://localhost:8080\n"
-        )
-        lines.append("```\n")
-        lines.append("## 已实现功能清单 (AC)\n")
         assert len(self.README_AC_ITEMS) >= 10, "README_AC_ITEMS 必须 ≥ 10 条"
         for item in self.README_AC_ITEMS:
             lines.append(f"- [x] {item}\n")
-        lines.append("\n## 操作说明\n")
-        lines.append("| 按键 | 功能 |\n")
-        lines.append("| :-- | :-- |\n")
-        lines.append("| ← / → | 左右移动一格 |\n")
-        lines.append("| ↓ (按住) | 软降（加速下落） |\n")
-        lines.append("| ↑ / X | 顺时针旋转 |\n")
-        lines.append("| Z | 逆时针旋转 |\n")
-        lines.append("| Space | 硬降（立即落底并锁定） |\n")
-        lines.append("| C / Shift | Hold（保留当前方块） |\n")
-        lines.append("| P | 暂停 / 继续 |\n")
-        lines.append("| R | 重新开始 |\n")
-        lines.append("\n## 项目结构\n")
-        lines.append("```text\n")
-        lines.append("src/\n  lib.rs       # Rust 核心算法（SRS/7-Bag/Hold/Ghost/计分）\n")
-        lines.append("  tests.rs     # Rust 单元测试（≥ 24 个 #[test]）\n")
-        lines.append("frontend/\n  index.html   # 前端页面骨架\n")
-        lines.append("js/\n  tetris.js    # 前端渲染 + 键盘 + WebAudio 音效\n")
-        lines.append("Cargo.toml    # Rust 项目配置\n")
-        lines.append("README.md     # 本文档\n")
-        lines.append("TEST_REPORT.md# 测试报告\n")
-        lines.append("manifest.json # 文件清单（path/size/sha256 前缀 16 位）\n")
-        lines.append("```\n")
-        lines.append("\n## License\nApache-2.0 © MoRE OS Native Executor\n")
+        lines.extend(
+            (
+                "\n## 操作说明\n",
+                "| 按键 | 功能 |\n",
+                "| :-- | :-- |\n",
+                "| ← / → | 左右移动一格 |\n",
+                "| ↓ (按住) | 软降（加速下落） |\n",
+                "| ↑ / X | 顺时针旋转 |\n",
+                "| Z | 逆时针旋转 |\n",
+                "| Space | 硬降（立即落底并锁定） |\n",
+                "| C / Shift | Hold（保留当前方块） |\n",
+                "| P | 暂停 / 继续 |\n",
+                "| R | 重新开始 |\n",
+                "\n## 项目结构\n",
+                "```text\n",
+                "src/\n  lib.rs       # Rust 核心算法（SRS/7-Bag/Hold/Ghost/计分）\n",
+                "  tests.rs     # Rust 单元测试（≥ 24 个 #[test]）\n",
+                "frontend/\n  index.html   # 前端页面骨架\n",
+                "js/\n  tetris.js    # 前端渲染 + 键盘 + WebAudio 音效\n",
+                "Cargo.toml    # Rust 项目配置\n",
+                "README.md     # 本文档\n",
+                "TEST_REPORT.md# 测试报告\n",
+                "manifest.json # 文件清单（path/size/sha256 前缀 16 位）\n",
+                "```\n",
+                "\n## License\nApache-2.0 © MoRE OS Native Executor\n",
+            )
+        )
         path.write_text("".join(lines), encoding="utf-8")
 
     def _write_readme_cs(self, path: Path, project_prefix: str) -> None:
         lines: list[str] = []
-        lines.append(f"# {project_prefix} — CS 风格第一人称射击游戏\n")
-        lines.append(
-            "> Rust 纯逻辑核心 + 现代前端渲染（WebGPU 优先 / WebGL 兜底），"
-            "第一人称相机 + WASD 移动 + 射击，可扩展为局域网对战 FPS。\n"
+        lines.extend(
+            (
+                f"# {project_prefix} — CS 风格第一人称射击游戏\n",
+                (
+                    "> Rust 纯逻辑核心 + 现代前端渲染（WebGPU 优先 / WebGL 兜底），"
+                    "第一人称相机 + WASD 移动 + 射击，可扩展为局域网对战 FPS。\n"
+                ),
+                "## 快速开始\n",
+                "```bash\n",
+                "cargo build --workspace --release\n",
+                "cargo test --workspace --release -q\n",
+                "cd frontend && npm install && npm run dev\n",
+                "```\n",
+                "## 已实现功能清单 (AC)\n",
+            )
         )
-        lines.append("## 快速开始\n")
-        lines.append("```bash\n")
-        lines.append("cargo build --workspace --release\n")
-        lines.append("cargo test --workspace --release -q\n")
-        lines.append("cd frontend && npm install && npm run dev\n")
-        lines.append("```\n")
-        lines.append("## 已实现功能清单 (AC)\n")
         for item in (
             "Rust 纯逻辑核心（math/physics/weapon/state），std-only 离线可编译",
             "64-tick 确定性仿真：击杀 / 伤害 / 快照编码，逐 tick 可回放",
@@ -252,31 +260,39 @@ class Delivery:
             "Dockerfile + docker-compose 部署骨架",
         ):
             lines.append(f"- [x] {item}\n")
-        lines.append("\n## 操作说明\n")
-        lines.append("| 按键 | 功能 |\n")
-        lines.append("| :-- | :-- |\n")
-        lines.append("| WASD | 移动 |\n")
-        lines.append("| 鼠标 | 视角（指针锁定） |\n")
-        lines.append("| 左键 | 射击 |\n")
-        lines.append("| R | 换弹 |\n")
-        lines.append("| Space | 跳跃 |\n")
-        lines.append("\n## 项目结构\n")
-        lines.append("```text\n")
-        lines.append("shooter_core/    # Rust 纯逻辑核心（math/physics/weapon/state）\n")
-        lines.append("shooter_server/  # 权威服务器\n")
-        lines.append("shooter_bot/     # 客户端 / bot\n")
-        lines.append("frontend/        # Three.js 渲染 + 第一人称相机\n")
-        lines.append("docs/            # SRS / 规划大纲 / 实施细则 / 技术方案\n")
-        lines.append("deploy/          # Dockerfile + docker-compose\n")
-        lines.append("```\n")
-        lines.append("\n## License\nApache-2.0 © MoRE OS Native Executor\n")
+        lines.extend(
+            (
+                "\n## 操作说明\n",
+                "| 按键 | 功能 |\n",
+                "| :-- | :-- |\n",
+                "| WASD | 移动 |\n",
+                "| 鼠标 | 视角（指针锁定） |\n",
+                "| 左键 | 射击 |\n",
+                "| R | 换弹 |\n",
+                "| Space | 跳跃 |\n",
+                "\n## 项目结构\n",
+                "```text\n",
+                "shooter_core/    # Rust 纯逻辑核心（math/physics/weapon/state）\n",
+                "shooter_server/  # 权威服务器\n",
+                "shooter_bot/     # 客户端 / bot\n",
+                "frontend/        # Three.js 渲染 + 第一人称相机\n",
+                "docs/            # SRS / 规划大纲 / 实施细则 / 技术方案\n",
+                "deploy/          # Dockerfile + docker-compose\n",
+                "```\n",
+                "\n## License\nApache-2.0 © MoRE OS Native Executor\n",
+            )
+        )
         path.write_text("".join(lines), encoding="utf-8")
 
     def _write_rules_cs(self, path: Path) -> None:
         lines: list[str] = []
-        lines.append("# CS 风格 FPS 游戏规则文档\n\n")
-        lines.append("> 本文档说明武器、经济、回合、移动与枪械机制，面向玩家与实现方。\n\n")
-        lines.append("## 1. 武器系统\n\n")
+        lines.extend(
+            (
+                "# CS 风格 FPS 游戏规则文档\n\n",
+                "> 本文档说明武器、经济、回合、移动与枪械机制，面向玩家与实现方。\n\n",
+                "## 1. 武器系统\n\n",
+            )
+        )
         weapons = [
             ("USP-S", "手枪", "精准、低伤害、无声"),
             ("Glock", "手枪", "高容量、低伤害"),
@@ -285,27 +301,28 @@ class Delivery:
             ("AWP", "狙击", "躯干以上一击必杀"),
             ("HE 手雷", "投掷物", "范围伤害"),
         ]
-        lines.append("| 武器 | 类型 | 特点 |\n")
-        lines.append("| :-- | :-- | :-- |\n")
+        lines.extend(("| 武器 | 类型 | 特点 |\n", "| :-- | :-- | :-- |\n"))
         for name, kind, desc in weapons:
             lines.append(f"| {name} | {kind} | {desc} |\n")
-        lines.append("\n## 2. 经济系统\n\n")
-        lines.append("- 回合胜利奖励：胜方 +$3250，败方 +$1400（连败加成递增）。\n")
-        lines.append("- 击杀奖励：步枪 $300，手枪 $600，刀杀 $1500。\n")
-        lines.append("- 下包 / 拆弹奖励：各 $300。\n")
-        lines.append("\n## 3. 回合规则\n\n")
-        lines.append(
-            "- 目标：反恐精英拆除 C4 / 全歼敌人 / 时间耗尽；恐怖分子引爆 C4 / 全歼敌人。\n"
+        lines.extend(
+            (
+                "\n## 2. 经济系统\n\n",
+                "- 回合胜利奖励：胜方 +$3250，败方 +$1400（连败加成递增）。\n",
+                "- 击杀奖励：步枪 $300，手枪 $600，刀杀 $1500。\n",
+                "- 下包 / 拆弹奖励：各 $300。\n",
+                "\n## 3. 回合规则\n\n",
+                "- 目标：反恐精英拆除 C4 / 全歼敌人 / 时间耗尽；恐怖分子引爆 C4 / 全歼敌人。\n",
+                "- C4 引爆计时 40 秒，拆除计时 10 秒（带拆弹器 5 秒）。\n",
+                "- 单回合限时 115 秒，冻结购买时间 15 秒。\n",
+                "- 先达 16 回合胜利者胜出（MR16）。\n",
+                "\n## 4. 移动与枪械机制\n\n",
+                "- 急停：反方向键抵消惯性，准星恢复最快。\n",
+                "- 后坐力：连续射击准星上移并扩散，需压枪。\n",
+                "- 爆头：头部命中倍率 4×（大部分武器）。\n",
+                "- 护甲：减少身体部位伤害，头盔防手枪爆头秒杀。\n",
+                "\n## 附录A 回合状态枚举（回归测试样本）\n\n",
+            )
         )
-        lines.append("- C4 引爆计时 40 秒，拆除计时 10 秒（带拆弹器 5 秒）。\n")
-        lines.append("- 单回合限时 115 秒，冻结购买时间 15 秒。\n")
-        lines.append("- 先达 16 回合胜利者胜出（MR16）。\n")
-        lines.append("\n## 4. 移动与枪械机制\n\n")
-        lines.append("- 急停：反方向键抵消惯性，准星恢复最快。\n")
-        lines.append("- 后坐力：连续射击准星上移并扩散，需压枪。\n")
-        lines.append("- 爆头：头部命中倍率 4×（大部分武器）。\n")
-        lines.append("- 护甲：减少身体部位伤害，头盔防手枪爆头秒杀。\n")
-        lines.append("\n## 附录A 回合状态枚举（回归测试样本）\n\n")
         for state in range(1, 121):
             lines.append(
                 f"### 状态 R{state:04d}\n"
@@ -327,44 +344,55 @@ class Delivery:
             self._write_rules_cs(path)
             return
         lines: list[str] = []
-        lines.append("# 俄罗斯方块游戏规则文档\n\n")
-        lines.append("> 本文档完整说明游戏所有规则、算法、计分与操作方式，面向普通玩家。\n\n")
+        lines.extend(
+            (
+                "# 俄罗斯方块游戏规则文档\n\n",
+                "> 本文档完整说明游戏所有规则、算法、计分与操作方式，面向普通玩家。\n\n",
+            )
+        )
         # --- 大段填充内容：章节 x 多重复制，保证体积达标 ---
         sections: list[tuple[str, list[str]]] = []
         for i in range(1, 6):
             sec_title = f"{i}.0 规则主章节 {i}"
             paragraphs: list[str] = []
             for j in range(1, 11):
-                paragraphs.append(
-                    f"### {i}.{j} 子节：本小节详述第 {i} 章第 {j} 条规则的定义、"
-                    f"触发条件、边界行为、与其他规则的交互细节以及典型示例。"
-                    f"所有条款均为强制性要求，任何实现不得降级或省略。"
-                    f"具体而言，涉及棋盘范围、方块定位、碰撞判定、消行计分、"
-                    f"等级曲线、音效触发、持久化存储等十余个维度的复合判定，"
-                    f"均须严格按照正序逐项执行，不得重排流程以避免状态错乱。\n"
-                )
-                paragraphs.append(
-                    f"例 {i}-{j}：假设玩家在等级 15 时执行了一次连续的四行消除，"
-                    f"同时满足 Back-to-Back 且处于 Combo 第 7 次连击，"
-                    f"则基础分 800 × 等级系数 15 = 12,000，叠加 B2B 系数 1.5 = 18,000，"
-                    f"再加 Combo 加分 50 × 7 × 15 = 5,250，合计单次得分 23,250。"
-                    f"若本次四行消除由 T-Spin Triple 产生，则在此基础上再乘系数。\n"
-                )
-                paragraphs.append(
-                    f"边界校验 {i}-{j}：任何坐标（x, y）必须满足 0 ≤ x < 10，0 ≤ y < 40；"
-                    f"写入越界坐标时应静默丢弃，不得引起 panic 或异常堆栈。\n\n"
+                paragraphs.extend(
+                    (
+                        (
+                            f"### {i}.{j} 子节：本小节详述第 {i} 章第 {j} 条规则的定义、"
+                            f"触发条件、边界行为、与其他规则的交互细节以及典型示例。"
+                            f"所有条款均为强制性要求，任何实现不得降级或省略。"
+                            f"具体而言，涉及棋盘范围、方块定位、碰撞判定、消行计分、"
+                            f"等级曲线、音效触发、持久化存储等十余个维度的复合判定，"
+                            f"均须严格按照正序逐项执行，不得重排流程以避免状态错乱。\n"
+                        ),
+                        (
+                            f"例 {i}-{j}：假设玩家在等级 15 时执行了一次连续的四行消除，"
+                            f"同时满足 Back-to-Back 且处于 Combo 第 7 次连击，"
+                            f"则基础分 800 × 等级系数 15 = 12,000，叠加 B2B 系数 1.5 = 18,000，"
+                            f"再加 Combo 加分 50 × 7 × 15 = 5,250，合计单次得分 23,250。"
+                            f"若本次四行消除由 T-Spin Triple 产生，则在此基础上再乘系数。\n"
+                        ),
+                        (
+                            f"边界校验 {i}-{j}：任何坐标（x, y）必须满足 0 ≤ x < 10，0 ≤ y < 40；"
+                            f"写入越界坐标时应静默丢弃，不得引起 panic 或异常堆栈。\n\n"
+                        ),
+                    )
                 )
             sections.append((sec_title, paragraphs))
 
         for title, paras in sections:
             lines.append(f"## {title}\n\n")
-            for p in paras:
-                lines.append(p)
+            lines.extend(paras)
 
         # --- 规则表格：大量行列 ---
-        lines.append("## 附录A 消行计分速查表\n\n")
-        lines.append("| 等级 | 单消 (1) | 双消 (2) | 三消 (3) | 四消 (4) | B2B·四消 |\n")
-        lines.append("| --: | --: | --: | --: | --: | --: |\n")
+        lines.extend(
+            (
+                "## 附录A 消行计分速查表\n\n",
+                "| 等级 | 单消 (1) | 双消 (2) | 三消 (3) | 四消 (4) | B2B·四消 |\n",
+                "| --: | --: | --: | --: | --: | --: |\n",
+            )
+        )
         for lv in range(1, 31):
             s1 = 100 * lv
             s2 = 300 * lv
@@ -373,9 +401,13 @@ class Delivery:
             b2b4 = int(s4 * 1.5)
             lines.append(f"| {lv} | {s1:,} | {s2:,} | {s3:,} | {s4:,} | {b2b4:,} |\n")
 
-        lines.append("\n## 附录B 方块类型与标准配色\n\n")
-        lines.append("| 方块 | 类型 | 颜色 (Hex) | 标准别称 |\n")
-        lines.append("| :-- | :-- | :-- | :-- |\n")
+        lines.extend(
+            (
+                "\n## 附录B 方块类型与标准配色\n\n",
+                "| 方块 | 类型 | 颜色 (Hex) | 标准别称 |\n",
+                "| :-- | :-- | :-- | :-- |\n",
+            )
+        )
         palette = [
             ("I", "青色", "#22d3ee", "Hero / Stick"),
             ("O", "黄色", "#facc15", "Square"),
@@ -448,8 +480,12 @@ class Delivery:
     # ------------------------------------------------------------
     def _write_changelog(self, path: Path, project_prefix: str) -> None:
         lines: list[str] = []
-        lines.append(f"# Changelog — {project_prefix}\n\n")
-        lines.append("> 按迭代轮次倒序排列的变更记录，严格遵循 SemVer 2.0.0。\n\n")
+        lines.extend(
+            (
+                f"# Changelog — {project_prefix}\n\n",
+                "> 按迭代轮次倒序排列的变更记录，严格遵循 SemVer 2.0.0。\n\n",
+            )
+        )
         versions = [
             (
                 "5.0.0",
@@ -509,8 +545,12 @@ class Delivery:
             ),
         ]
         for ver, title, items in versions:
-            lines.append(f"## [{ver}] — {datetime.now().strftime('%Y-%m-%d')}\n\n")
-            lines.append(f"**亮点概述**: {title}\n\n")
+            lines.extend(
+                (
+                    f"## [{ver}] — {datetime.now(timezone.utc).strftime('%Y-%m-%d')}\n\n",
+                    f"**亮点概述**: {title}\n\n",
+                )
+            )
             for it in items:
                 lines.append(f"- {it}\n")
             lines.append("\n")
@@ -522,21 +562,29 @@ class Delivery:
     # ------------------------------------------------------------
     def _write_license(self, path: Path) -> None:
         lines: list[str] = []
-        lines.append("                                 Apache License\n")
-        lines.append("                           Version 2.0, January 2004\n")
-        lines.append("                        http://www.apache.org/licenses/\n\n")
-        lines.append("   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n")
+        lines.extend(
+            (
+                "                                 Apache License\n",
+                "                           Version 2.0, January 2004\n",
+                "                        http://www.apache.org/licenses/\n\n",
+                "   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n",
+            )
+        )
         for section_idx in range(1, 10):
-            lines.append(f"{section_idx}. Definitions.\n\n")
-            lines.append(
-                f"   This section {section_idx} of the Apache-2.0 license template is reproduced "
-                "here in summary form for archive completeness. You may obtain a full copy of the "
-                "Apache-2.0 license text at:\n\n"
-                "       https://www.apache.org/licenses/LICENSE-2.0\n\n"
-                "   Unless required by applicable law or agreed to in writing, software distributed "
-                "under the License is distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES OR "
-                "CONDITIONS OF ANY KIND, either express or implied. See the License for the specific "
-                "language governing permissions and limitations under the License.\n\n"
+            lines.extend(
+                (
+                    f"{section_idx}. Definitions.\n\n",
+                    (
+                        f"   This section {section_idx} of the Apache-2.0 license template is reproduced "
+                        "here in summary form for archive completeness. You may obtain a full copy of the "
+                        "Apache-2.0 license text at:\n\n"
+                        "       https://www.apache.org/licenses/LICENSE-2.0\n\n"
+                        "   Unless required by applicable law or agreed to in writing, software distributed "
+                        "under the License is distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES OR "
+                        "CONDITIONS OF ANY KIND, either express or implied. See the License for the specific "
+                        "language governing permissions and limitations under the License.\n\n"
+                    ),
+                )
             )
         lines.append("— End of LICENSE placeholder (archive copy).\n")
         path.write_text("".join(lines), encoding="utf-8")
@@ -624,17 +672,19 @@ class Delivery:
     ) -> None:
         lines: list[str] = []
         lines.append(f"# 测试报告 — {project_prefix}\n\n")
-        lines.append(f"**生成时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  \n")
+        lines.append(
+            f"**生成时间**: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC  \n"
+        )
         lines.append(f"**项目根目录**: `{project_root_abs}`\n\n")
 
         # ---- 章 1：执行环境 ----
         lines.append(f"## {self.TEST_REPORT_CHAPTERS[0]}\n\n")
         try:
-            lines.append(
-                f"- **操作系统**: `{platform.system()} {platform.release()} ({platform.platform()})`\n"
-            )
-            lines.append(
-                f"- **CPU**: `{platform.processor() or 'unknown'} ({os.cpu_count() or 0} cores)`\n"
+            lines.extend(
+                (
+                    f"- **操作系统**: `{platform.system()} {platform.release()} ({platform.platform()})`\n",
+                    f"- **CPU**: `{platform.processor() or 'unknown'} ({os.cpu_count() or 0} cores)`\n",
+                )
             )
             mem_total = "N/A"
             try:
@@ -647,7 +697,7 @@ class Delivery:
                 # 约 2.2e9 MB 的荒谬数值。
                 _mb = _ru / (1024 * 1024) if _sys.platform == "darwin" else _ru / 1024
                 mem_total = f"{_mb:.1f} MB (进程峰值, 实际系统内存参考 free -h)"
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S110
                 pass
             lines.append(f"- **内存峰值**: `{mem_total}`\n")
         except Exception:  # noqa: BLE001
@@ -690,11 +740,13 @@ class Delivery:
         cargo_build_out = self._shell_in_dir(
             "cargo build --release -q 2>&1 || true", project_root_abs
         )
-        lines.append("```text\n")
-        lines.append(
-            (cargo_build_out or "(cargo build 尚未执行 / 无 cargo 环境 — 打包不受影响)") + "\n"
+        lines.extend(
+            (
+                "```text\n",
+                (cargo_build_out or "(cargo build 尚未执行 / 无 cargo 环境 — 打包不受影响)") + "\n",
+                "```\n",
+            )
         )
-        lines.append("```\n")
         target_release = project_root_abs / "target" / "release"
         if target_release.is_dir():
             sizes = []
@@ -834,7 +886,7 @@ class Delivery:
                     check=True,
                     capture_output=True,
                 )
-            except Exception:
+            except Exception:  # noqa: BLE001
                 # 系统 tar 失败时回退到 stdlib
                 self._pack_tar_gz_stdlib(project_root_abs, project_prefix, tar_gz_path)
             finally:
@@ -893,7 +945,7 @@ class Delivery:
                     check=True,
                     capture_output=True,
                 )
-            except Exception:
+            except Exception:  # noqa: BLE001
                 self._pack_zip_stdlib(project_root_abs, project_prefix, zip_path)
             finally:
                 if created_link and tmp_link.is_symlink():
@@ -920,7 +972,7 @@ class Delivery:
     # 工具方法
     # ------------------------------------------------------------
     @staticmethod
-    def _shell_one(cmd: str) -> Optional[str]:
+    def _shell_one(cmd: str) -> str | None:
         try:
             r = subprocess.run(
                 cmd, shell=True, capture_output=True, text=True, timeout=10, check=False
@@ -930,7 +982,7 @@ class Delivery:
             return None
 
     @staticmethod
-    def _shell_in_dir(cmd: str, cwd: Path) -> Optional[str]:
+    def _shell_in_dir(cmd: str, cwd: Path) -> str | None:
         try:
             r = subprocess.run(
                 cmd,
@@ -959,7 +1011,7 @@ class Delivery:
         """输出到 manifest 时的相对路径：优先相对项目根，否则相对 output_dir。"""
         try:
             return str(fp.resolve().relative_to(project_root.resolve()))
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, S110
             pass
         try:
             return str(fp.resolve().relative_to(output_dir.resolve()))

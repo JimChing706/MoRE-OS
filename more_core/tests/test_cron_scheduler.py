@@ -14,7 +14,7 @@ def _ts(dt: datetime) -> float:
 
 def test_parse_weekday_star_is_supported() -> None:
     spec = CronParser.parse("* * * * *")
-    assert spec.weekdays == frozenset(range(0, 7))
+    assert spec.weekdays == frozenset(range(7))
     assert spec.days == frozenset(range(1, 32))
 
 

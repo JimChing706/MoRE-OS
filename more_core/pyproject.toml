@@ -68,13 +68,18 @@ line-length = 100
 target-version = "py310"
 
 [tool.ruff.lint]
-# 显式声明规则集，而不是依赖 ruff 的"版本相关默认值"。
-# 背景（D-20）：ruff 0.16.x 起默认规则集显著扩大 —— 同一份代码在 0.15.16 下 0 项，
-# 在 0.16.10 下 1109 项（BLE001 338 / I001 246 / UP037 106 / S110 73 / ...）。
-# 若不显式声明，CI 门禁会随"装到哪个 ruff 版本"漂移，结果不可复现。
-# 更严格规则（I001/UP/SIM/RUF/BLE/DTZ…）的收编列为独立专项，
-# 见 docs/audits/STAGE_ACCEPTANCE_2026-10-05.md §8.2（D-20）。
-select = ["E4", "E7", "E9", "F"]
+# 规则集 = ruff 0.16.10 的**完整默认集（413 条）**，不再覆盖 select。
+#
+# 为什么不显式枚举：该集合多达 413 条，逐条抄写既冗长又容易与上游语义漂移；
+# 可复现性由两件事共同保证 ——
+#   ① ruff 版本钉死（dev 依赖 ruff==0.16.10，见下方 optional-dependencies.dev）；
+#   ② CI 增加"规则集漂移守卫"步骤：把当时解析出的启用规则与
+#      .ruff-rule-set-baseline.txt 逐行比对，任何漂移直接失败。
+# 背景见 docs/audits/STAGE_ACCEPTANCE_2026-10-05.md §8.2（D-20 / RR-8）。
+
+[tool.ruff.lint.per-file-ignores]
+# cron 调度器的契约就是"本地朴素时间"，该用例固定用朴素 datetime 构造输入。
+"tests/test_cron_scheduler.py" = ["DTZ001"]
 
 [tool.mypy]
 python_version = "3.10"

@@ -24,9 +24,9 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
-__all__ = ["DeliveryRecord", "DeliveryLedger", "get_default_ledger", "set_default_ledger"]
+__all__ = ["DeliveryLedger", "DeliveryRecord", "get_default_ledger", "set_default_ledger"]
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS deliveries (
@@ -75,7 +75,7 @@ def _load_json(raw: Any) -> dict[str, Any]:
     try:
         value = json.loads(raw or "{}")
         return value if isinstance(value, dict) else {}
-    except Exception:
+    except Exception:  # noqa: BLE001
         return {}
 
 
@@ -140,9 +140,9 @@ def _stage_percentile(rows: list[Any], q: float = 0.5) -> dict[str, float]:
     for row in rows:
         try:
             timings = json.loads(
-                (row["stage_timings"] if "stage_timings" in row.keys() else "{}") or "{}"
+                (row["stage_timings"] if "stage_timings" in row.keys() else "{}") or "{}"  # noqa: SIM118
             )
-        except Exception:
+        except Exception:  # noqa: BLE001, S112
             continue
         if not isinstance(timings, dict):
             continue
@@ -154,12 +154,12 @@ def _stage_percentile(rows: list[Any], q: float = 0.5) -> dict[str, float]:
     out: dict[str, float] = {}
     for layer, values in buckets.items():
         values.sort()
-        idx = min(len(values) - 1, max(0, int(round(q * (len(values) - 1)))))
+        idx = min(len(values) - 1, max(0, round(q * (len(values) - 1))))
         out[layer] = round(values[idx], 1)
     return dict(sorted(out.items()))
 
 
-from ..governance.observability import success_trend as _success_trend  # noqa: E402
+from ..governance.observability import success_trend as _success_trend
 
 
 class DeliveryLedger:
@@ -287,14 +287,14 @@ class DeliveryLedger:
                 )
                 self._conn.commit()
             self.last_error = ""
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:  # pragma: no cover - defensive  # noqa: BLE001
             self.last_error = str(exc)
         return record
 
     def _row(self, row: sqlite3.Row) -> DeliveryRecord:
         try:
             gates = json.loads(row["gates_json"] or "{}")
-        except Exception:
+        except Exception:  # noqa: BLE001
             gates = {}
         return DeliveryRecord(
             delivery_id=row["delivery_id"],
@@ -314,9 +314,9 @@ class DeliveryLedger:
             request_excerpt=row["request_excerpt"],
             ts=float(row["ts"]),
             gates=gates,
-            cause=(row["cause"] if "cause" in row.keys() else "") or "",
-            is_infra=bool(row["is_infra"]) if "is_infra" in row.keys() else False,
-            stage_timings=_load_json(row["stage_timings"]) if "stage_timings" in row.keys() else {},
+            cause=(row["cause"] if "cause" in row.keys() else "") or "",  # noqa: SIM118
+            is_infra=bool(row["is_infra"]) if "is_infra" in row.keys() else False,  # noqa: SIM118
+            stage_timings=_load_json(row["stage_timings"]) if "stage_timings" in row.keys() else {},  # noqa: SIM118
         )
 
     def list(self, *, task_id: str | None = None, limit: int = 50) -> list[DeliveryRecord]:
@@ -332,7 +332,7 @@ class DeliveryLedger:
                         "SELECT * FROM deliveries ORDER BY ts DESC LIMIT ?", (int(limit),)
                     ).fetchall()
             return [self._row(r) for r in rows]
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:  # pragma: no cover - defensive  # noqa: BLE001
             self.last_error = str(exc)
             return []
 
@@ -341,7 +341,7 @@ class DeliveryLedger:
         return rows[0] if rows else None
 
     # 默认双窗口：近 1h（当前状态）与 24h（历史累积）
-    DEFAULT_WINDOWS: dict[str, int] = {"1h": 3600, "24h": 86400}
+    DEFAULT_WINDOWS: ClassVar[dict[str, int]] = {"1h": 3600, "24h": 86400}
 
     def stats_windows(self, windows: dict[str, int] | None = None) -> dict[str, Any]:
         """多窗口成功率 + 趋势。
@@ -377,13 +377,13 @@ class DeliveryLedger:
             by_cause: dict[str, int] = {}
             for r in rows:
                 if r["status"] == STATUS_BLOCKED:
-                    key = (r["cause"] if "cause" in r.keys() else "") or "unspecified"
+                    key = (r["cause"] if "cause" in r.keys() else "") or "unspecified"  # noqa: SIM118
                     by_cause[key] = by_cause.get(key, 0) + 1
             infra_blocked = sum(
                 1
                 for r in rows
                 if r["status"] == STATUS_BLOCKED
-                and ("is_infra" in r.keys() and bool(r["is_infra"]))
+                and ("is_infra" in r.keys() and bool(r["is_infra"]))  # noqa: SIM118
             )
             blocked = sum(1 for r in rows if r["status"] == STATUS_BLOCKED)
             failed = sum(1 for r in rows if r["status"] == STATUS_FAILED)
@@ -425,7 +425,7 @@ class DeliveryLedger:
                 "infra_blocked": infra_blocked,
                 "last_error": self.last_error,
             }
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:  # pragma: no cover - defensive  # noqa: BLE001
             return {"window_s": int(window_s), "total": 0, "error": str(exc)}
 
 

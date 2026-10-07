@@ -7,8 +7,8 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from ...security.rbac import Permission, require_permission
 from ...runtime.orchestrator import MoRECore
+from ...security.rbac import Permission, require_permission
 
 
 def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:

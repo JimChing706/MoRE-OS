@@ -31,7 +31,6 @@ from more_core.codegen.evolution_signal import (
     query_verdict_stats,
 )
 
-
 # ── Fingerprint / classification unit tests ──────────────────────────────────
 
 
@@ -231,7 +230,7 @@ class TestL2QueryAPI:
         for i in range(4):  # 4 lint_error runs — llm wins
             scratch = {
                 "code_fix_iterations": 1,
-                "code_review_approved": True if i < 3 else False,
+                "code_review_approved": i < 3,
                 "code_review_p3": ["unused import"] if i < 3 else [],
                 "code_review_summary": "ruff: E501 line too long" if i >= 3 else "",
                 "sandbox_result": type("SB", (), {"success": True, "error": "", "output": ""})(),

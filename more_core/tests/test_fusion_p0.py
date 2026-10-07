@@ -223,7 +223,7 @@ class TestDeliverableContractKillCriteria:
 class TestTaskManagerKillSwitch:
     @pytest.fixture(autouse=True)
     def _reset_global(self):
-        from more_core.cron.manager import set_global_killswitch, get_global_killswitch
+        from more_core.cron.manager import get_global_killswitch, set_global_killswitch
 
         prev = get_global_killswitch()
         set_global_killswitch(False)
@@ -231,7 +231,7 @@ class TestTaskManagerKillSwitch:
         set_global_killswitch(prev)
 
     def test_global_killswitch_toggle(self):
-        from more_core.cron.manager import set_global_killswitch, get_global_killswitch
+        from more_core.cron.manager import get_global_killswitch, set_global_killswitch
 
         assert get_global_killswitch() is False
         set_global_killswitch(True)

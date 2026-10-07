@@ -169,9 +169,7 @@ class ReasoningRouter:
         # Use reasoning for high-complexity tasks or long queries
         if task_complexity >= 0.7:
             return True
-        if query_length > 2000 and task_complexity >= 0.5:
-            return True
-        return False
+        return bool(query_length > 2000 and task_complexity >= 0.5)
 
     def get_params_for_model(self, model_name: str) -> dict[str, Any]:
         """Get reasoning-specific params for a model."""

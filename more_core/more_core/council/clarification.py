@@ -81,7 +81,7 @@ def parse_clarification_response(response: dict[str, Any]) -> ClarificationResul
     return ClarificationResult(
         clarifying_questions=list(response.get("clarifying_questions", [])),
         assumptions=list(response.get("assumptions", [])),
-        needs_clarification=bool(response.get("needs_clarification", False)),
+        needs_clarification=bool(response.get("needs_clarification")),
         rationale=str(response.get("rationale", "")),
         mode=str(response.get("mode", "standard")),
     )

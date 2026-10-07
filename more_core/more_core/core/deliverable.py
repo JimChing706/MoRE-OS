@@ -18,7 +18,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-
 # ── Deliverable check summary object ──────────────────────────────────────
 
 
@@ -47,7 +46,7 @@ class DeliverableCheckResult:
                 if getattr(self.kill_severity, "value", None) is not None
                 else None
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             sev_value = None
         return {
             "ok": bool(self.ok),
@@ -94,7 +93,7 @@ def check_deliverable_contract(
             missing.extend(str(m) for m in missing_dimensions if m)
         try:
             complete, miss_list = contract.check_completeness(output_text or "")
-        except Exception:
+        except Exception:  # noqa: BLE001
             complete, miss_list = True, []
         if miss_list:
             missing.extend(str(m) for m in miss_list)
@@ -116,7 +115,7 @@ def check_deliverable_contract(
                 ),
                 fatal_errors=int(fatal_errors or 0),
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             severity = None
         result.kill_severity = severity
         if severity is not None:
@@ -135,7 +134,7 @@ def check_deliverable_contract(
         # Completeness-only failures keep COMPLETED but mark ok=False; the
         # caller is responsible for deciding whether to surface an error.
         return result
-    except Exception:
+    except Exception:  # noqa: BLE001
         # Final defensive fallback — always emit at least an empty result.
         return DeliverableCheckResult(
             ok=False,
@@ -321,7 +320,7 @@ class DeliverableContract:
     # ── 工厂方法: 预定义契约模板 ──────────────────────────────────
 
     @classmethod
-    def for_code_generation(cls) -> "DeliverableContract":
+    def for_code_generation(cls) -> DeliverableContract:
         """代码生成任务的标准契约。"""
         return cls(
             kind=DeliverableKind.CODE,
@@ -332,7 +331,7 @@ class DeliverableContract:
         )
 
     @classmethod
-    def for_architecture_design(cls) -> "DeliverableContract":
+    def for_architecture_design(cls) -> DeliverableContract:
         """架构设计任务的标准契约。"""
         return cls(
             kind=DeliverableKind.ARCHITECTURE,
@@ -343,7 +342,7 @@ class DeliverableContract:
         )
 
     @classmethod
-    def for_analysis(cls) -> "DeliverableContract":
+    def for_analysis(cls) -> DeliverableContract:
         """分析任务的标准契约。"""
         return cls(
             kind=DeliverableKind.ANALYSIS,
@@ -354,7 +353,7 @@ class DeliverableContract:
         )
 
     @classmethod
-    def for_decision(cls) -> "DeliverableContract":
+    def for_decision(cls) -> DeliverableContract:
         """决策建议任务的标准契约。"""
         return cls(
             kind=DeliverableKind.DECISION,
@@ -428,7 +427,7 @@ class TaskExpectation:
         }
 
     @classmethod
-    def default_for(cls, kind: DeliverableKind) -> "TaskExpectation":
+    def default_for(cls, kind: DeliverableKind) -> TaskExpectation:
         """为指定产出物类型创建默认预期。"""
         contract_map = {
             DeliverableKind.CODE: DeliverableContract.for_code_generation,

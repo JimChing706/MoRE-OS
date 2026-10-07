@@ -25,7 +25,7 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
         _explicit = getattr(_settings, "bailongma_observability_path", None)
         if _explicit:
             _obs.configure(str(_explicit))
-    except Exception:  # pragma: no cover - defensive
+    except Exception:  # pragma: no cover - defensive  # noqa: BLE001, S110
         pass
 
     @router.get("/health", dependencies=deps)
@@ -47,7 +47,7 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
                 sidecar["delegation_gate"] = bool(
                     getattr(settings, "bailongma_enable_delegation", False)
                 )
-            except Exception as exc:  # pragma: no cover - defensive
+            except Exception as exc:  # pragma: no cover - defensive  # noqa: BLE001
                 sidecar = {
                     "configured": True,
                     "reachable": False,
@@ -69,7 +69,7 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
             obs_stats["latency_ms_1h"] = _m.get("latency_ms", {})
             if _m.get("error"):
                 obs_stats["error"] = _m["error"]
-        except Exception:  # pragma: no cover - defensive
+        except Exception:  # pragma: no cover - defensive  # noqa: BLE001, S110
             pass
 
         # ── Step-4 P0: feature-flag register + current values ────
@@ -107,7 +107,7 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
         if srv is not None and hasattr(srv, "stats"):
             try:
                 result["reverse_a2a"] = srv.stats()
-            except Exception:  # pragma: no cover - defensive
+            except Exception:  # pragma: no cover - defensive  # noqa: BLE001
                 result["reverse_a2a"] = {"task_count": 0, "by_state": {}}
         else:
             result["reverse_a2a"] = {"task_count": 0, "by_state": {}}
@@ -124,7 +124,7 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
         if tm is not None and hasattr(tm, "get_killswitch_state"):
             try:
                 result["killswitch"] = tm.get_killswitch_state()
-            except Exception:  # pragma: no cover - defensive
+            except Exception:  # pragma: no cover - defensive  # noqa: BLE001, S110
                 pass
         return result
 
@@ -182,6 +182,6 @@ def _resolve_flag_value(key: str, settings: Any) -> Any:
         if key.startswith("gates."):
             tail = key.split(".", 1)[1]
             return getattr(settings, f"enable_{tail}", None)
-    except Exception:  # pragma: no cover - defensive
+    except Exception:  # pragma: no cover - defensive  # noqa: BLE001, S110
         pass
     return None

@@ -6,8 +6,8 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from ...security.rbac import Permission, require_permission
 from ...runtime.orchestrator import MoRECore
+from ...security.rbac import Permission, require_permission
 
 
 def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
@@ -185,9 +185,9 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     @router.get("/llm/reasoning/check")
     async def reasoning_check(model: str) -> dict[str, Any]:
         from ...llm.reasoning import (
+            get_reasoning_params,
             is_reasoning_model,
             supports_budget_tokens,
-            get_reasoning_params,
         )
 
         return {

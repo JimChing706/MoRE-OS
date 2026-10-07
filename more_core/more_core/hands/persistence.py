@@ -11,9 +11,9 @@ from __future__ import annotations
 import json
 import logging
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .base import Hand
@@ -51,7 +51,7 @@ class HandPersistence:
     def _path(self, hand_id: str) -> Path:
         return self._dir / f"{hand_id}.state.json"
 
-    def save(self, hand: "Hand", custom_state: dict[str, Any] | None = None) -> HandSnapshot:
+    def save(self, hand: Hand, custom_state: dict[str, Any] | None = None) -> HandSnapshot:
         """Save a Hand's current state to disk."""
         snapshot = HandSnapshot(
             hand_id=hand.manifest.id,
@@ -76,11 +76,11 @@ class HandPersistence:
         try:
             data = json.loads(path.read_text())
             return HandSnapshot(**data)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             _log.error("Failed to load Hand state %s: %s", hand_id, exc)
             return None
 
-    def restore(self, hand: "Hand", snapshot: HandSnapshot) -> None:
+    def restore(self, hand: Hand, snapshot: HandSnapshot) -> None:
         """Restore a Hand's state from a snapshot."""
         hand._config = snapshot.config
         hand._run_count = snapshot.run_count
@@ -111,7 +111,7 @@ class HandCloner:
     Reference: OpenFang cloneAgent feature.
     """
 
-    def __init__(self, manager: "HandManager") -> None:
+    def __init__(self, manager: HandManager) -> None:
         self._manager = manager
 
     async def clone(

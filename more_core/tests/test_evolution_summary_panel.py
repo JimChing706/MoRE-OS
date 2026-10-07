@@ -17,14 +17,13 @@ from more_core.codegen.evolution_signal import (
     compute_evolution_summary,
 )
 
-
 pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient
+
 from more_core.api.server import create_app
 from more_core.core.config import Settings
 from more_core.runtime.orchestrator import MoRECore
-
 
 TT = "code_generation"
 QF = "src/utils.py"

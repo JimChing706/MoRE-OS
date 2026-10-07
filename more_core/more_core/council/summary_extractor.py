@@ -12,7 +12,6 @@
 
 from typing import Any
 
-
 # 摘要层级
 SUMMARY_LEVELS = ("one_line", "three_sentences", "compact", "full")
 

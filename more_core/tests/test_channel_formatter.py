@@ -9,7 +9,6 @@ import pytest
 
 from more_core.channels.formatter import MessageFormatter as F
 
-
 # ---------------------------------------------------------------------------
 # Markdown 基础
 # ---------------------------------------------------------------------------
@@ -125,7 +124,7 @@ def test_format_list_unordered_and_ordered():
 
 
 def test_format_list_empty_has_no_stray_bullet():
-    """回归 D-11：空列表此前返回 '\\n• '。"""
+    r"""回归 D-11：空列表此前返回 '\\n• '。"""
     assert F.format_list([]) == ""
     assert F.format_list([], ordered=True) == ""
 

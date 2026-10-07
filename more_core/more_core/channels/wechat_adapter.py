@@ -6,8 +6,8 @@ import hashlib
 import logging
 import time
 import xml.etree.ElementTree as ET
-from typing import Any
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
@@ -69,7 +69,7 @@ class WeChatAdapter(ChannelAdapter):
                 return await self._send_webhook(response)
             else:
                 return await self._send_work_message(response)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             _log.error(f"WeChat send failed: {e}")
             return False
 
@@ -118,7 +118,7 @@ class WeChatAdapter(ChannelAdapter):
             if time.time() > self._token_expires:
                 await self._get_access_token()
             return bool(self._access_token)
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False
 
     def verify_signature(self, signature: str, timestamp: str, nonce: str) -> bool:
@@ -150,7 +150,7 @@ class WeChatAdapter(ChannelAdapter):
                     timestamp=time.time(),
                     metadata={"raw": body.decode()},
                 )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             _log.error(f"Failed to parse webhook: {e}")
         return None
 

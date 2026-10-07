@@ -12,8 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from more_core.core.types import TaskRequest, TaskType
-from more_core.core.types import LayerId
+from more_core.core.types import LayerId, TaskRequest, TaskType
 from more_core.layers.base import LayerContext, LayerResult
 from more_core.layers.l0_execution import ExecutionLayer
 
@@ -113,7 +112,6 @@ async def test_enabled_gate_calls_delegation_fn_once():
 
     async def _capture(ctx_arg, req_arg, *, codegen_run_ctx=None, **_kw):
         calls.append(True)
-        return None  # fall back to local
 
     p, _m = _patch_with_side_effect(_capture)
     with p:
@@ -180,7 +178,6 @@ async def test_non_code_task_never_invokes_delegation_fn():
 
     async def _count(ctx_arg, req_arg, *, codegen_run_ctx=None, **_kw):
         call_count["n"] += 1
-        return None
 
     p, _m = _patch_with_side_effect(_count)
     with p:
@@ -212,11 +209,11 @@ async def test_all_code_family_types_short_circuit_on_success():
         s = _mk_settings(enabled=True, endpoint="http://reachable")
         ctx, llm_mock = _mk_ctx(s, task_type=t, query=f"{t.value} task")
 
-        async def _success_for(ctx_arg, req_arg, *, codegen_run_ctx=None, **_kw):
+        async def _success_for(ctx_arg, req_arg, *, codegen_run_ctx=None, _t=t, **_kw):
             ctx_arg.scratch["_chassis_delegated"] = True
             ctx_arg.scratch["_chassis_delegation_state"] = "completed"
             ctx_arg.scratch["codegen_verdict"] = {"decision": "pass", "reasons": [], "checks": {}}
-            return _chassis_layer_result(f"CHASSIS FOR {t.value}", "completed")
+            return _chassis_layer_result(f"CHASSIS FOR {_t.value}", "completed")
 
         p, _m = _patch_with_side_effect(_success_for)
         with p:

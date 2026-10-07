@@ -9,13 +9,13 @@ cross-request observability and lifecycle management.
 
 from __future__ import annotations
 
+import builtins
 import time
 import unicodedata
 import uuid
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Deque, List
 
 
 class MemoryKind(str, Enum):
@@ -43,7 +43,7 @@ class MemoryEntry:
 class MemoryStore:
     def __init__(self, capacity: int = 2048) -> None:
         self._capacity = capacity
-        self._streams: dict[MemoryKind, Deque[MemoryEntry]] = defaultdict(
+        self._streams: dict[MemoryKind, deque[MemoryEntry]] = defaultdict(
             lambda: deque(maxlen=capacity)
         )
 
@@ -81,7 +81,7 @@ class MemoryStore:
         top_k: int = 5,
         *,
         task_id: str = "",
-    ) -> List[MemoryEntry]:
+    ) -> builtins.list[MemoryEntry]:
         """Full-text search across memory, with optional task_id filter."""
         q = unicodedata.normalize("NFKC", query).casefold()
         candidates = self.list(kind)
@@ -100,7 +100,7 @@ class MemoryStore:
             e.access_count += 1
         return ranked[:top_k]
 
-    def by_task(self, task_id: str) -> List[MemoryEntry]:
+    def by_task(self, task_id: str) -> builtins.list[MemoryEntry]:
         """Return all memory entries for a given *task_id* (cross-request trace)."""
         results: list[MemoryEntry] = []
         for stream in self._streams.values():

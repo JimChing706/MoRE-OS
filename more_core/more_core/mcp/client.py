@@ -4,20 +4,21 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Awaitable, cast
+from typing import Any, cast
 
 from .protocol import (
+    ClientCapabilities,
+    InitializeResult,
+    JSONRPCProtocol,
+    MCPNotification,
     MCPRequest,
     MCPResponse,
-    MCPNotification,
-    JSONRPCProtocol,
-    ServerCapabilities,
-    ClientCapabilities,
-    Tool,
-    Resource,
     Prompt,
-    InitializeResult,
+    Resource,
+    ServerCapabilities,
+    Tool,
     ToolCallResult,
 )
 
@@ -26,8 +27,6 @@ _log = logging.getLogger(__name__)
 
 class MCPClientError(Exception):
     """MCP Client error."""
-
-    pass
 
 
 @dataclass
@@ -291,7 +290,7 @@ class MCPClient:
         if session is not None:
             try:
                 await session.shutdown()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 _log.warning("MCP shutdown for '%s' failed: %s", name, exc)
         if transport is not None:
             await self._disconnect_transport(transport)
@@ -302,7 +301,7 @@ class MCPClient:
             disconnect = getattr(transport, "disconnect", None)
             if disconnect is not None:
                 await disconnect()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             _log.warning("MCP transport disconnect failed: %s", exc)
 
     def get_session(self, name: str) -> MCPClientSession | None:
@@ -334,6 +333,6 @@ class MCPClient:
                 tools = await session.list_tools()
                 result[name] = tools
                 self._tools_cache[name] = tools
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 _log.warning(f"Failed to list tools from {name}: {e}")
         return result

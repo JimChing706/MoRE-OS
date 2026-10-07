@@ -121,7 +121,7 @@ class LayerRouter:
             pipeline.remove(LayerId.L3)
         if LayerId.L2 in pipeline and not self._settings.enable_evolution:
             pipeline.remove(LayerId.L2)
-        if LayerId.L5 in pipeline and not self._settings.enable_metacognition:
+        if LayerId.L5 in pipeline and not self._settings.enable_metacognition:  # noqa: SIM102 - 保留嵌套以承载逐条件注释
             # Calibration-only mode is allowed even when full metacog is off;
             # retain L5 if caller explicitly requested monitoring.
             if not request.require_metacognitive_monitoring:
@@ -150,7 +150,7 @@ class LayerRouter:
         2. 将场景的 pipeline_hint 应用到 TaskType 默认管道上
         3. 返回的 RoutingDecision.reasoning 中包含场景标签和置信度
         """
-        from .scene_router import resolve_scene, apply_scene_hint
+        from .scene_router import apply_scene_hint, resolve_scene
 
         # 1. 场景分类
         scene = resolve_scene(request.query)

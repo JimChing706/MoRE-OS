@@ -1,18 +1,19 @@
 """Tests for optimization module - RequestCache, RateLimiter, CircuitBreaker."""
 
-import pytest
-import sys
 import os
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from more_core.optimization import (
-    RequestCache,
     CacheConfig,
     CacheStrategy,
-    RateLimiter,
     CircuitBreaker,
     ConnectionPool,
+    RateLimiter,
+    RequestCache,
 )
 
 
@@ -109,14 +110,14 @@ class TestCircuitBreaker:
         breaker = CircuitBreaker(failure_threshold=2)
 
         async def fail_func():
-            raise Exception("test failure")
+            raise RuntimeError("test failure")
 
         # First failure
-        with pytest.raises(Exception):
+        with pytest.raises(RuntimeError):
             await breaker.call(fail_func)
 
         # Second failure should open circuit
-        with pytest.raises(Exception):
+        with pytest.raises(RuntimeError):
             await breaker.call(fail_func)
 
         assert breaker.state == "OPEN"

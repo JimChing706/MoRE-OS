@@ -6,7 +6,7 @@ Tasks 装配层唯一可信入口：一次调用 = (steps + payload_map + warnin
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from .planner import TaskTemplateSelector
 from .types import TaskTemplateKey, TemplateDispatchResult
@@ -20,7 +20,7 @@ class TemplateDispatcher:
     def dispatch(
         task_request: Any,
         project_root: str,
-        doc: Optional[str],
+        doc: str | None,
     ) -> TemplateDispatchResult:
         warnings: list[str] = []
         selector = TaskTemplateSelector()

@@ -34,7 +34,6 @@ from .deliverable import (
 )
 from .types import TaskRequest, TaskType
 
-
 # ---------------------------------------------------------------------------
 # ITD-specific enums
 # ---------------------------------------------------------------------------
@@ -325,14 +324,18 @@ class ImportTaskDocument:
     def to_yaml_frontmatter(self) -> str:
         """Export only the frontmatter as a compact YAML-like string."""
         lines = ["---"]
-        lines.append(f"title: {self.title}")
-        lines.append(f"version: {self.version}")
-        lines.append(f"author: {self.author}")
-        lines.append(f"created: {self.created}")
-        lines.append(f"type: {self.type}")
-        lines.append(f"priority: {self.priority}")
-        lines.append(f"deliverable_kind: {self.deliverable_kind}")
-        lines.append(f"tags: {json.dumps(self.tags)}")
+        lines.extend(
+            (
+                f"title: {self.title}",
+                f"version: {self.version}",
+                f"author: {self.author}",
+                f"created: {self.created}",
+                f"type: {self.type}",
+                f"priority: {self.priority}",
+                f"deliverable_kind: {self.deliverable_kind}",
+                f"tags: {json.dumps(self.tags)}",
+            )
+        )
         if self.estimated_hours:
             lines.append(f"estimated_hours: {self.estimated_hours}")
         if self.depends_on:
@@ -501,12 +504,7 @@ class ImportTaskParser:
         for line in lines_iter:
             if not h1_consumed and re.match(r"^#\s+.+$", line.strip()):
                 h1_consumed = True
-                body_parts.append("# Executive Summary")
-                body_parts.append("")
-                body_parts.append(title)
-                body_parts.append("")
-                body_parts.append("# Requirements")
-                body_parts.append("")
+                body_parts.extend(("# Executive Summary", "", title, "", "# Requirements", ""))
                 continue
             body_parts.append(line)
 
@@ -1063,77 +1061,68 @@ class ImportTaskGenerator:
 
         # Requirements
         if doc.requirements:
-            parts.append("# Requirements")
-            parts.append("")
+            parts.extend(("# Requirements", ""))
             for req in doc.requirements:
-                parts.append(f"## {req.id}: {req.title}")
-                parts.append(f"**Priority:** {req.priority.value.upper()}")
-                parts.append(f"**Description:** {req.description}")
-                parts.append("")
-                parts.append("**Acceptance Criteria:**")
+                parts.extend(
+                    (
+                        f"## {req.id}: {req.title}",
+                        f"**Priority:** {req.priority.value.upper()}",
+                        f"**Description:** {req.description}",
+                        "",
+                        "**Acceptance Criteria:**",
+                    )
+                )
                 for ac in req.acceptance_criteria:
                     parts.append(f"- [ ] {ac}")
                 parts.append("")
         else:
-            parts.append("# Requirements")
-            parts.append("")
-            parts.append("TODO: define requirements")
-            parts.append("")
+            parts.extend(("# Requirements", "", "TODO: define requirements", ""))
 
         # Deliverable Contract
-        parts.append("# Deliverable Contract")
-        parts.append("")
-        parts.append(f"**Kind:** {doc.contract_kind}")
+        parts.extend(("# Deliverable Contract", "", f"**Kind:** {doc.contract_kind}"))
         if doc.contract_required_dimensions:
             parts.append(
                 f"**Required Dimensions:** {', '.join(doc.contract_required_dimensions)}",
             )
-        parts.append(f"**Minimum Output Length:** {doc.contract_min_output_length}")
-        parts.append("")
+        parts.extend((f"**Minimum Output Length:** {doc.contract_min_output_length}", ""))
         if doc.contract_quality_gates:
-            parts.append("**Quality Gates:**")
-            parts.append("| Gate | Threshold |")
-            parts.append("|------|-----------|")
+            parts.extend(("**Quality Gates:**", "| Gate | Threshold |", "|------|-----------|"))
             for g in doc.contract_quality_gates:
                 parts.append(f"| {g.name} | {g.threshold} |")
             parts.append("")
         if doc.contract_acceptance_criteria:
-            parts.append("**Acceptance Criteria:**")
-            parts.append("")
+            parts.extend(("**Acceptance Criteria:**", ""))
             for i, ac in enumerate(doc.contract_acceptance_criteria, 1):
                 parts.append(f"- [ ] {ac}")
             parts.append("")
         else:
-            parts.append("**Acceptance Criteria:**")
-            parts.append("- [ ] TODO: define acceptance criteria")
-            parts.append("")
+            parts.extend(("**Acceptance Criteria:**", "- [ ] TODO: define acceptance criteria", ""))
 
         # Kill Criteria
         if doc.kill_criteria:
-            parts.append("# Kill Criteria")
-            parts.append("")
-            parts.append("| ID | Condition | Severity | Timeline | Fallback |")
-            parts.append("|----|-----------|----------|----------|----------|")
+            parts.extend(
+                (
+                    "# Kill Criteria",
+                    "",
+                    "| ID | Condition | Severity | Timeline | Fallback |",
+                    "|----|-----------|----------|----------|----------|",
+                )
+            )
             for kc in doc.kill_criteria:
                 parts.append(
                     f"| {kc.id} | {kc.condition} | {kc.severity} | {kc.timeline} | {kc.fallback} |",
                 )
             parts.append("")
         else:
-            parts.append("# Kill Criteria")
-            parts.append("")
-            parts.append("None defined.")
-            parts.append("")
+            parts.extend(("# Kill Criteria", "", "None defined.", ""))
 
         # Resource Budget
-        parts.append("# Resource Budget")
-        parts.append("")
+        parts.extend(("# Resource Budget", ""))
         if doc.budget.estimated_tokens:
             parts.append(f"**Estimated Tokens:** {doc.budget.estimated_tokens:,}")
         if doc.budget.estimated_duration_min:
             parts.append(f"**Estimated Duration:** {doc.budget.estimated_duration_min} minutes")
-        parts.append(f"**Max Iterations:** {doc.budget.max_iterations}")
-        parts.append("")
+        parts.extend((f"**Max Iterations:** {doc.budget.max_iterations}", ""))
 
         # Context and Constraints
         has_context = any(
@@ -1144,30 +1133,23 @@ class ImportTaskGenerator:
             ]
         )
         if has_context:
-            parts.append("# Context and Constraints")
-            parts.append("")
+            parts.extend(("# Context and Constraints", ""))
             if doc.context_background:
-                parts.append("## Background")
-                parts.append("")
-                parts.append(doc.context_background.strip())
-                parts.append("")
+                parts.extend(("## Background", "", doc.context_background.strip(), ""))
             if doc.context_constraints:
-                parts.append("## Constraints")
-                parts.append("")
+                parts.extend(("## Constraints", ""))
                 for c in doc.context_constraints:
                     parts.append(f"- {c}")
                 parts.append("")
             if doc.context_references:
-                parts.append("## References")
-                parts.append("")
+                parts.extend(("## References", ""))
                 for r in doc.context_references:
                     parts.append(f"- {r}")
                 parts.append("")
 
         # Related Documents
         if doc.related_documents:
-            parts.append("# Related Documents")
-            parts.append("")
+            parts.extend(("# Related Documents", ""))
             for rd in doc.related_documents:
                 parts.append(f"- {rd}")
             parts.append("")
@@ -1177,16 +1159,24 @@ class ImportTaskGenerator:
     def _render_frontmatter(self, doc: ImportTaskDocument) -> str:
         """Render the YAML frontmatter string."""
         lines = ["---"]
-        lines.append(f"title: {doc.title}")
-        lines.append(f"version: {doc.version}")
-        lines.append(f"author: {doc.author}")
-        lines.append(f"created: {doc.created}")
-        lines.append(f"type: {doc.type}")
+        lines.extend(
+            (
+                f"title: {doc.title}",
+                f"version: {doc.version}",
+                f"author: {doc.author}",
+                f"created: {doc.created}",
+                f"type: {doc.type}",
+            )
+        )
         if doc.plugin_type:
             lines.append(f"plugin_type: {doc.plugin_type}")
-        lines.append(f"priority: {doc.priority}")
-        lines.append(f"deliverable_kind: {doc.deliverable_kind}")
-        lines.append(f"tags: {json.dumps(doc.tags)}")
+        lines.extend(
+            (
+                f"priority: {doc.priority}",
+                f"deliverable_kind: {doc.deliverable_kind}",
+                f"tags: {json.dumps(doc.tags)}",
+            )
+        )
         if doc.estimated_hours:
             lines.append(f"estimated_hours: {doc.estimated_hours}")
         if doc.depends_on:
@@ -1201,12 +1191,16 @@ class ImportTaskGenerator:
                 lines.append(f"  append: {json.dumps(doc.pipeline_append)}")
             if doc.pipeline_skip:
                 lines.append(f"  skip: {json.dumps(doc.pipeline_skip)}")
-        lines.append(f"target_confidence: {doc.target_confidence}")
-        lines.append(f"max_iterations: {doc.max_iterations}")
-        lines.append(f"timeout_s: {doc.timeout_s}")
-        lines.append(f"allow_self_improvement: {json.dumps(doc.allow_self_improvement)}")
-        lines.append(f"require_metacognitive: {json.dumps(doc.require_metacognitive)}")
-        lines.append(f"kill_on_diverge: {json.dumps(doc.kill_on_diverge)}")
+        lines.extend(
+            (
+                f"target_confidence: {doc.target_confidence}",
+                f"max_iterations: {doc.max_iterations}",
+                f"timeout_s: {doc.timeout_s}",
+                f"allow_self_improvement: {json.dumps(doc.allow_self_improvement)}",
+                f"require_metacognitive: {json.dumps(doc.require_metacognitive)}",
+                f"kill_on_diverge: {json.dumps(doc.kill_on_diverge)}",
+            )
+        )
 
         warnings = doc._raw_frontmatter.get("_warnings", [])
         if warnings:

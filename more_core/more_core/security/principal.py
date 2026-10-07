@@ -16,10 +16,10 @@ from contextvars import ContextVar
 __all__ = [
     "ANONYMOUS",
     "ENV_KEY_PRINCIPAL",
-    "set_principal",
     "get_principal",
-    "reset_principal",
     "principal_from_api_key_id",
+    "reset_principal",
+    "set_principal",
 ]
 
 ANONYMOUS = "anonymous"

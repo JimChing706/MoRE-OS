@@ -1,13 +1,13 @@
 """Tests for skill config injection and secret redaction."""
 
 from more_core.skills.config_injection import (
-    ConfigVar,
     ConfigSchema,
-    is_secret_name,
-    resolve_config,
-    redact_secrets,
+    ConfigVar,
     inject_config_into_prompt,
+    is_secret_name,
     parse_config_schema,
+    redact_secrets,
+    resolve_config,
 )
 
 
@@ -51,7 +51,7 @@ def test_resolve_config_default_fallback():
             ConfigVar(name="port", default=8080),
         ]
     )
-    resolved, errors = resolve_config(schema)
+    resolved, _errors = resolve_config(schema)
     assert resolved["port"] == 8080
 
 
@@ -61,7 +61,7 @@ def test_resolve_config_required_missing():
             ConfigVar(name="api_key", required=True),
         ]
     )
-    resolved, errors = resolve_config(schema)
+    _resolved, errors = resolve_config(schema)
     assert len(errors) == 1
     assert "api_key" in errors[0]
 

@@ -16,7 +16,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     async def list_deployments(
         dtype: str | None = None, status: str | None = None
     ) -> dict[str, Any]:
-        from ...deploy.manager import DeploymentType, DeploymentStatus
+        from ...deploy.manager import DeploymentStatus, DeploymentType
 
         dt = None
         ds = None

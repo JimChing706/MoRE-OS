@@ -3,10 +3,10 @@
 import pytest
 
 from more_core.planning.coordinator import (
-    PlanCoordinator,
     ExecutionPlan,
-    PlanStep,
+    PlanCoordinator,
     PlanStatus,
+    PlanStep,
     StepPriority,
 )
 

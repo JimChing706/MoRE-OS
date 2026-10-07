@@ -16,9 +16,10 @@ import asyncio
 import logging
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 from ..core.errors import WorkflowError
 
@@ -404,7 +405,7 @@ class WorkflowEngine:
 
         except asyncio.CancelledError:
             run.status = WorkflowStatus.CANCELLED
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             run.status = WorkflowStatus.FAILED
             run.error = str(exc)
             _log.exception("Workflow %s failed", run.run_id)
@@ -420,7 +421,7 @@ class WorkflowEngine:
                 if not _safe_eval_condition(step.condition, run.context):
                     step.status = StepStatus.SKIPPED
                     return
-            except Exception:
+            except Exception:  # noqa: BLE001
                 step.status = StepStatus.SKIPPED
                 return
 
@@ -459,7 +460,7 @@ class WorkflowEngine:
                 step.status = StepStatus.TIMEOUT
                 step.error = f"Timeout after {step.timeout_s}s"
                 step.finished_at = time.time()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 step.status = StepStatus.FAILED
                 step.error = str(exc)
                 step.finished_at = time.time()
@@ -473,5 +474,5 @@ class WorkflowEngine:
         for listener in self._listeners:
             try:
                 await listener(run)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 _log.warning("Workflow listener failed: %s", exc)

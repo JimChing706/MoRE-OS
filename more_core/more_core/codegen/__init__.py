@@ -20,13 +20,13 @@ from .controller import (
 from .review import CodeReviewResult, ReviewerFinding, run_code_review
 
 __all__ = [
-    "build_repo_context",
-    "CodegenVerdict",
-    "adjudicate_codegen",
-    "DECISION_PASS",
-    "DECISION_PARTIAL",
     "DECISION_ESCALATED",
+    "DECISION_PARTIAL",
+    "DECISION_PASS",
     "CodeReviewResult",
+    "CodegenVerdict",
     "ReviewerFinding",
+    "adjudicate_codegen",
+    "build_repo_context",
     "run_code_review",
 ]

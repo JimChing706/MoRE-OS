@@ -9,6 +9,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from ..core.types import TaskType
+from .manager import ProviderModelPair as ModelBinding
 from .model_aliases import ModelAliasRegistry
 from .provider import LLMRequest
 from .reasoning import ReasoningRouter
@@ -26,7 +27,6 @@ from .task_router import (
     TaskModelRouter,
     tier_index_for_difficulty,
 )
-from .manager import ProviderModelPair as ModelBinding
 
 if TYPE_CHECKING:
     from ..llm.manager import LLMManager
@@ -116,7 +116,7 @@ class DynamicModelRouter(TaskModelRouter):
         try:
             s = str(task_type)
             return s or "*"
-        except Exception:
+        except Exception:  # noqa: BLE001
             return "*"
 
     def _resolve_tier_with_hysteresis(self, task_type: TaskType | Any, theory_idx: int) -> int:
@@ -132,7 +132,7 @@ class DynamicModelRouter(TaskModelRouter):
           the previous tier.  T1↔T2 never gets cooldown (R1 原文：避免叠加反向伤害).
         """
         # 1. Whitelist cap for tier 0 access
-        if theory_idx <= 0 and isinstance(task_type, TaskType):
+        if theory_idx <= 0 and isinstance(task_type, TaskType):  # noqa: SIM102 - 保留嵌套以承载逐条件注释
             if task_type not in self._t0_whitelist:
                 theory_idx = 1
         # Clamp to valid ladder range (defensive floor/ceiling)
@@ -159,7 +159,7 @@ class DynamicModelRouter(TaskModelRouter):
                 # P1-4 G-3: 滚动窗口时间戳（使用 wall-clock time.time 方便真实时间窗口切片）
                 try:
                     self._tier_transition_timestamps.append(time.time())
-                except Exception:  # pragma: no cover - deque append OOM 极端情况忽略
+                except Exception:  # noqa: BLE001, S110 - deque append OOM 极值忽略
                     pass
         self._tier_last_effective_idx[cohort] = effective
         self._maybe_emit_tier_status()
@@ -345,9 +345,9 @@ class DynamicModelRouter(TaskModelRouter):
             if window_name is None:
                 return result
             return {window_name: result.get(window_name, 0)}
-        except Exception:
+        except Exception:  # noqa: BLE001
             if window_name is None:
-                return {n: 0 for n in _ROLLUP_WINDOWS}
+                return dict.fromkeys(_ROLLUP_WINDOWS, 0)
             return {window_name: 0}
 
     def apply_previous_tier_ladder(self) -> dict[str, Any]:

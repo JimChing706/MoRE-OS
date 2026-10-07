@@ -21,13 +21,12 @@ from more_core.layers.base import Layer, LayerContext, LayerResult
 from more_core.router.layer_router import RoutingDecision
 from more_core.runtime.orchestrator import MoRECore
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _make_core(**attrs: object) -> "MoRECore":
+def _make_core(**attrs: object) -> MoRECore:
     """Create a MoRECore with all three bootstrap factories mocked.
 
     Additional keyword arguments are set as attributes on the finished
@@ -109,7 +108,7 @@ def _mock_layer(layer_id: LayerId, output: str = "ok") -> MagicMock:
     return m
 
 
-def _execute_core() -> "MoRECore":
+def _execute_core() -> MoRECore:
     """Return a pre-configured core for execute()-path tests."""
     core = _make_core()
 
@@ -325,53 +324,53 @@ class TestRunPipeline:
 
 class TestExecute:
     @pytest.fixture
-    def core(self) -> "MoRECore":
+    def core(self) -> MoRECore:
         return _execute_core()
 
     @pytest.mark.asyncio
-    async def test_happy_path(self, core: "MoRECore") -> None:
+    async def test_happy_path(self, core: MoRECore) -> None:
         result = await core.execute(TaskRequest(query="hello"))
         assert result.status == TaskStatus.SUCCESS
         assert "hello from L0" in result.output
         assert result.task_id is not None
 
     @pytest.mark.asyncio
-    async def test_rate_limit_rejects_request(self, core: "MoRECore") -> None:
+    async def test_rate_limit_rejects_request(self, core: MoRECore) -> None:
         core._rate_limiter.acquire = AsyncMock(return_value=False)
         result = await core.execute(TaskRequest(query="x"))
         assert result.status == TaskStatus.REJECTED
         assert "rate limit" in result.output
 
     @pytest.mark.asyncio
-    async def test_cached_response_returned_directly(self, core: "MoRECore") -> None:
+    async def test_cached_response_returned_directly(self, core: MoRECore) -> None:
         core._request_cache.get = AsyncMock(return_value="cached-output")
         result = await core.execute(TaskRequest(query="repeated"))
         assert result.status == TaskStatus.SUCCESS
         assert result.output == "cached-output"
 
     @pytest.mark.asyncio
-    async def test_governance_error_rejected(self, core: "MoRECore") -> None:
+    async def test_governance_error_rejected(self, core: MoRECore) -> None:
         core.policy.check = MagicMock(side_effect=GovernanceError("blocked by policy"))
         result = await core.execute(TaskRequest(query="sensitive"))
         assert result.status == TaskStatus.REJECTED
         assert "blocked by policy" in result.output
 
     @pytest.mark.asyncio
-    async def test_more_error_grants_failed(self, core: "MoRECore") -> None:
+    async def test_more_error_grants_failed(self, core: MoRECore) -> None:
         core.layers[LayerId.L0].run = AsyncMock(side_effect=MoREError("layer blew up"))
         result = await core.execute(TaskRequest(query="boom"))
         assert result.status == TaskStatus.FAILED
         assert "layer blew up" in result.output
 
     @pytest.mark.asyncio
-    async def test_unexpected_exception_caught(self, core: "MoRECore") -> None:
+    async def test_unexpected_exception_caught(self, core: MoRECore) -> None:
         core.layers[LayerId.L0].run = AsyncMock(side_effect=ValueError("weird"))
         result = await core.execute(TaskRequest(query="weird"))
         assert result.status == TaskStatus.FAILED
         assert "internal error" in result.output
 
     @pytest.mark.asyncio
-    async def test_timeout_results_in_failed(self, core: "MoRECore") -> None:
+    async def test_timeout_results_in_failed(self, core: MoRECore) -> None:
         async def _slow(_ctx: LayerContext) -> LayerResult:
             await asyncio.sleep(100)
             return LayerResult(layer=LayerId.L0, description="slow", output="x")
@@ -383,7 +382,7 @@ class TestExecute:
         assert "timed out" in result.output
 
     @pytest.mark.asyncio
-    async def test_zen_19_violation_rejects(self, core: "MoRECore") -> None:
+    async def test_zen_19_violation_rejects(self, core: MoRECore) -> None:
         zen = MagicMock()
         zen.check_violation.side_effect = lambda rule_id, ctx: rule_id == "ZEN-19"
         with patch("more_core.runtime.orchestrator.get_enforcer", return_value=zen):
@@ -392,14 +391,14 @@ class TestExecute:
         assert "forbidden" in result.output.lower() or "ZEN-19" in result.output
 
     @pytest.mark.asyncio
-    async def test_post_processing_crash_returns_failed(self, core: "MoRECore") -> None:
+    async def test_post_processing_crash_returns_failed(self, core: MoRECore) -> None:
         core.output_filter.filter = MagicMock(side_effect=RuntimeError("filter boom"))
         result = await core.execute(TaskRequest(query="boom"))
         assert result.status == TaskStatus.FAILED
         assert "filter boom" in result.output
 
     @pytest.mark.asyncio
-    async def test_post_processing_crash_clears_request_context(self, core: "MoRECore") -> None:
+    async def test_post_processing_crash_clears_request_context(self, core: MoRECore) -> None:
         import more_core.runtime.orchestrator as orch
 
         core.output_filter.filter = MagicMock(side_effect=RuntimeError("boom"))
@@ -410,7 +409,7 @@ class TestExecute:
         clear_spy.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_meta_orchestrator_overrides_pipeline(self, core: "MoRECore") -> None:
+    async def test_meta_orchestrator_overrides_pipeline(self, core: MoRECore) -> None:
         meta = MagicMock()
         meta.route.return_value = MagicMock(
             pipeline=[LayerId.L5, LayerId.L0],
@@ -434,7 +433,7 @@ class TestExecute:
         meta.route.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_output_filter_applied(self, core: "MoRECore") -> None:
+    async def test_output_filter_applied(self, core: MoRECore) -> None:
         core.output_filter.filter = MagicMock(return_value="filtered-output")
         core.layers = {
             LayerId.L0: _mock_layer(LayerId.L0, output="raw output"),
@@ -445,13 +444,13 @@ class TestExecute:
     @pytest.mark.asyncio
     async def test_partial_status_when_critical_dimension_missing(
         self,
-        core: "MoRECore",
+        core: MoRECore,
     ) -> None:
         result = await core.execute(TaskRequest(query="hello"))
         assert result.status == TaskStatus.SUCCESS
 
     @pytest.mark.asyncio
-    async def test_performance_metrics_populated(self, core: "MoRECore") -> None:
+    async def test_performance_metrics_populated(self, core: MoRECore) -> None:
         result = await core.execute(TaskRequest(query="perf test"))
         assert result.performance.total_duration_ms >= 0
         assert result.performance.tokens_used == 0
@@ -459,7 +458,7 @@ class TestExecute:
 
     @pytest.mark.asyncio
     async def test_taint_violation_logged(
-        self, core: "MoRECore", caplog: pytest.LogCaptureFixture
+        self, core: MoRECore, caplog: pytest.LogCaptureFixture
     ) -> None:
         taint_scope = MagicMock()
         taint_scope.track = MagicMock()
@@ -472,20 +471,20 @@ class TestExecute:
         assert "taint violation" in caplog.text
 
     @pytest.mark.asyncio
-    async def test_successful_result_cached(self, core: "MoRECore") -> None:
+    async def test_successful_result_cached(self, core: MoRECore) -> None:
         core._request_cache.set = AsyncMock()
         await core.execute(TaskRequest(query="cache me"))
         core._request_cache.set.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_failed_result_not_cached(self, core: "MoRECore") -> None:
+    async def test_failed_result_not_cached(self, core: MoRECore) -> None:
         core._request_cache.set = AsyncMock()
         core.policy.check = MagicMock(side_effect=GovernanceError("nope"))
         await core.execute(TaskRequest(query="no cache"))
         core._request_cache.set.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_self_check_written_to_metadata(self, core: "MoRECore") -> None:
+    async def test_self_check_written_to_metadata(self, core: MoRECore) -> None:
         """Pipeline output self-check runs in _complete_task and is stored in metadata."""
 
         class _RecordingLayer(Layer):
@@ -508,7 +507,7 @@ class TestExecute:
     @pytest.mark.asyncio
     async def test_provider_cancelled_error_becomes_failed_result(
         self,
-        core: "MoRECore",
+        core: MoRECore,
     ) -> None:
         """asyncio.CancelledError from a hung provider surfaces as FAILED, not a 500."""
 
@@ -525,7 +524,7 @@ class TestAutoTypeResolution:
     """TaskType.AUTO is classified from the query before the pipeline runs."""
 
     @pytest.mark.asyncio
-    async def test_auto_resolves_to_code_generation(self, core: "MoRECore") -> None:
+    async def test_auto_resolves_to_code_generation(self, core: MoRECore) -> None:
         req = TaskRequest(query="开发电话拨号程序APP", type=TaskType.AUTO)
         await core.execute(req)
         assert req.type is TaskType.CODE_GENERATION
@@ -533,19 +532,19 @@ class TestAutoTypeResolution:
         assert req.context["auto_confidence"] >= 0.6
 
     @pytest.mark.asyncio
-    async def test_auto_resolves_to_math(self, core: "MoRECore") -> None:
+    async def test_auto_resolves_to_math(self, core: MoRECore) -> None:
         req = TaskRequest(query="prove that sqrt(2) is irrational", type=TaskType.AUTO)
         await core.execute(req)
         assert req.type is TaskType.MATH_REASONING
 
     @pytest.mark.asyncio
-    async def test_auto_falls_back_to_nlp(self, core: "MoRECore") -> None:
+    async def test_auto_falls_back_to_nlp(self, core: MoRECore) -> None:
         req = TaskRequest(query="你好，随便聊聊", type=TaskType.AUTO)
         await core.execute(req)
         assert req.type is TaskType.NLP_TASK
 
     @pytest.mark.asyncio
-    async def test_explicit_type_untouched(self, core: "MoRECore") -> None:
+    async def test_explicit_type_untouched(self, core: MoRECore) -> None:
         req = TaskRequest(query="写一个函数", type=TaskType.CODE_GENERATION)
         await core.execute(req)
         assert req.type is TaskType.CODE_GENERATION
@@ -554,7 +553,7 @@ class TestAutoTypeResolution:
     @pytest.mark.asyncio
     async def test_auto_resolution_recorded_in_result_metadata(
         self,
-        core: "MoRECore",
+        core: MoRECore,
     ) -> None:
         result = await core.execute(TaskRequest(query="开发电话拨号程序APP", type=TaskType.AUTO))
         assert result.metadata.get("auto_resolved_type") == "code_generation"
@@ -586,7 +585,7 @@ class TestStreamExecute:
 
         core.output_filter.filter = MagicMock(side_effect=lambda x: x)
 
-        async def _fake_stream(_req: object) -> "AsyncIterator[str]":
+        async def _fake_stream(_req: object) -> AsyncIterator[str]:
             yield "hello"
             yield " world"
 

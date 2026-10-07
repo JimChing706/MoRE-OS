@@ -28,7 +28,6 @@ from more_core.a2a.bailongma_bridge import (
     BridgeStatus,
 )
 
-
 CHASSIS_ENDPOINT = "http://localhost:9988"
 
 
@@ -51,6 +50,7 @@ def _bridge_with_handler(handler):
             # verify against.  Use self._post_serialize helper via the same
             # call path.
             import uuid
+
             from more_core.a2a.bailongma_bridge import _a2a_serialize
 
             payload = {
@@ -107,7 +107,7 @@ class TestPing:
                     if 200 <= r.status_code < 300:
                         return BridgeStatus(True, latency, self._endpoint)
                     return BridgeStatus(False, latency, self._endpoint, f"HTTP {r.status_code}")
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     latency = (time.perf_counter() - t0) * 1000
                     return BridgeStatus(False, latency, self._endpoint, repr(exc))
 
@@ -138,7 +138,7 @@ class TestPing:
                     if 200 <= r.status_code < 300:
                         return BridgeStatus(True, latency, self._endpoint)
                     return BridgeStatus(False, latency, self._endpoint, f"HTTP {r.status_code}")
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     latency = (time.perf_counter() - t0) * 1000
                     return BridgeStatus(False, latency, self._endpoint, repr(exc))
 

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .interface import PluginContext, PluginMetadata
 
@@ -52,7 +52,7 @@ class PluginBase:
         self._registered_tools: set[str] = set()
 
     @property
-    def core(self) -> "MoRECore":
+    def core(self) -> MoRECore:
         assert self._ctx is not None, "plugin not activated"
         return self._ctx.core
 
@@ -83,7 +83,7 @@ class PluginBase:
             for name in list(self._registered_tools):
                 try:
                     self.core.tools.unregister(name)
-                except Exception:
+                except Exception:  # noqa: BLE001, S110
                     pass
             self._registered_tools.clear()
         self._ctx = None

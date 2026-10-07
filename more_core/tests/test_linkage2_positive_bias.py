@@ -22,7 +22,6 @@ from more_core.codegen.evolution_signal import (
     query_dynamic_k_with_delegation_bias,
 )
 
-
 TT = "code_generation"
 QF = "src/utils.py"
 

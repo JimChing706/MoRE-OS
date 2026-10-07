@@ -17,7 +17,6 @@ from more_core.channels.telegram_adapter import TelegramAdapter
 from more_core.channels.webhook_adapter import WebhookAdapter, WebhookMethod
 from more_core.channels.wechat_adapter import WeChatAdapter
 
-
 # ---------------------------------------------------------------------------
 # D-17：构造契约
 # ---------------------------------------------------------------------------

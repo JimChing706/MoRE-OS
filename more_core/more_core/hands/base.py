@@ -167,7 +167,7 @@ class Hand(ABC):
                 error=f"timeout after {self.manifest.timeout_s}s",
                 duration_ms=(time.perf_counter() - start) * 1000,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             self._errors.append(str(exc))
             return HandResult(
                 hand_id=self.manifest.id,
@@ -180,11 +180,9 @@ class Hand(ABC):
 
     async def on_activate(self) -> None:
         """Override to perform setup on activation."""
-        pass
 
     async def on_deactivate(self) -> None:
         """Override to perform cleanup on deactivation."""
-        pass
 
     @abstractmethod
     async def execute(self, context: dict[str, Any]) -> HandResult:

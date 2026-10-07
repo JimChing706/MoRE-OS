@@ -14,13 +14,13 @@ from .l4_cognition import CognitionLayer
 from .l5_metacognition import MetacognitionLayer
 
 __all__ = [
+    "CognitionLayer",
+    "EvolutionLayer",
+    "ExecutionLayer",
     "Layer",
     "LayerContext",
     "LayerResult",
-    "ExecutionLayer",
-    "OrchestrationLayer",
-    "EvolutionLayer",
-    "SymbolicLayer",
-    "CognitionLayer",
     "MetacognitionLayer",
+    "OrchestrationLayer",
+    "SymbolicLayer",
 ]

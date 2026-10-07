@@ -16,9 +16,9 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 from .deliverable import DeliverableContract, KillCriterion, KillSeverity
-from typing import Any
 
 
 class ConvergenceState(str, Enum):
@@ -172,7 +172,7 @@ class ConvergenceTracker:
         """计算输出与契约的完整性匹配度 (0-1)。"""
         if not self._contract.required_dimensions:
             return 0.5
-        complete, missing = self._contract.check_completeness(output)
+        _complete, missing = self._contract.check_completeness(output)
         total = self._contract.dimension_count()
         covered = total - len(
             [

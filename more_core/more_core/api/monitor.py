@@ -8,13 +8,13 @@ security, LLM providers, and deployments.
 from __future__ import annotations
 
 import time
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ..runtime.orchestrator import MoRECore
 
 
-def build_dashboard_snapshot(core: "MoRECore") -> dict[str, Any]:
+def build_dashboard_snapshot(core: MoRECore) -> dict[str, Any]:
     """Build a complete dashboard snapshot for real-time monitoring.
 
     This is the master endpoint for the monitoring dashboard.
@@ -36,7 +36,7 @@ def build_dashboard_snapshot(core: "MoRECore") -> dict[str, Any]:
     }
 
 
-def _system_section(core: "MoRECore") -> dict[str, Any]:
+def _system_section(core: MoRECore) -> dict[str, Any]:
     return {
         "status": "running",
         "uptime_s": time.time() - getattr(core, "_start_time", time.time()),
@@ -47,7 +47,7 @@ def _system_section(core: "MoRECore") -> dict[str, Any]:
     }
 
 
-def _hands_section(core: "MoRECore") -> dict[str, Any]:
+def _hands_section(core: MoRECore) -> dict[str, Any]:
     return {
         "registered": len(core.hand_registry.list_ids()),
         "active": len(core.hands.list_active()),
@@ -59,23 +59,23 @@ def _hands_section(core: "MoRECore") -> dict[str, Any]:
     }
 
 
-def _skills_section(core: "MoRECore") -> Any:
+def _skills_section(core: MoRECore) -> Any:
     return core.skill_manager.get_stats()
 
 
-def _workflows_section(core: "MoRECore") -> Any:
+def _workflows_section(core: MoRECore) -> Any:
     if hasattr(core, "workflows"):
         return core.workflows.stats()
     return {"total_workflows": 0, "total_runs": 0, "active_runs": 0}
 
 
-def _deployments_section(core: "MoRECore") -> Any:
+def _deployments_section(core: MoRECore) -> Any:
     if hasattr(core, "deployment_manager"):
         return core.deployment_manager.stats()
     return {"total": 0, "running": 0, "healthy": 0}
 
 
-def _schedules_section(core: "MoRECore") -> dict[str, Any]:
+def _schedules_section(core: MoRECore) -> dict[str, Any]:
     jobs = core.cron.list_jobs()
     return {
         "total_jobs": len(jobs),
@@ -93,7 +93,7 @@ def _schedules_section(core: "MoRECore") -> dict[str, Any]:
     }
 
 
-def _channels_section(core: "MoRECore") -> dict[str, Any]:
+def _channels_section(core: MoRECore) -> dict[str, Any]:
     return {
         "channels": core.channels.list_channels(),
         "running": core.channels.is_running(),
@@ -101,7 +101,7 @@ def _channels_section(core: "MoRECore") -> dict[str, Any]:
     }
 
 
-def _llm_section(core: "MoRECore") -> dict[str, Any]:
+def _llm_section(core: MoRECore) -> dict[str, Any]:
     aliases = getattr(core, "model_aliases", None)
     return {
         "providers": core.llm.list_providers(),
@@ -112,7 +112,7 @@ def _llm_section(core: "MoRECore") -> dict[str, Any]:
     }
 
 
-def _security_section(core: "MoRECore") -> dict[str, Any]:
+def _security_section(core: MoRECore) -> dict[str, Any]:
     return {
         "rbac": core.rbac.stats(),
         "taint_tracked": core.taint_tracker.stats(),
@@ -120,7 +120,7 @@ def _security_section(core: "MoRECore") -> dict[str, Any]:
     }
 
 
-def _sessions_section(core: "MoRECore") -> Any:
+def _sessions_section(core: MoRECore) -> Any:
     if hasattr(core, "session_manager"):
         return core.session_manager.stats()
     return {"total_sessions": 0, "active_sessions": 0}

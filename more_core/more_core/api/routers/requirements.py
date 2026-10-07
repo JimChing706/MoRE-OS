@@ -7,9 +7,9 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
-from ...runtime.orchestrator import MoRECore
-from ...requirements import requirements_to_tasks, parse_requirements
 from ...core.types import TaskRequest, TaskType
+from ...requirements import parse_requirements, requirements_to_tasks
+from ...runtime.orchestrator import MoRECore
 from .tasks import _task_store
 
 
@@ -48,7 +48,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                     for item in doc.items
                 ],
             }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"error": str(e), "status": "failed"}
 
     @router.post("/requirements/import", dependencies=[Depends(require_api_key)])
@@ -130,7 +130,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                 "total_requirements": len(tasks),
                 "tasks": results,
             }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"error": str(e), "status": "failed"}
 
     @router.get("/requirements/templates")
@@ -201,7 +201,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                     "info": len([i for i in issues if i["type"] == "info"]),
                 },
             }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"error": str(e), "status": "failed"}
 
     @router.get("/requirements/export/{doc_id}")
@@ -249,7 +249,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                 return {"status": "success", "format": "csv", "data": "\n".join(csv_lines)}
             else:
                 return {"error": "Unsupported format", "status": "failed"}
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"error": str(e), "status": "failed"}
 
     return router

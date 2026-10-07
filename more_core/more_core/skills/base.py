@@ -11,9 +11,10 @@ import logging
 import os
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 from .schema import check_params
 
@@ -96,17 +97,14 @@ class Skill(ABC):
     @abstractmethod
     def metadata(self) -> SkillMetadata:
         """返回技能元数据."""
-        pass
 
     @abstractmethod
     async def execute(self, params: dict[str, Any]) -> SkillResult:
         """执行技能."""
-        pass
 
     @abstractmethod
     async def validate(self, params: dict[str, Any]) -> tuple[bool, str]:
         """验证参数."""
-        pass
 
     async def start(self) -> None:
         """启动技能."""
@@ -296,7 +294,7 @@ class SkillManager:
             for hook in self._hooks["on_error"]:
                 try:
                     await hook(skill_id, params, out)
-                except Exception:  # pragma: no cover - 钩子失败不得影响结果
+                except Exception:  # pragma: no cover - 钩子失败不得影响结果  # noqa: BLE001
                     _log.warning("skill on_error hook failed for %s", skill_id, exc_info=True)
 
         self._record_telemetry(skill_id, skill, success, duration_ms, error)
@@ -333,7 +331,7 @@ class SkillManager:
                 duration_ms=duration_ms,
                 error=(error or "")[:400],
             )
-        except Exception:  # pragma: no cover - 遥测不得影响执行
+        except Exception:  # pragma: no cover - 遥测不得影响执行  # noqa: BLE001, S110
             pass
 
     def add_hook(self, event: str, handler: HookHandler) -> None:
@@ -346,7 +344,7 @@ class SkillManager:
         for sid, skill in self._skills.items():
             try:
                 await skill.start()
-            except Exception:  # pragma: no cover - 单个技能启动失败不得阻断全体
+            except Exception:  # pragma: no cover - 单个技能启动失败不得阻断全体  # noqa: BLE001
                 _log.warning("skill %s failed to start", sid, exc_info=True)
 
     async def stop_all(self) -> None:
@@ -354,7 +352,7 @@ class SkillManager:
         for sid, skill in self._skills.items():
             try:
                 await skill.stop()
-            except Exception:  # pragma: no cover
+            except Exception:  # pragma: no cover  # noqa: BLE001
                 _log.warning("skill %s failed to stop", sid, exc_info=True)
 
     def get_stats(self) -> dict[str, Any]:

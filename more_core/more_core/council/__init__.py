@@ -19,7 +19,7 @@ from .clarification import (
     build_clarification_prompt,
     parse_clarification_response,
 )
-from .cognitive_templates import CORE_TEMPLATES, COGNITIVE_STYLES, inject_template
+from .cognitive_templates import COGNITIVE_STYLES, CORE_TEMPLATES, inject_template
 from .confidence import ConfidenceBreakdown, compute_breakdown, compute_simple_breakdown
 from .consensus_map import ConsensusMap, build_consensus_map
 from .dispute_matrix import DisputeMatrix
@@ -29,9 +29,9 @@ from .self_check import SelfCheckReport, run_pipeline_self_check
 from .summary_extractor import summarize_outputs, summarize_role_output
 from .validators import (
     BASIC_GATE,
-    OutputGate,
     STANDARD_GATE,
     STRICT_GATE,
+    OutputGate,
     SchemaViolation,
     validate_json_output,
     validate_role_output,
@@ -39,28 +39,28 @@ from .validators import (
 
 __all__ = [
     "BASIC_GATE",
-    "build_clarification_prompt",
-    "build_consensus_map",
-    "ClarificationResult",
     "COGNITIVE_STYLES",
     "CORE_TEMPLATES",
+    "STANDARD_GATE",
+    "STRICT_GATE",
+    "ClarificationResult",
     "ConfidenceBreakdown",
-    "compute_breakdown",
-    "compute_simple_breakdown",
     "ConsensusMap",
     "CouncilOrchestrator",
     "CouncilResult",
     "DisputeMatrix",
     "InMemoryCharterProvider",
-    "inject_template",
     "OutputGate",
-    "parse_clarification_response",
     "RoleCharterProvider",
-    "run_pipeline_self_check",
     "SchemaViolation",
     "SelfCheckReport",
-    "STANDARD_GATE",
-    "STRICT_GATE",
+    "build_clarification_prompt",
+    "build_consensus_map",
+    "compute_breakdown",
+    "compute_simple_breakdown",
+    "inject_template",
+    "parse_clarification_response",
+    "run_pipeline_self_check",
     "summarize_outputs",
     "summarize_role_output",
     "validate_json_output",

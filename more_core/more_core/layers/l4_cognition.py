@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import logging
 import re
-
 from typing import Any
 
 from ..core.types import LayerId, TaskType
@@ -177,7 +176,7 @@ class CognitionLayer(Layer):
         # Bridge L4 decomposition → PlanCoordinator for rigorous execution tracking.
         # When the task was decomposed by LLM, feed subtasks directly into the
         # PlanCoordinator so L5 monitoring and budget tracking apply automatically.
-        if plan.get("decomposed") and len(plan.get("subtasks", [])) > 1:
+        if plan.get("decomposed") and len(plan.get("subtasks", [])) > 1:  # noqa: SIM102 - 保留嵌套以承载逐条件注释
             if hasattr(ctx.core, "planner") and ctx.core.planner is not None:
                 exec_plan = ctx.core.planner.create_plan(
                     goal=ctx.request.query,
@@ -238,7 +237,7 @@ class CognitionLayer(Layer):
                     "decomposition_method": "llm",
                 }
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             _log.warning("L4 LLM decomposition failed for task %s: %s", ctx.request.id, exc)
 
         return {
@@ -289,7 +288,7 @@ class CognitionLayer(Layer):
                     subtasks = [ctx.core.output_filter.filter(st) for st in subtasks]
                 return plan
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             _log.warning(
                 "Council deliberation failed for task %s: %s",
                 ctx.request.id,

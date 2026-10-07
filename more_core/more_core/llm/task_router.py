@@ -17,9 +17,9 @@ from ..core.types import TaskType
 from .manager import ProviderModelPair as ModelBinding
 
 __all__: list[str] = [
-    "ModelBinding",
-    "TASK_MODEL_MAP",
     "FALLBACK_BINDING",
+    "TASK_MODEL_MAP",
+    "ModelBinding",
     "TaskModelRouter",
 ]
 
@@ -98,7 +98,7 @@ def _parse_prev_tier_config(
     for i, (def_provider, def_model) in enumerate(_TIER_DEFAULTS):
         prev_raw = env.get(f"MORE_PREV_TIER_{i}_MODEL")
         cur_raw = env.get(f"MORE_TIER_{i}_MODEL")
-        raw = prev_raw if prev_raw else cur_raw
+        raw = prev_raw or cur_raw
         if not raw:
             providers.append(def_provider)
             models.append(def_model)
@@ -303,7 +303,7 @@ FALLBACK_CHAINS: dict[str, list[ModelBinding]] = {
 class TaskModelRouter:
     """Routes task types to specialized models with intelligent fallback."""
 
-    def __init__(self, llm_manager: "LLMManager") -> None:
+    def __init__(self, llm_manager: LLMManager) -> None:
         self._llm = llm_manager
         self._task_map = dict(TASK_MODEL_MAP)
         self._logger = logging.getLogger(__name__)

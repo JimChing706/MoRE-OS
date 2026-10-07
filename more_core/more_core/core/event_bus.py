@@ -12,8 +12,9 @@ import asyncio
 import logging
 import time
 from collections import defaultdict
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 _log = logging.getLogger(__name__)
 
@@ -92,5 +93,5 @@ class EventBus:
     async def _safe_call(handler: Handler, event: Event) -> None:
         try:
             await handler(event)
-        except Exception:
+        except Exception:  # noqa: BLE001
             _log.warning("event handler for topic=%s failed", event.topic, exc_info=True)

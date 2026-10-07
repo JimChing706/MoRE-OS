@@ -17,7 +17,7 @@ if TYPE_CHECKING:  # pragma: no cover
 class LayerContext:
     """Shared per-task state that layers mutate."""
 
-    core: "MoRECore"
+    core: MoRECore
     request: TaskRequest
     user_id: str = "anonymous"
     accumulated_steps: list[ReasoningStep] = field(default_factory=list)

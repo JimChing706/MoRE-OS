@@ -24,7 +24,6 @@ from more_core.core.deliverable import (
     check_deliverable_contract,
 )
 
-
 # ---------------------------------------------------------------------------
 # 1–4: 4 built-in kill switches
 # ---------------------------------------------------------------------------
@@ -84,10 +83,10 @@ class TestHandlerIntegration:
         from more_core.core.config import Settings
         from more_core.core.types import (
             LayerId,
-            TaskStatus,
-            TaskResult,
             PerformanceMetrics,
             TaskRequest,
+            TaskResult,
+            TaskStatus,
             TaskType,
         )
         from more_core.runtime.orchestrator import MoRECore
@@ -121,7 +120,7 @@ class TestHandlerIntegration:
 
         # Install the default handler (same one the orchestrator uses for
         # A2AServer in core.start()) but drive it directly here.
-        from more_core.a2a.client import A2ATask, A2ATaskState, A2AMessage
+        from more_core.a2a.client import A2AMessage, A2ATask, A2ATaskState
 
         _ = A2ATask, A2AMessage, A2ATaskState, TaskRequest, TaskType  # keep linters happy
 
@@ -188,7 +187,7 @@ class TestHandlerIntegration:
                                 qg = req.context.get("contract_quality_gates")
                                 if isinstance(qg, dict) and qg:
                                     contract.quality_gates.update(qg)
-                    except Exception:
+                    except Exception:  # noqa: BLE001
                         contract = DeliverableContract()
                     try:
                         elapsed = getattr(result, "elapsed_s", None)
@@ -245,9 +244,9 @@ class TestHandlerIntegration:
                             if not isinstance(task.metadata, dict):
                                 task.metadata = {}
                             task.metadata["deliverable_check"] = check_res.to_metadata()
-                        except Exception:
+                        except Exception:  # noqa: BLE001, S110
                             pass
-                    except Exception:
+                    except Exception:  # noqa: BLE001
                         final_state = (
                             A2ATaskState.COMPLETED
                             if result.status == TaskStatus.SUCCESS
@@ -267,7 +266,7 @@ class TestHandlerIntegration:
                             metadata={"task_status": result.status.value},
                         )
                     )
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     task.state = A2ATaskState.FAILED
                     task.messages.append(
                         _A2AMsg(
@@ -315,6 +314,7 @@ class TestHandlerIntegration:
 
     @pytest.mark.anyio
     async def test_06_handler_passes_contract_through_when_safe(self):
+        from more_core.a2a.client import A2AMessage, A2ATask, A2ATaskState
         from more_core.core.config import Settings
         from more_core.core.types import (
             LayerId,
@@ -325,7 +325,6 @@ class TestHandlerIntegration:
             TaskType,
         )
         from more_core.runtime.orchestrator import MoRECore
-        from more_core.a2a.client import A2ATask, A2ATaskState, A2AMessage
 
         settings = Settings(
             providers=[],
@@ -375,11 +374,11 @@ class TestHandlerIntegration:
             task.state = A2ATaskState.WORKING
 
             async def _runner():
+                from more_core.a2a.client import A2AMessage as _M
                 from more_core.core.deliverable import (
                     DeliverableContract,
                     check_deliverable_contract,
                 )
-                from more_core.a2a.client import A2AMessage as _M
 
                 result = await core.execute(req)
                 try:
@@ -388,7 +387,7 @@ class TestHandlerIntegration:
                         qg = req.context.get("contract_quality_gates")
                         if isinstance(qg, dict):
                             contract.quality_gates.update(qg)
-                except Exception:
+                except Exception:  # noqa: BLE001
                     contract = DeliverableContract()
                 try:
                     _steps = int(
@@ -425,9 +424,9 @@ class TestHandlerIntegration:
                         if not isinstance(task.metadata, dict):
                             task.metadata = {}
                         task.metadata["deliverable_check"] = check_res.to_metadata()
-                    except Exception:
+                    except Exception:  # noqa: BLE001, S110
                         pass
-                except Exception:
+                except Exception:  # noqa: BLE001
                     final_state = (
                         A2ATaskState.COMPLETED
                         if result.status == TaskStatus.SUCCESS
@@ -472,10 +471,10 @@ class TestHandlerIntegration:
         """If execute() itself raised, contract runner must not also inject a
         fake "contract violation" that obscures the original failure.
         """
+        from more_core.a2a.client import A2AMessage, A2ATask, A2ATaskState
         from more_core.core.config import Settings
         from more_core.core.types import TaskRequest, TaskType
         from more_core.runtime.orchestrator import MoRECore
-        from more_core.a2a.client import A2ATask, A2ATaskState, A2AMessage
 
         settings = Settings(providers=[], fallback_chain=[])
         core = MoRECore(settings)
@@ -502,7 +501,7 @@ class TestHandlerIntegration:
             async def _runner():
                 try:
                     await core.execute(req)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     # Handler exception path: no deliverable contract check
                     # → no deliverable_check metadata should appear.  This is
                     # exactly what we test for.

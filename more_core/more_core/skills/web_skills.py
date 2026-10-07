@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import json
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 import httpx
 
-from .base import Skill, SkillMetadata, SkillResult, SkillCategory
+from .base import Skill, SkillCategory, SkillMetadata, SkillResult
 
 
 class WebSearchSkill(Skill):
     """网页搜索技能 - 支持多种搜索API."""
 
-    DEFAULT_PROVIDERS = ["duckduckgo", "serpapi", "brave"]
+    DEFAULT_PROVIDERS: ClassVar[list[str]] = ["duckduckgo", "serpapi", "brave"]
 
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config)
@@ -92,7 +92,7 @@ class WebSearchSkill(Skill):
                     "query": query,
                 },
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return SkillResult(success=False, error=str(e))
 
     def _serpapi_key(self) -> str:
@@ -252,7 +252,7 @@ class WebBrowseSkill(Skill):
                     output={"url": url, "content": content, "status": r.status_code},
                     metadata={"extract_type": extract_type},
                 )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return SkillResult(success=False, error=str(e))
 
     def _extract_text(self, html: str) -> str:

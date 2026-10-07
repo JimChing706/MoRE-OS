@@ -2,9 +2,9 @@
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
+from typing import Any
 
 
 class Priority(Enum):
@@ -36,8 +36,8 @@ class RequirementItem:
     labels: list[str] = field(default_factory=list)
     status: str = "pending"
     assignee: str = ""
-    parent_id: Optional[str] = None
-    story_points: Optional[int] = None
+    parent_id: str | None = None
+    story_points: int | None = None
 
 
 @dataclass
@@ -80,9 +80,9 @@ class RequirementsParser:
         """Parse markdown content into RequirementsDocument."""
         lines = markdown_content.split("\n")
         doc = RequirementsDocument()
-        doc.created_at = datetime.now().isoformat()
+        doc.created_at = datetime.now(timezone.utc).isoformat()
 
-        current_item: Optional[RequirementItem] = None
+        current_item: RequirementItem | None = None
         in_acceptance_criteria = False
         in_dependencies = False
 
@@ -99,12 +99,6 @@ class RequirementsParser:
                 doc.title = line[2:].strip()
             elif line.startswith("## "):
                 section = line[3:].strip().lower()
-                if "描述" in section or "description" in section:
-                    pass
-                elif "元数据" in section or "metadata" in section:
-                    pass
-                elif "项目" in section or "project" in section:
-                    pass
             elif line.startswith("**") and "**" in line[2:]:
                 key_value = line.replace("**", "").split(":")
                 if len(key_value) == 2:
@@ -180,16 +174,12 @@ class RequirementsParser:
                         in_acceptance_criteria = False
                         in_dependencies = False
 
-                elif in_acceptance_criteria and (
-                    line.startswith("-") or line.startswith("*") or line.startswith("+")
-                ):
+                elif in_acceptance_criteria and (line.startswith(("-", "*", "+"))):
                     criteria = line.lstrip("-*+ ").strip()
                     if criteria and not criteria.startswith("["):
                         current_item.acceptance_criteria.append(criteria)
 
-                elif in_dependencies and (
-                    line.startswith("-") or line.startswith("*") or line.startswith("+")
-                ):
+                elif in_dependencies and (line.startswith(("-", "*", "+"))):
                     dep = line.lstrip("-*+ ").strip()
                     if dep:
                         current_item.dependencies.append(dep)

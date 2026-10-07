@@ -24,7 +24,6 @@ from more_core.core.types import LayerId, TaskRequest, TaskStatus
 from more_core.layers.base import LayerResult
 from more_core.router.layer_router import RoutingDecision
 
-
 # ---------------------------------------------------------------------------
 # Helpers — mini bootstrap from test_orchestrator.py
 # ---------------------------------------------------------------------------

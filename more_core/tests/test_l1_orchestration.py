@@ -233,9 +233,9 @@ class TestExpertP0PermanentGuardrails:
 
         另外必须继承 LLMError，I-12 才能 fallback 下一 tier。
         """
-        from more_core.core.errors import ThinkingBudgetExhaustedError, LLMError
+        from more_core.core.errors import LLMError, ThinkingBudgetExhaustedError
         from more_core.llm.manager import LLMManager
-        from more_core.llm.provider import LLMResponse, LLMRequest
+        from more_core.llm.provider import LLMRequest, LLMResponse
 
         # 用子类化而非真 HTTP 调用，避免网络
         mgr = LLMManager.__new__(LLMManager)
@@ -273,10 +273,11 @@ class TestExpertP0PermanentGuardrails:
         （而不是直接 raise 给 caller）。
         """
         import asyncio
-        from more_core.core.errors import ThinkingBudgetExhaustedError, LLMError
-        from more_core.llm.manager import LLMManager
-        from more_core.llm.provider import LLMResponse, LLMRequest
+
+        from more_core.core.errors import LLMError, ThinkingBudgetExhaustedError
         from more_core.core.types import TaskType
+        from more_core.llm.manager import LLMManager
+        from more_core.llm.provider import LLMRequest, LLMResponse
 
         # 安全：R2 必须是 LLMError 子类，否则 fallback 不触发
         assert issubclass(ThinkingBudgetExhaustedError, LLMError)
@@ -389,8 +390,8 @@ class TestExpertP0PermanentGuardrails:
 
         真实切换：只有第一次 T1→T0，之后在冷却窗口内的所有反向尝试都会被挡住。
         """
-        from more_core.llm.dynamic_router import DynamicModelRouter
         from more_core.core.types import TaskType
+        from more_core.llm.dynamic_router import DynamicModelRouter
 
         class _FakeLLM:
             def list_providers(self):

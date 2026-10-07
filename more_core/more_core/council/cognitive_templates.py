@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 CORE_TEMPLATES: dict[str, str] = {
     "analyst": """【思维模板 — 系统分析师·结构化分解】
 步骤1: 边界定义

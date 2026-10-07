@@ -10,9 +10,9 @@ from more_core.council.validators import (
     STRICT_GATE,
     OutputGate,
     SchemaViolation,
+    _strip_extra_fields,
     validate_json_output,
     validate_role_output,
-    _strip_extra_fields,
 )
 
 _GOOD_ROLE = {

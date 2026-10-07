@@ -2,15 +2,15 @@
 
 import pytest
 
+from more_core.core.types import TaskRequest
 from more_core.evolution.archive import EvolutionArchive, EvolvedAgent
 from more_core.evolution.benchmark import (
+    DEFAULT_SUITE,
     BenchmarkCase,
     BenchmarkRunner,
-    DEFAULT_SUITE,
     SimpleBenchmark,
 )
 from more_core.evolution.dgm import DGMEngine
-from more_core.core.types import TaskRequest
 
 
 @pytest.fixture

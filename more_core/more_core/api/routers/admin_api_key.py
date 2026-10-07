@@ -24,18 +24,19 @@ Notes
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from ..auth import require_scope
 from ...security.api_key_ops import (
     inject_api_key_into_env,
     validate_api_key_report,
     verify_rotation_proof,
 )
+from ..auth import require_scope
 
 ADMIN_SCOPE = "admin:apikeys"
 

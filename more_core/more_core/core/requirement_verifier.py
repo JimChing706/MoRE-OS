@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-__all__ = ["RequirementVerdict", "verify_requirement", "extract_checkpoints"]
+__all__ = ["RequirementVerdict", "extract_checkpoints", "verify_requirement"]
 
 # 太泛、不构成证据的词
 _STOP = {

@@ -19,10 +19,10 @@ from typing import Any
 
 import sympy
 from sympy.parsing.sympy_parser import (
+    convert_xor,
+    implicit_multiplication_application,
     parse_expr,
     standard_transformations,
-    implicit_multiplication_application,
-    convert_xor,
 )
 
 _log = logging.getLogger(__name__)
@@ -57,7 +57,7 @@ class SymbolicEngine:
                 result=str(simplified),
                 steps=[f"original: {expression}", f"simplified: {simplified}"],
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return SymbolicResult(success=False, error=str(exc))
 
     def evaluate(
@@ -69,7 +69,7 @@ class SymbolicEngine:
                 expr = expr.subs(substitutions)
             result = expr.evalf()
             return SymbolicResult(success=True, result=float(result))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return SymbolicResult(success=False, error=str(exc))
 
     def solve_equation(self, equation: str, variable: str = "x") -> SymbolicResult:
@@ -82,7 +82,7 @@ class SymbolicEngine:
                 result=[str(s) for s in solutions],
                 steps=[f"equation: {equation} = 0", f"solutions: {solutions}"],
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return SymbolicResult(success=False, error=str(exc))
 
     def solve_system(self, equations: list[str], variables: list[str]) -> SymbolicResult:
@@ -95,7 +95,7 @@ class SymbolicEngine:
                 result=[{str(k): str(v) for k, v in sol.items()} for sol in solutions],
                 steps=[f"system: {equations}", f"variables: {variables}"],
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return SymbolicResult(success=False, error=str(exc))
 
     def limit(self, expression: str, variable: str, point: str) -> SymbolicResult:
@@ -115,7 +115,7 @@ class SymbolicEngine:
                 result=str(result),
                 steps=[f"limit of {expression} as {variable}→{point}", f"= {result}"],
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return SymbolicResult(success=False, error=str(exc))
 
     def differentiate(self, expression: str, variable: str, order: int = 1) -> SymbolicResult:
@@ -128,7 +128,7 @@ class SymbolicEngine:
                 result=str(deriv),
                 steps=[f"d^{order}/{variable}^{order} of {expression}", f"= {deriv}"],
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return SymbolicResult(success=False, error=str(exc))
 
     def integrate(
@@ -151,7 +151,7 @@ class SymbolicEngine:
                     f"= {result}",
                 ],
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return SymbolicResult(success=False, error=str(exc))
 
     def expand(self, expression: str) -> SymbolicResult:
@@ -159,7 +159,7 @@ class SymbolicEngine:
             expr = parse_expr(expression, transformations=_TRANSFORMATIONS)
             expanded = sympy.expand(expr)
             return SymbolicResult(success=True, result=str(expanded))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return SymbolicResult(success=False, error=str(exc))
 
     def factor(self, expression: str) -> SymbolicResult:
@@ -167,7 +167,7 @@ class SymbolicEngine:
             expr = parse_expr(expression, transformations=_TRANSFORMATIONS)
             factored = sympy.factor(expr)
             return SymbolicResult(success=True, result=str(factored))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return SymbolicResult(success=False, error=str(exc))
 
     # -- Text-based intent dispatch --------------------------------------------

@@ -32,6 +32,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from ..codegen.controller import adjudicate_codegen
 from ..codegen.evolution_signal import CodegenRunContext, _fingerprint
@@ -40,7 +41,6 @@ from ..core.unicode_utils import detect_language, is_predominantly_cjk
 from ..llm.provider import LLMRequest
 from ..tools.registry import ToolResult
 from .base import Layer, LayerContext, LayerResult
-from typing import Any
 
 _log = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ def _optional_record_injection() -> Any:
         from ..governance.observability import record_injection
 
         return record_injection
-    except Exception:  # pragma: no cover - defensive
+    except Exception:  # pragma: no cover - defensive  # noqa: BLE001
         return None
 
 
@@ -109,8 +109,10 @@ _QUESTION_INDICATORS: list[tuple[str, str]] = [
     ("any", r"\?\s*$"),
     (
         "any",
-        r"(?i)(?:would you like|should i|do you want|which approach|"
-        r"what framework|how would you like|prefer|let me know)",
+        (
+            r"(?i)(?:would you like|should i|do you want|which approach|"
+            r"what framework|how would you like|prefer|let me know)"
+        ),
     ),
     ("zh", r"(?:你希望|你想要|你更喜欢|哪种方式|应该怎么|需要我)"),
     ("ja", r"(?:どちら|どうしますか|いかが)"),
@@ -248,7 +250,7 @@ class ExecutionLayer(Layer):
                     query_fingerprint=_fingerprint(req.query or "")[:12],
                     project_root=project_root,
                 )
-            except Exception:  # pragma: no cover - never break mainline
+            except Exception:  # pragma: no cover - never break mainline  # noqa: BLE001
                 codegen_run_ctx = None
 
         # ── Step-4 fusion (Signal ⇄ Delegation) gate ─────────────────
@@ -268,7 +270,7 @@ class ExecutionLayer(Layer):
                 advice = ExecutionLayer._evolution_delegation_advice(
                     ctx, req, codegen_run_ctx=codegen_run_ctx
                 )
-            except Exception:  # pragma: no cover - defensive
+            except Exception:  # pragma: no cover - defensive  # noqa: BLE001
                 advice = _DelegationAdvice()
             # Stash advice in scratch for post-hoc export / audit log.
             try:
@@ -276,7 +278,7 @@ class ExecutionLayer(Layer):
                     ctx.scratch["_l0_delegation_advice"] = (
                         f"[{advice.trigger}] recommend={advice.recommend} k={advice.candidate_k} — {advice.rationale}"
                     )
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
             # (1) Evolution-accelerated path
             if advice.recommend:
@@ -287,7 +289,7 @@ class ExecutionLayer(Layer):
                         codegen_run_ctx=codegen_run_ctx,
                         trigger=advice.trigger,
                     )
-                except Exception:  # pragma: no cover
+                except Exception:  # pragma: no cover  # noqa: BLE001
                     delegated = None
                 if delegated is not None:
                     return delegated
@@ -298,7 +300,7 @@ class ExecutionLayer(Layer):
                         getattr(ctx.core, "settings", None), "bailongma_enable_delegation", False
                     )
                 )
-            except Exception:
+            except Exception:  # noqa: BLE001
                 default_enabled = False
             if default_enabled and not advice.recommend:
                 try:
@@ -308,7 +310,7 @@ class ExecutionLayer(Layer):
                         codegen_run_ctx=codegen_run_ctx,
                         trigger="default_gate",
                     )
-                except Exception:  # pragma: no cover - defensive
+                except Exception:  # pragma: no cover - defensive  # noqa: BLE001
                     delegated = None
                 if delegated is not None:
                     return delegated
@@ -674,9 +676,8 @@ class ExecutionLayer(Layer):
         lang = detect_language(text)
         lower = text.lower()
         for lang_filter, pattern in _QUESTION_INDICATORS:
-            if lang_filter in ("any", lang):
-                if re.search(pattern, lower):
-                    return True
+            if lang_filter in ("any", lang) and re.search(pattern, lower):
+                return True
 
         return False
 
@@ -771,7 +772,7 @@ class ExecutionLayer(Layer):
                 try:
                     resp = await llm.generate_with_fallback_chain(gen_req, pairs)
                     return resp.prompt_tokens, resp.completion_tokens, resp.content
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     _log.warning(
                         "LLM tiered chain failed for task %s, trying single provider: %s",
                         ctx.request.id,
@@ -1125,7 +1126,7 @@ class ExecutionLayer(Layer):
         project_root = None
         try:
             project_root = getattr(getattr(ctx.core, "settings", None), "project_root", None)
-        except Exception:
+        except Exception:  # noqa: BLE001
             project_root = None
         for round_idx in range(1, _MAX_CODE_FIX_ROUNDS + 1):
             fix_req = LLMRequest(
@@ -1179,7 +1180,7 @@ class ExecutionLayer(Layer):
                         round=round_idx,
                         error=(sbx_result.error or "")[:300],
                     )
-                except Exception:
+                except Exception:  # noqa: BLE001, S110
                     pass
                 break
 
@@ -1214,13 +1215,13 @@ class ExecutionLayer(Layer):
         """
         try:
             settings = getattr(ctx.core, "settings", None)
-        except Exception:
+        except Exception:  # noqa: BLE001
             settings = None
 
         def _s(name: str, default: Any = None) -> Any:
             try:
                 return getattr(settings, name, default)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 return default
 
         # (1) Explicit per-request user override
@@ -1245,7 +1246,7 @@ class ExecutionLayer(Layer):
                         rationale="per-request context.prefer_delegation=False",
                         candidate_k=0,
                     )
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
 
         # (2) User explicitly turned k off locally → save tokens, don't push
@@ -1258,7 +1259,7 @@ class ExecutionLayer(Layer):
                     rationale="explicit context.candidates<=1: local single-gen only",
                     candidate_k=1,
                 )
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
         cfg_k = _s("codegen_candidates", None)
         if isinstance(cfg_k, int) and 0 < cfg_k <= 1:
@@ -1284,7 +1285,7 @@ class ExecutionLayer(Layer):
         # (4) Dynamic-k via evolution signal
         try:
             from ..codegen.evolution_signal import query_dynamic_k
-        except Exception:  # pragma: no cover
+        except Exception:  # pragma: no cover  # noqa: BLE001
             return _DelegationAdvice(
                 recommend=False,
                 trigger="default_gate",
@@ -1301,7 +1302,7 @@ class ExecutionLayer(Layer):
                 query_fp=query_fp,
                 project_root=project_root,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             dyn_k, rationale = 0, ""
         if dyn_k > 1:
             # Evolution escalated: prefer chassis to burning local k×tokens.
@@ -1355,13 +1356,13 @@ class ExecutionLayer(Layer):
         try:
             from ..a2a.bailongma_bridge import BaiLongmaBridge
             from ..a2a.client import A2ATaskState
-        except Exception:
+        except Exception:  # noqa: BLE001
             return None
         try:
             settings = getattr(ctx.core, "settings", None)
             enabled = bool(getattr(settings, "bailongma_enable_delegation", False))
             endpoint = str(getattr(settings, "bailongma_endpoint", "") or "")
-        except Exception:
+        except Exception:  # noqa: BLE001
             return None
         if not enabled or not endpoint:
             return None
@@ -1375,7 +1376,7 @@ class ExecutionLayer(Layer):
             try:
                 ctx.scratch["_chassis_delegated"] = True
                 ctx.scratch["_chassis_delegation_trigger"] = trigger
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
             # Submit
             task_type = str(req.type) if req.type is not None else ""
@@ -1396,7 +1397,7 @@ class ExecutionLayer(Layer):
                     ctx.scratch["_chassis_delegation_state"] = (
                         submitted.state.value if submitted is not None else "submit_failed"
                     )
-                except Exception:
+                except Exception:  # noqa: BLE001, S110
                     pass
                 return None
             # Poll loop.
@@ -1413,7 +1414,7 @@ class ExecutionLayer(Layer):
                     try:
                         ctx.scratch["_chassis_delegation_state"] = "timeout"
                         ctx.scratch["_chassis_delegated"] = False
-                    except Exception:
+                    except Exception:  # noqa: BLE001, S110
                         pass
                     return None
                 if last_state in (
@@ -1444,9 +1445,9 @@ class ExecutionLayer(Layer):
             # so adjudicate → evolution export sees the real value).
             try:
                 ctx.scratch["_chassis_delegation_state"] = last_state.value
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
-            if last_state != A2ATaskState.COMPLETED:
+            if last_state != A2ATaskState.COMPLETED:  # noqa: SIM102 - 保留嵌套以承载逐条件注释
                 # Task finished but failed/canceled: present chassis error as
                 # a sandbox-failure-like output and let local adjudication
                 # mark it "escalated" / partial-ok.
@@ -1485,9 +1486,9 @@ class ExecutionLayer(Layer):
                         run_ctx=codegen_run_ctx,
                     )
                     ctx.scratch["codegen_verdict"] = _v.to_dict()
-                except Exception:  # pragma: no cover - defensive
+                except Exception:  # pragma: no cover - defensive  # noqa: BLE001, S110
                     pass
-            except Exception:  # pragma: no cover - defensive
+            except Exception:  # pragma: no cover - defensive  # noqa: BLE001, S110
                 pass
             return LayerResult(
                 layer=LayerId.L0,
@@ -1497,7 +1498,7 @@ class ExecutionLayer(Layer):
                 input_tokens=0,
                 output_tokens=0,
             )
-        except Exception:  # pragma: no cover - defensive
+        except Exception:  # pragma: no cover - defensive  # noqa: BLE001
             return None
 
     @staticmethod
@@ -1516,8 +1517,7 @@ class ExecutionLayer(Layer):
         Any explicit value of 1 (or 0 / <1) disables best-of and skips the
         dynamic-k escalator so user intent to save tokens is honoured.
         """
-        from ..codegen.evolution_signal import query_dynamic_k
-        from ..codegen.evolution_signal import _fingerprint
+        from ..codegen.evolution_signal import _fingerprint, query_dynamic_k
 
         # (1) explicit per-request override wins with no dynamic-k.
         try:
@@ -1534,7 +1534,7 @@ class ExecutionLayer(Layer):
         project_root: str | None = None
         try:
             project_root = getattr(getattr(ctx.core, "settings", None), "project_root", None)
-        except Exception:
+        except Exception:  # noqa: BLE001
             project_root = None
 
         # (3) settings config — explicit <=1 → skip dynamic-k.
@@ -1546,7 +1546,7 @@ class ExecutionLayer(Layer):
                 if cfg_k <= 1:
                     return 1
                 settings_k = cfg_k
-        except Exception:
+        except Exception:  # noqa: BLE001
             settings_k = None
 
         # (2) dynamic-k escalation: compute over task_type + query_fp, but
@@ -1562,7 +1562,7 @@ class ExecutionLayer(Layer):
             )
             q = getattr(ctx.request, "query", "") or ""
             query_fp = _fingerprint(q)[:12]
-        except Exception:
+        except Exception:  # noqa: BLE001
             task_type = ""
             query_fp = ""
         dyn_k, rationale = query_dynamic_k(
@@ -1574,7 +1574,7 @@ class ExecutionLayer(Layer):
         try:
             if rationale:
                 ctx.scratch["_l0_dynamic_k_rationale"] = rationale
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
         # ── Step-4 P0: record dynamic_k injection decision ──────────
         record_injection = _optional_record_injection()
@@ -1582,7 +1582,7 @@ class ExecutionLayer(Layer):
             req_id = ""
             try:
                 req_id = getattr(ctx.request, "id", "") or ""
-            except Exception:
+            except Exception:  # noqa: BLE001
                 req_id = ""
             record_injection(
                 origin="dynamic_k",
@@ -1619,7 +1619,7 @@ class ExecutionLayer(Layer):
             settings = getattr(ctx.core, "settings", None)
             value = getattr(settings, "codegen_review", True)
             return value if isinstance(value, bool) else True
-        except Exception:
+        except Exception:  # noqa: BLE001
             return True
 
     async def _gate_review(
@@ -1645,7 +1645,7 @@ class ExecutionLayer(Layer):
             return sbx, 0, 0
         try:
             from ..codegen.review import REVIEW_SYSTEM, run_code_review
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:  # pragma: no cover - defensive  # noqa: BLE001
             _log.debug("code review unavailable: %s", exc)
             return sbx, 0, 0
 
@@ -1901,7 +1901,7 @@ class ExecutionLayer(Layer):
             from ..codegen.context import build_repo_context
 
             return build_repo_context(root)
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:  # pragma: no cover - defensive  # noqa: BLE001
             _log.debug("repo context unavailable: %s", exc)
             return ""
 
@@ -1924,7 +1924,7 @@ class ExecutionLayer(Layer):
             #   **完整语句** `assert x == 1`，于是被二次包裹成
             #   `assert (assert x == 1)` —— 语法非法，沙箱直接判 code_error。
             #   现在：已是完整 assert 语句就原样使用；表达式才包裹。
-            if expr.startswith("assert ") or expr.startswith("assert("):
+            if expr.startswith(("assert ", "assert(")):
                 parts.append(expr)
             else:
                 parts.append(f"assert ({expr}), {expr!r}")
@@ -1992,7 +1992,7 @@ class ExecutionLayer(Layer):
                 success=sbx.success,
                 error=(sbx.error or "")[:300],
             )
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
 
     # ── Annotation guidance ────────────────────────────────────────────────

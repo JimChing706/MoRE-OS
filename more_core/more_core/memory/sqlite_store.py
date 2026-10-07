@@ -11,10 +11,11 @@ Usage::
 
 from __future__ import annotations
 
+import builtins
 import json
 import sqlite3
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 from .store import MemoryEntry, MemoryKind, MemoryStore
 
@@ -69,7 +70,7 @@ class SQLiteMemoryStore(MemoryStore):
 
     def search(
         self, query: str, kind: MemoryKind | None = None, top_k: int = 5, *, task_id: str = ""
-    ) -> List[MemoryEntry]:
+    ) -> builtins.list[MemoryEntry]:
         import unicodedata
 
         q = unicodedata.normalize("NFKC", query).casefold()

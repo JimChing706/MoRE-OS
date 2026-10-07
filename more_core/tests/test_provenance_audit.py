@@ -22,11 +22,10 @@ from pathlib import Path
 import pytest
 
 from more_core.core.guardrails.provenance_audit import (
-    ProvenanceLayer,
     VALID_CHANNELS,
+    ProvenanceLayer,
     get_default_layer,
 )
-
 
 # =====================================================================
 # Fixtures
@@ -44,11 +43,12 @@ def layer(tmp_path: Path) -> ProvenanceLayer:
 def client_with_provenance(tmp_path: Path):
     """FastAPI TestClient with a MoRECore instance."""
     pytest.importorskip("fastapi")
+    from conftest import _FakeLLMProvider
     from fastapi.testclient import TestClient
+
     from more_core.api.server import create_app
     from more_core.core.config import Settings
     from more_core.runtime.orchestrator import MoRECore
-    from conftest import _FakeLLMProvider
 
     settings = Settings(
         providers=[],
@@ -72,7 +72,7 @@ def client_with_provenance(tmp_path: Path):
 
 class TestValidChannels:
     def test_valid_channels_contains_four_expected(self):
-        for c in {"pending", "native_planner_loop", "external_tool_chain", "unknown"}:
+        for c in ("pending", "native_planner_loop", "external_tool_chain", "unknown"):
             assert c in VALID_CHANNELS
 
     def test_valid_channels_size_is_four(self):
@@ -263,8 +263,8 @@ class TestDefaultLayerSingleton:
 class TestAuditEndpoint:
     @staticmethod
     def _wire_task_store(tmp_path: Path):
-        from more_core.persistence.task_store import SQLiteTaskStore
         import more_core.api.routers.tasks as _tr
+        from more_core.persistence.task_store import SQLiteTaskStore
 
         old = _tr._task_store
         dbp = tmp_path / "api_tasks.db"
@@ -295,7 +295,7 @@ class TestAuditEndpoint:
         self, client_with_provenance, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ):
         monkeypatch.setenv("MORE_API_KEY", "test-key-123")
-        core, client = client_with_provenance
+        _core, client = client_with_provenance
         old_store, task_store = self._wire_task_store(tmp_path)
         from datetime import datetime, timezone
 
@@ -312,8 +312,8 @@ class TestAuditEndpoint:
                 "created_at": datetime.now(timezone.utc).isoformat(),
             },
         )
-        from more_core.core.guardrails.provenance_audit import ProvenanceLayer
         import more_core.core.guardrails.provenance_audit as _pa
+        from more_core.core.guardrails.provenance_audit import ProvenanceLayer
 
         db = tmp_path / "prov-endpoint.db"
         layer = ProvenanceLayer(db)
@@ -347,7 +347,7 @@ class TestAuditEndpoint:
         self, client_with_provenance, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ):
         monkeypatch.setenv("MORE_API_KEY", "test-key-123")
-        core, client = client_with_provenance
+        _core, client = client_with_provenance
         old_store, task_store = self._wire_task_store(tmp_path)
         from datetime import datetime, timezone
 
@@ -397,12 +397,14 @@ class TestAuditEndpoint:
 class TestExecutorV2Integration:
     @pytest.mark.asyncio
     async def test_v2_executor_updates_task_store_fields(self, tmp_path: Path):
-        from more_core.persistence.task_store import SQLiteTaskStore
-        from more_core.core.config import Settings
-        from more_core.runtime.orchestrator import MoRECore
-        from conftest import _FakeLLMProvider
-        from more_core.api.routers.tasks import _execute_task_background_v2
         from datetime import datetime, timezone
+
+        from conftest import _FakeLLMProvider
+
+        from more_core.api.routers.tasks import _execute_task_background_v2
+        from more_core.core.config import Settings
+        from more_core.persistence.task_store import SQLiteTaskStore
+        from more_core.runtime.orchestrator import MoRECore
 
         tasks_db = tmp_path / "tstore.db"
         prov_db = tmp_path / "tprov.db"

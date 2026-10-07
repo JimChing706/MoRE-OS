@@ -80,7 +80,7 @@ class AuditLogger:
         """
         self._path = Path(path)
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._queue: "queue.Queue[AuditRecord | None]" = queue.Queue()
+        self._queue: queue.Queue[AuditRecord | None] = queue.Queue()
         self._fh: io.TextIOBase | None = None
         self._io_lock = threading.Lock()
         self._closed = False
@@ -188,7 +188,7 @@ class AuditLogger:
                         records.append(json.loads(leftover))
                     except json.JSONDecodeError:
                         pass
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             _log.error("Failed to read recent audit records: %s", exc)
         return records[:limit]
 

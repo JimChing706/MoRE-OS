@@ -1,14 +1,14 @@
 """Tests for LLM Manager."""
 
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from more_core.llm.state_manager import LLMStateManager, LLMCallState, LLMUsageStats
-from more_core.llm.providers.ollama import OllamaProvider
-from more_core.llm.providers.lmstudio import LMStudioProvider
 from more_core.llm.providers.deepseek import DeepSeekProvider
+from more_core.llm.providers.lmstudio import LMStudioProvider
+from more_core.llm.providers.ollama import OllamaProvider
+from more_core.llm.state_manager import LLMCallState, LLMStateManager, LLMUsageStats
 
 
 class TestLLMStateManager:

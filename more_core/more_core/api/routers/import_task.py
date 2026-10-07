@@ -12,16 +12,16 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from ...core.import_task import (
+    ImportKillCriterion,
     ImportTaskDocument,
     ImportTaskGenerator,
     ImportTaskParser,
     QualityGate,
     RequirementItem,
-    ImportKillCriterion,
     ResourceBudget,
 )
 from ...runtime.orchestrator import MoRECore
-from .tasks import _task_store, _execute_task_background_v2
+from .tasks import _execute_task_background_v2, _task_store
 
 
 def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
@@ -73,7 +73,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                 "warnings": raw_warnings,
                 "issues": issues,
             }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"error": str(e), "status": "failed"}
 
     @router.post("/tasks/itd/validate")
@@ -130,13 +130,13 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                     "acceptance_criteria": acceptance_criteria_list,
                 },
             }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"error": str(e), "status": "failed", "valid": False}
 
     @router.post("/tasks/itd/import", dependencies=[Depends(require_api_key)])
     async def import_itd(content: dict[str, Any]) -> dict[str, Any]:
         markdown = content.get("content", "")
-        auto_start = bool(content.get("auto_start", False))
+        auto_start = bool(content.get("auto_start"))
         if not markdown:
             return {"error": "No content provided", "status": "failed"}
         try:
@@ -258,7 +258,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                 "task": result_data,
                 "warnings": doc._raw_frontmatter.get("_warnings", []),
             }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"error": str(e), "status": "failed"}
 
     @router.get("/tasks/itd/templates")
@@ -374,7 +374,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                 req_priority = (
                     _P(req_priority_raw) if req_priority_raw in _P._value2member_map_ else _P.MEDIUM
                 )
-            except Exception:
+            except Exception:  # noqa: BLE001
                 from ...core.import_task import Priority as _P
 
                 req_priority = _P.MEDIUM
@@ -495,7 +495,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                 )
             markdown = generator.generate(doc)
             return {"status": "success", "markdown": markdown}
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"error": str(e), "status": "failed"}
 
     return router

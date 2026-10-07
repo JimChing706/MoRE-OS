@@ -2,12 +2,12 @@
 
 import pytest
 
+from more_core.governance.audit import AuditLogger
 from more_core.metacognition import HyperAgent, VersionControl
 from more_core.metacognition.hyperagent import (
     ProposalStatus,
     SandboxValidator,
 )
-from more_core.governance.audit import AuditLogger
 
 
 @pytest.fixture
@@ -63,7 +63,7 @@ class TestSandboxValidator:
     @pytest.mark.asyncio
     async def test_validate_safe_code(self, sandbox_validator):
         code = "import math\nresult = math.sqrt(16)\nprint(result)"
-        valid, msg = await sandbox_validator.validate(code)
+        valid, _msg = await sandbox_validator.validate(code)
         assert valid is True
 
     @pytest.mark.asyncio
@@ -87,9 +87,10 @@ class TestSandboxValidator:
 class TestHyperAgent:
     @pytest.mark.asyncio
     async def test_proposal_status_transitions(self, hyperagent):
-        from more_core.layers.base import LayerContext
+        from unittest.mock import AsyncMock, MagicMock
+
         from more_core.core.types import TaskRequest, TaskType
-        from unittest.mock import MagicMock, AsyncMock
+        from more_core.layers.base import LayerContext
 
         mock_core = MagicMock()
         mock_core.event_bus = MagicMock()
@@ -112,9 +113,10 @@ class TestHyperAgent:
 
     @pytest.mark.asyncio
     async def test_list_proposals_with_filter(self, hyperagent):
-        from more_core.layers.base import LayerContext
+        from unittest.mock import AsyncMock, MagicMock
+
         from more_core.core.types import TaskRequest, TaskType
-        from unittest.mock import MagicMock, AsyncMock
+        from more_core.layers.base import LayerContext
 
         mock_core = MagicMock()
         mock_core.event_bus = MagicMock()
@@ -143,9 +145,10 @@ class TestHyperAgentWithAudit:
     async def test_audit_logger_records_proposal(self, hyperagent, audit_logger, temp_dir):
         hyperagent.register_audit_logger(audit_logger)
 
-        from more_core.layers.base import LayerContext
+        from unittest.mock import AsyncMock, MagicMock
+
         from more_core.core.types import TaskRequest, TaskType
-        from unittest.mock import MagicMock, AsyncMock
+        from more_core.layers.base import LayerContext
 
         mock_core = MagicMock()
         mock_core.event_bus = MagicMock()
@@ -161,7 +164,7 @@ class TestHyperAgentWithAudit:
         audit_logger.flush()
 
         log_file = f"{temp_dir}/audit.jsonl"
-        with open(log_file) as f:
+        with open(log_file) as f:  # noqa: ASYNC230 - 测试收尾读盘，不在生产异步路径
             content = f.read()
             assert "self_modification_proposal" in content
             assert proposal.id in content

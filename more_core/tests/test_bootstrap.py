@@ -14,15 +14,15 @@ from more_core.core.config import Settings
 
 
 def _settings(**overrides: object) -> Settings:
-    base = dict(
-        plugin_dir="tests/plugins",
-        log_dir="tests/logs",
-        providers=[],
-        fallback_chain=[],
-        enable_evolution=False,
-        enable_metacognition=False,
-        enable_symbolic=True,
-    )
+    base = {
+        "plugin_dir": "tests/plugins",
+        "log_dir": "tests/logs",
+        "providers": [],
+        "fallback_chain": [],
+        "enable_evolution": False,
+        "enable_metacognition": False,
+        "enable_symbolic": True,
+    }
     base.update(overrides)
     return Settings(**base)  # type: ignore[arg-type]
 
@@ -157,8 +157,8 @@ class TestInitLayers:
         assert set(result.keys()) == {"router", "layers", "audit", "policy"}
 
     def test_creates_all_six_layers(self) -> None:
-        from more_core.runtime.bootstrap import init_layers
         from more_core.core.types import LayerId
+        from more_core.runtime.bootstrap import init_layers
 
         result = init_layers(_settings())
         expected_ids = {LayerId.L0, LayerId.L1, LayerId.L2, LayerId.L3, LayerId.L4, LayerId.L5}
@@ -238,8 +238,8 @@ class TestInitServices:
         }
 
     def test_rate_limiter_configured_with_settings(self) -> None:
-        from more_core.runtime.bootstrap import init_services
         from more_core.optimization import RateLimiter
+        from more_core.runtime.bootstrap import init_services
 
         settings = _settings(rate_limit_rps=5.0, rate_limit_burst=10)
         init_services(settings)

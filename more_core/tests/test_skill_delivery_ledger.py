@@ -20,21 +20,21 @@ from more_core.skills.delivery import (
 
 
 def _meta(sid: str = "t.skill", **over: object) -> SkillMetadata:
-    base = dict(
-        id=sid,
-        name="Demo",
-        description="demo skill",
-        category=SkillCategory.TOOLS,
-        version="1.0.0",
-        dependencies=["httpx"],
-        maintainer="Team A",
-        deployment={"runtime": "python>=3.10", "network_egress": True},
-        config_schema={
+    base = {
+        "id": sid,
+        "name": "Demo",
+        "description": "demo skill",
+        "category": SkillCategory.TOOLS,
+        "version": "1.0.0",
+        "dependencies": ["httpx"],
+        "maintainer": "Team A",
+        "deployment": {"runtime": "python>=3.10", "network_egress": True},
+        "config_schema": {
             "type": "object",
             "properties": {"x": {"type": "string"}},
             "required": ["x"],
         },
-    )
+    }
     base.update(over)
     return SkillMetadata(**base)  # type: ignore[arg-type]
 

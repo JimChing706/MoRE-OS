@@ -110,7 +110,7 @@ def _load_from_db() -> None:
         for row_id, row_data in rows:
             _output_store[row_id] = json.loads(row_data)
         _log.info("Loaded %d outputs from %s", len(rows), _DB_PATH)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         _log.warning("Could not load outputs from DB: %s", exc)
 
 
@@ -132,7 +132,7 @@ def _save_to_db(output_id: str, data: dict[str, Any]) -> None:
                 ),
             )
             conn.commit()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         _log.error("Failed to persist output %s: %s", output_id, exc)
 
 
@@ -156,7 +156,7 @@ def _delete_from_db(output_id: str) -> None:
             conn = _get_conn()
             conn.execute("DELETE FROM outputs WHERE id = ?", (output_id,))
             conn.commit()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         _log.error("Failed to delete output %s: %s", output_id, exc)
 
 
@@ -246,7 +246,7 @@ def _auto_create_output(task_result: dict[str, Any]) -> ProjectOutput | None:
         _log.info("Auto-created output: %s from task %s", output["id"], task_id)
         return ProjectOutput(**output)
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         _log.error("Auto-create output failed: %s", e)
         return None
 
@@ -409,4 +409,4 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     return router
 
 
-__all__ = ["create_router", "_output_store", "_auto_create_output"]
+__all__ = ["_auto_create_output", "_output_store", "create_router"]

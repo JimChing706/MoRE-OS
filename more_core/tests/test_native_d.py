@@ -5,17 +5,16 @@ tar.gz + zip 双份打包、tar.gz / zip 内顶层目录名 == project_prefix。
 共 ≥ 5 tests。
 """
 
-import sys
-import os
 import json
+import os
+import sys
 import tarfile
-import zipfile
 import tempfile
+import zipfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from pathlib import Path
-
 
 from more_core.core.native_executor.delivery import (
     Delivery,

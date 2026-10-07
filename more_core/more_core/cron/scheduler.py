@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Callable, Awaitable
+from typing import Any, ClassVar
 
 _log = logging.getLogger(__name__)
 
@@ -67,7 +68,7 @@ class CronSpec:
 
 
 FULL_DAYS = frozenset(range(1, 32))
-FULL_WEEKDAYS = frozenset(range(0, 7))
+FULL_WEEKDAYS = frozenset(range(7))
 
 
 class CronParser:
@@ -75,7 +76,7 @@ class CronParser:
 
     CRON_PATTERN = re.compile(r"^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)(?:\s+(.*))?$")
 
-    SIMPLE_PATTERNS = {
+    SIMPLE_PATTERNS: ClassVar[dict[str, str]] = {
         "every minute": "* * * * *",
         "every 5 minutes": "*/5 * * * *",
         "every 15 minutes": "*/15 * * * *",
@@ -171,11 +172,11 @@ class CronParser:
                 start_str, end_str = part.split("-")
                 values.extend(range(int(start_str), int(end_str) + 1))
             elif part == "*":
-                values.extend(range(0, 7))
+                values.extend(range(7))
             else:
                 raw = int(part)
                 values.append(7 if raw == 7 else raw)
-        return sorted(set(v % 7 for v in values))
+        return sorted({v % 7 for v in values})
 
     @classmethod
     def _parse_single(cls, value: str, min_val: int, max_val: int) -> int:
@@ -220,9 +221,7 @@ class CronParser:
             if days_restricted and weekdays_restricted:
                 if not (day_match or weekday_match):
                     continue
-            elif days_restricted and not day_match:
-                continue
-            elif weekdays_restricted and not weekday_match:
+            elif days_restricted and not day_match or weekdays_restricted and not weekday_match:
                 continue
 
             for hour in sorted(spec.hours):
@@ -393,7 +392,7 @@ class CronScheduler:
                 if attempt == job.max_retries:
                     result.status = JobStatus.FAILED
 
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 result.error = str(e)
                 if attempt == job.max_retries:
                     result.status = JobStatus.FAILED

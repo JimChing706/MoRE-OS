@@ -306,7 +306,7 @@ class UncertaintyAssessor:
                     # Average similarity to top results
                     sim = sum(r.get("score", 0.5) for r in results) / len(results)
                     return cast(float, max(0.2, min(0.95, sim)))
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 _log.warning("Memory search failed for uncertainty assessment: %s", exc)
 
         # Fallback: adjust base by keyword signals

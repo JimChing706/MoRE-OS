@@ -36,9 +36,10 @@ import sqlite3
 import threading
 import time
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 _log = logging.getLogger(__name__)
 
@@ -194,7 +195,7 @@ def configure(db_path: str | os.PathLike[str]) -> None:
         if old is not None and old.conn is not None:
             try:
                 old.conn.close()
-            except Exception:  # pragma: no cover - defensive
+            except Exception:  # pragma: no cover - defensive  # noqa: BLE001, S110
                 pass
         _INSTANCE = _Store(path=Path(db_path))
 
@@ -217,7 +218,7 @@ def _ensure(path: Path) -> sqlite3.Connection | None:
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.executescript(_SCHEMA)
         return conn
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:  # pragma: no cover - defensive  # noqa: BLE001
         _log.error("observability schema init failed: %s", exc)
         return None
 
@@ -251,7 +252,7 @@ def _get_conn() -> sqlite3.Connection | None:
 # ---------------------------------------------------------------------------
 
 
-def record_llm_call(  # noqa: PLR0913 - many cols is intentional here
+def record_llm_call(
     *,
     request_id: str,
     provider: str,
@@ -296,7 +297,7 @@ def record_llm_call(  # noqa: PLR0913 - many cols is intentional here
                 (error or "")[:4000],
             ),
         )
-    except Exception:  # pragma: no cover - defensive
+    except Exception:  # pragma: no cover - defensive  # noqa: BLE001, S110
         pass
 
 
@@ -352,7 +353,7 @@ def record_injection(
                 meta_s,
             ),
         )
-    except Exception:  # pragma: no cover - defensive
+    except Exception:  # pragma: no cover - defensive  # noqa: BLE001, S110
         pass
 
 
@@ -384,7 +385,7 @@ def query_recent_llm(
         args.append(int(limit))
         cur = conn.execute(sql, args)
         return [dict(r) for r in cur.fetchall()]
-    except Exception:  # pragma: no cover - defensive
+    except Exception:  # pragma: no cover - defensive  # noqa: BLE001
         return []
 
 
@@ -400,7 +401,7 @@ def query_injection_stats(window_s: int = 3600) -> dict[str, int]:
             (since,),
         )
         return {row[0]: int(row[1]) for row in cur.fetchall()}
-    except Exception:  # pragma: no cover - defensive
+    except Exception:  # pragma: no cover - defensive  # noqa: BLE001
         return {}
 
 
@@ -451,7 +452,7 @@ def record_governance_event(
                 severity,
             ),
         )
-    except Exception:  # pragma: no cover - defensive
+    except Exception:  # pragma: no cover - defensive  # noqa: BLE001, S110
         pass
 
 
@@ -471,7 +472,7 @@ def _load_json_list(raw: Any) -> list[str]:
 
         val = json.loads(raw or "[]")
         return [str(x) for x in val] if isinstance(val, list) else []
-    except Exception:
+    except Exception:  # noqa: BLE001
         return []
 
 
@@ -555,7 +556,7 @@ def query_governance_stats(window_s: int = 3600) -> dict[str, Any]:
             "by_layer": by_layer,
             "window_s": int(window_s),
         }
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:  # pragma: no cover - defensive  # noqa: BLE001
         return {**empty, "error": str(exc)}
 
 
@@ -661,7 +662,7 @@ def record_council_review(
                 1 if float(adjustment) < 0 else 0,
             ),
         )
-    except Exception:  # pragma: no cover - defensive
+    except Exception:  # pragma: no cover - defensive  # noqa: BLE001, S110
         pass
 
 
@@ -723,7 +724,7 @@ def query_council_stats(window_s: int = 3600) -> dict[str, Any]:
             "by_consensus": dict(sorted(by_consensus.items(), key=lambda kv: -kv[1])),
             "window_s": int(window_s),
         }
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:  # pragma: no cover - defensive  # noqa: BLE001
         return {**empty, "error": str(exc)}
 
 
@@ -759,7 +760,7 @@ def record_provider_health(report: dict[str, Any]) -> None:
                 json.dumps(report, ensure_ascii=False)[:20000],
             ),
         )
-    except Exception:  # pragma: no cover - defensive
+    except Exception:  # pragma: no cover - defensive  # noqa: BLE001, S110
         pass
 
 
@@ -812,7 +813,7 @@ def query_provider_health(window_s: int = 3600) -> dict[str, Any]:
 
         try:
             report = json.loads(latest["report"] or "{}")
-        except Exception:
+        except Exception:  # noqa: BLE001
             report = {}
         providers = report.get("providers") or []
         n_inference_failed = sum(1 for pr in providers if pr.get("inference_ok") is False)
@@ -836,7 +837,7 @@ def query_provider_health(window_s: int = 3600) -> dict[str, Any]:
             "stale": (now - float(latest["ts"])) > max(0, int(window_s)),
             "window_s": int(window_s),
         }
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:  # pragma: no cover - defensive  # noqa: BLE001
         return {**empty, "error": str(exc)}
 
 
@@ -966,7 +967,7 @@ def record_skill_run(
                 (error or "")[:2000],
             ),
         )
-    except Exception:  # pragma: no cover - defensive
+    except Exception:  # pragma: no cover - defensive  # noqa: BLE001, S110
         pass
 
 
@@ -1025,7 +1026,7 @@ def query_skill_stats(window_s: int = 3600) -> dict[str, Any]:
                 slot.pop("duration_ms", None)
         durations.sort()
         n = len(rows)
-        p95 = durations[min(n - 1, max(0, int(round(0.95 * (n - 1)))))] if durations else 0.0
+        p95 = durations[min(n - 1, max(0, round(0.95 * (n - 1))))] if durations else 0.0
         return {
             "runs": n,
             "failed": n - ok,
@@ -1036,7 +1037,7 @@ def query_skill_stats(window_s: int = 3600) -> dict[str, Any]:
             "by_category": by_category,
             "window_s": int(window_s),
         }
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:  # pragma: no cover - defensive  # noqa: BLE001
         return {**empty, "error": str(exc)}
 
 
@@ -1063,7 +1064,7 @@ def record_skill_network(report: dict[str, Any]) -> None:
                 json.dumps(report, ensure_ascii=False)[:20000],
             ),
         )
-    except Exception:  # pragma: no cover - defensive
+    except Exception:  # pragma: no cover - defensive  # noqa: BLE001, S110
         pass
 
 
@@ -1103,7 +1104,7 @@ def query_skill_network_health(window_s: int = 3600) -> dict[str, Any]:
 
         try:
             report = json.loads(row["report"] or "{}")
-        except Exception:
+        except Exception:  # noqa: BLE001
             report = {}
         return {
             "checked_at": float(row["ts"]),
@@ -1118,7 +1119,7 @@ def query_skill_network_health(window_s: int = 3600) -> dict[str, Any]:
             "stale": (now - float(row["ts"])) > max(0, int(window_s)),
             "window_s": int(window_s),
         }
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:  # pragma: no cover - defensive  # noqa: BLE001
         return {**empty, "error": str(exc)}
 
 
@@ -1262,7 +1263,7 @@ def summary(window_s: int = 3600) -> dict[str, Any]:
         def _pct(values: list[float], q: float) -> float:
             if not values:
                 return 0.0
-            idx = min(len(values) - 1, max(0, int(round(q * (len(values) - 1)))))
+            idx = min(len(values) - 1, max(0, round(q * (len(values) - 1))))
             return round(values[idx], 1)
 
         providers: dict[str, dict[str, Any]] = {}
@@ -1300,28 +1301,27 @@ def summary(window_s: int = 3600) -> dict[str, Any]:
             },
             "providers": providers,
         }
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:  # pragma: no cover - defensive  # noqa: BLE001
         return {"samples": 0, "window_s": int(window_s), "error": str(exc)}
 
 
 def close() -> None:
     """Graceful shutdown — not required, but nice for tests."""
-    global _INSTANCE
     with _LOCK:
         if _INSTANCE is not None and _INSTANCE.conn is not None:
             try:
                 _INSTANCE.conn.close()
-            except Exception:  # pragma: no cover - defensive
+            except Exception:  # pragma: no cover - defensive  # noqa: BLE001, S110
                 pass
             _INSTANCE.conn = None
 
 
 __all__: tuple[str, ...] = (
+    "close",
     "configure",
+    "query_injection_stats",
+    "query_recent_llm",
+    "record_injection",
     "record_llm_call",
     "summary",
-    "record_injection",
-    "query_recent_llm",
-    "query_injection_stats",
-    "close",
 )

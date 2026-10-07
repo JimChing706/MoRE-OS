@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from typing import Any, cast
 
 from ..core.errors import MCPError
-from .protocol import MCPMessage, JSONRPCProtocol
+from .protocol import JSONRPCProtocol, MCPMessage
 
 _log = logging.getLogger(__name__)
 
@@ -37,22 +37,18 @@ class Transport(ABC):
     @abstractmethod
     async def connect(self) -> None:
         """Connect to the transport."""
-        pass
 
     @abstractmethod
     async def disconnect(self) -> None:
         """Disconnect from the transport."""
-        pass
 
     @abstractmethod
     async def send(self, message: str) -> None:
         """Send a message."""
-        pass
 
     @abstractmethod
     async def receive(self) -> str:
         """Receive a message."""
-        pass
 
 
 class StdioTransport(Transport):

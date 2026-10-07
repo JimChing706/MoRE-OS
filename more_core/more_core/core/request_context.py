@@ -12,9 +12,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-
 # Async-safe context variable for request correlation
-_request_ctx: contextvars.ContextVar["RequestContext | None"] = contextvars.ContextVar(
+_request_ctx: contextvars.ContextVar[RequestContext | None] = contextvars.ContextVar(
     "more_request_ctx", default=None
 )
 

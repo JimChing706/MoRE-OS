@@ -152,12 +152,12 @@ class SecureSandbox:
             from .policy import default_policy
 
             violations = default_policy().check_command(full_cmd)
-        except Exception:  # pragma: no cover - 策略不可用时退回保守判定
+        except Exception:  # pragma: no cover - 策略不可用时退回保守判定  # noqa: BLE001
             violations = []
         if violations:
             return False, "; ".join(violations)
         if self._config.security_level == SecurityLevel.STRICT:
-            cmd_name = full_cmd.split()[0] if full_cmd.strip() else ""
+            cmd_name = full_cmd.split(maxsplit=1)[0] if full_cmd.strip() else ""
             restricted = {"python", "python3", "node", "bash", "sh", "zsh"}
             if os.path.basename(cmd_name) in restricted and (
                 self._process_count >= self._config.max_processes
@@ -183,7 +183,7 @@ class SecureSandbox:
                 if disallowed:
                     violations.append(f"disallowed imports: {', '.join(disallowed)}")
             return violations
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
         # Legacy fallback for bootstrap ordering edge-cases
         legacy_violations: list[str] = []

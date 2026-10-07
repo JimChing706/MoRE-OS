@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 import pytest
 
 from more_core.runtime.hot_reload import HotReloader, ReloadEvent, ReloadScope

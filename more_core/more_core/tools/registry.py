@@ -9,8 +9,9 @@ execution, shell, and web-search stubs.
 from __future__ import annotations
 
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 from ..security.rbac import Permission, requires_permission
 
@@ -20,7 +21,7 @@ class ToolDefinition:
     name: str
     description: str
     parameters_schema: dict[str, Any]  # JSON-Schema subset
-    handler: Callable[..., Awaitable["ToolResult"]]
+    handler: Callable[..., Awaitable[ToolResult]]
     requires_sandbox: bool = False
     tags: tuple[str, ...] = ()
     required_permission: Permission | None = None
@@ -101,7 +102,7 @@ class ToolRegistry:
             result = await tool.handler(params)
             result.duration_ms = (time.perf_counter() - start) * 1000
             return result
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return ToolResult(
                 tool=name,
                 success=False,

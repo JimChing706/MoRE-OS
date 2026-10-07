@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import logging
-import time
 import threading
-from dataclasses import dataclass, field
+import time
+import types
 from collections import defaultdict
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Iterator
+from dataclasses import dataclass, field
+
+from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
 
@@ -135,8 +138,12 @@ class MetricsCollector:
                 count = sum(1 for d in self._request_durations if d <= bucket)
                 lines.append(f'more_os_latency_ms_bucket{{le="{bucket}"}} {count}')
             lines.append(f'more_os_latency_ms_bucket{{le="+Inf"}} {len(self._request_durations)}')
-        lines.append("# HELP more_os_layer_durations_ms Layer average duration")
-        lines.append("# TYPE more_os_layer_durations_ms gauge")
+        lines.extend(
+            (
+                "# HELP more_os_layer_durations_ms Layer average duration",
+                "# TYPE more_os_layer_durations_ms gauge",
+            )
+        )
         with self._lock:
             for layer, vals in self._layer_durations.items():
                 avg = sum(vals) / len(vals) if vals else 0
@@ -161,7 +168,7 @@ class Timer:
         self._label = label
         self._start = 0.0
 
-    def __enter__(self) -> Timer:
+    def __enter__(self) -> Self:
         self._start = time.perf_counter()
         return self
 
@@ -169,7 +176,7 @@ class Timer:
         self,
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
-        exc_tb: object | None,
+        exc_tb: types.TracebackType | None,
     ) -> None:
         duration_ms = (time.perf_counter() - self._start) * 1000
         self._collector.record_layer(self._label, duration_ms)
@@ -183,7 +190,7 @@ def get_collector() -> MetricsCollector:
 
 
 @contextmanager
-def timer(label: str) -> Iterator[Timer]:
+def timer(label: str) -> Generator[Timer, None, None]:
     """Global timer context manager."""
     with Timer(_global_collector, label) as t:
         yield t

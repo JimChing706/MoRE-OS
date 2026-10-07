@@ -25,7 +25,6 @@ from more_core.api.server import create_app
 from more_core.core.config import Settings
 from more_core.runtime.orchestrator import MoRECore
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -64,7 +63,7 @@ def fast_client(request) -> Iterator[TestClient]:
     if task_handler is None:
 
         async def _handler(task):
-            from more_core.a2a.client import A2ATaskState, A2AMessage
+            from more_core.a2a.client import A2AMessage, A2ATaskState
 
             task.state = A2ATaskState.WORKING
 
@@ -287,8 +286,9 @@ class TestA2AHttpBasics:
         recorded: dict = {}
 
         async def _record_handler(task):
-            from more_core.a2a.client import A2ATaskState, A2AMessage
             import asyncio as _aio
+
+            from more_core.a2a.client import A2AMessage, A2ATaskState
 
             task.state = A2ATaskState.WORKING
 
@@ -331,8 +331,9 @@ class TestA2AHttpBasics:
         captured: dict = {}
 
         async def _meta_handler(task):
-            from more_core.a2a.client import A2ATaskState, A2AMessage
             import asyncio as _aio
+
+            from more_core.a2a.client import A2AMessage, A2ATaskState
 
             task.state = A2ATaskState.WORKING
 

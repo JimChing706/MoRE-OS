@@ -54,14 +54,14 @@ class TestSoulProfile:
         assert score < 0.5
 
     def test_habit_strength_active(self):
-        from more_core.v3.soul_profile import SoulProfile, SilverHabit
+        from more_core.v3.soul_profile import SilverHabit, SoulProfile
 
         profile = SoulProfile(habits=[SilverHabit.STOP_LOSS_DISCIPLINE])
         assert profile.habit_strength(SilverHabit.STOP_LOSS_DISCIPLINE) > 0.5
         assert profile.habit_strength(SilverHabit.DIVERSIFIED_BETTING) < 0.3
 
     def test_serialize_roundtrip(self):
-        from more_core.v3.soul_profile import SoulProfile, DecisionStyle
+        from more_core.v3.soul_profile import DecisionStyle, SoulProfile
 
         original = SoulProfile(
             name="test",
@@ -260,9 +260,9 @@ class TestCollaborationBonus:
 
 class TestPersonalityRouting:
     def test_select_expert_with_personality(self):
-        from more_core.v3.meta_orchestrator import MetaOrchestrator
-        from more_core.v3.soul_profile import ARCHETYPE_RISK_ANALYST, ARCHETYPE_INNOVATOR
         from more_core.core.types import TaskType
+        from more_core.v3.meta_orchestrator import MetaOrchestrator
+        from more_core.v3.soul_profile import ARCHETYPE_INNOVATOR, ARCHETYPE_RISK_ANALYST
 
         meta = MetaOrchestrator()
         candidates = [
@@ -275,8 +275,8 @@ class TestPersonalityRouting:
         assert "id" in best
 
     def test_select_expert_no_soul_fallback(self):
-        from more_core.v3.meta_orchestrator import MetaOrchestrator
         from more_core.core.types import TaskType
+        from more_core.v3.meta_orchestrator import MetaOrchestrator
 
         meta = MetaOrchestrator()
         candidates = [
@@ -288,8 +288,8 @@ class TestPersonalityRouting:
         assert best["id"] == "a"
 
     def test_select_expert_empty(self):
-        from more_core.v3.meta_orchestrator import MetaOrchestrator
         from more_core.core.types import TaskType
+        from more_core.v3.meta_orchestrator import MetaOrchestrator
 
         meta = MetaOrchestrator()
         assert meta.select_expert(TaskType.NLP_TASK, []) is None

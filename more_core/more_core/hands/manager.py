@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Awaitable, Callable, TYPE_CHECKING
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, Any
 
 from ..core.errors import PluginError
+from ..security.rbac import Permission, get_rbac
 from .base import Hand, HandResult, HandStatus
 from .registry import HandRegistry
-from ..security.rbac import Permission, get_rbac
 
 if TYPE_CHECKING:
     from ..cron.scheduler import CronScheduler
@@ -26,7 +27,7 @@ class HandManager:
     def __init__(
         self,
         registry: HandRegistry,
-        scheduler: "CronScheduler | None" = None,
+        scheduler: CronScheduler | None = None,
     ) -> None:
         self._registry = registry
         self._scheduler = scheduler
@@ -147,7 +148,7 @@ class HandManager:
         for hand_id in list(self._active.keys()):
             try:
                 await self.deactivate(hand_id)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 _log.exception("Failed to deactivate hand %s", hand_id)
 
     # -- internal ----------------------------------------------------------

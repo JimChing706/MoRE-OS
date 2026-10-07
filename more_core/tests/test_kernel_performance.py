@@ -6,8 +6,7 @@ import pytest
 
 from more_core.core.errors import MoREError
 from more_core.core.types import TaskRequest, TaskStatus, TaskType
-from more_core.optimization import RateLimiter, CircuitBreaker, RequestCache, CacheConfig
-
+from more_core.optimization import CacheConfig, CircuitBreaker, RateLimiter, RequestCache
 
 # --- Rate Limiter Tests ---
 
@@ -97,11 +96,9 @@ async def test_cache_stores_and_retrieves():
 
 
 async def test_cache_respects_ttl():
-    import time
-
     cache = RequestCache(CacheConfig(max_size=10, ttl_seconds=0))
     await cache.set("hello", "model-a", "result", ttl=0)
-    time.sleep(0.01)
+    await asyncio.sleep(0.01)
     assert await cache.get("hello", "model-a") is None
 
 
@@ -232,9 +229,9 @@ def test_complexity_bonus_capped():
 def test_request_context_lifecycle():
     from more_core.core.request_context import (
         RequestContext,
-        set_context,
-        get_context,
         clear_context,
+        get_context,
+        set_context,
     )
 
     assert get_context() is None

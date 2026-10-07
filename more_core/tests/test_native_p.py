@@ -4,17 +4,17 @@
 Step dataclass 字段、有效性校验等。共 ≥ 5 tests。
 """
 
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import copy
 
 from more_core.core.native_executor.planner import (
+    RULE_BASED_TETRIS_PLAN,
     Planner,
     Step,
-    RULE_BASED_TETRIS_PLAN,
 )
 
 

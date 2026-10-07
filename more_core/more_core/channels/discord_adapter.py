@@ -65,7 +65,7 @@ class DiscordAdapter(ChannelAdapter):
         try:
             me = await self._call_api("GET", "/users/@me")
             return "id" in me
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False
 
     async def _call_api(

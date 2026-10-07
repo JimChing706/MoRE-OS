@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import httpx
 
@@ -103,5 +103,5 @@ class OllamaProvider:
             client = self._get_client()
             r = await client.get(f"{self._base}/api/tags")
             return r.status_code == 200
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False

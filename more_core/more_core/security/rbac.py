@@ -23,9 +23,10 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 _log = logging.getLogger(__name__)
 
@@ -266,10 +267,7 @@ class UnifiedRBAC:
             return False
         if user_id in self._admin_users:
             return True
-        for rn in self._user_roles.get(user_id, []):
-            if rn == "admin":
-                return True
-        return False
+        return any(rn == "admin" for rn in self._user_roles.get(user_id, []))
 
     def check(self, user_id: str, permission: Permission) -> bool:
         # If no admin users are configured we are in dev mode.  Historically
@@ -402,7 +400,7 @@ def requires_permission(
 
 # ---- backward-compatible aliases (deprecated) ----
 
-from warnings import warn as _warn  # noqa: E402
+from warnings import warn as _warn
 
 _RBACManager_deprecated: bool = False
 

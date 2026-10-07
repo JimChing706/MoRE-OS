@@ -12,14 +12,14 @@ import shlex
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .registry import ToolDefinition, ToolRegistry, ToolResult
 from ..security.rbac import Permission
+from .registry import ToolDefinition, ToolRegistry, ToolResult
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..runtime.orchestrator import MoRECore
 
 
-async def _python_exec(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
+async def _python_exec(params: dict[str, Any], *, core: MoRECore) -> ToolResult:
     code = params.get("code", "")
     if not code.strip():
         return ToolResult(tool="python_exec", success=False, error="empty code")
@@ -32,7 +32,7 @@ async def _python_exec(params: dict[str, Any], *, core: "MoRECore") -> ToolResul
     )
 
 
-async def _shell_exec(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
+async def _shell_exec(params: dict[str, Any], *, core: MoRECore) -> ToolResult:
     command = params.get("command", "")
     if not command.strip():
         return ToolResult(tool="shell_exec", success=False, error="empty command")
@@ -45,7 +45,7 @@ async def _shell_exec(params: dict[str, Any], *, core: "MoRECore") -> ToolResult
     )
 
 
-async def _memory_search(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
+async def _memory_search(params: dict[str, Any], *, core: MoRECore) -> ToolResult:
     query = params.get("query", "")
     kind_str = params.get("kind")
     from ..memory.store import MemoryKind
@@ -59,7 +59,7 @@ async def _memory_search(params: dict[str, Any], *, core: "MoRECore") -> ToolRes
     )
 
 
-async def _memory_store(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
+async def _memory_store(params: dict[str, Any], *, core: MoRECore) -> ToolResult:
     from ..memory.store import MemoryEntry, MemoryKind
 
     entry = MemoryEntry(
@@ -71,7 +71,7 @@ async def _memory_store(params: dict[str, Any], *, core: "MoRECore") -> ToolResu
     return ToolResult(tool="memory_store", success=True, output={"id": entry.id})
 
 
-async def _grep_files(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
+async def _grep_files(params: dict[str, Any], *, core: MoRECore) -> ToolResult:
     """Grep-like search with line numbers and context."""
     root = await _project_root(core)
     query = params.get("query", "")
@@ -104,7 +104,7 @@ async def _grep_files(params: dict[str, Any], *, core: "MoRECore") -> ToolResult
                     )
                     if len(matches) >= 50:
                         break
-        except Exception:
+        except Exception:  # noqa: BLE001, S112
             continue
         if len(matches) >= 50:
             break
@@ -116,7 +116,7 @@ async def _grep_files(params: dict[str, Any], *, core: "MoRECore") -> ToolResult
     )
 
 
-async def _file_info(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
+async def _file_info(params: dict[str, Any], *, core: MoRECore) -> ToolResult:
     """Get file metadata (size, modified, permissions)."""
     root = await _project_root(core)
     path = params.get("path", "")
@@ -148,7 +148,7 @@ async def _file_info(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
     )
 
 
-async def _create_directory(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
+async def _create_directory(params: dict[str, Any], *, core: MoRECore) -> ToolResult:
     """Create a new directory."""
     root = await _project_root(core)
     path = params.get("path", "")
@@ -168,11 +168,11 @@ async def _create_directory(params: dict[str, Any], *, core: "MoRECore") -> Tool
     try:
         full_path.mkdir(parents=True, exist_ok=True)
         return ToolResult(tool="create_directory", success=True, output={"path": path})
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return ToolResult(tool="create_directory", success=False, error=str(e))
 
 
-async def _delete_file(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
+async def _delete_file(params: dict[str, Any], *, core: MoRECore) -> ToolResult:
     """Delete a file or directory."""
     root = await _project_root(core)
     path = params.get("path", "")
@@ -202,18 +202,18 @@ async def _delete_file(params: dict[str, Any], *, core: "MoRECore") -> ToolResul
         else:
             full_path.unlink()
         return ToolResult(tool="delete_file", success=True, output={"path": path})
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return ToolResult(tool="delete_file", success=False, error=str(e))
 
 
-async def _project_root(core: "MoRECore") -> Path:
+async def _project_root(core: MoRECore) -> Path:
     """Get the current project root from core context, or fall back to cwd."""
     if hasattr(core, "project_root") and core.project_root:
         return Path(core.project_root).resolve()
     return Path.cwd().resolve()
 
 
-async def _read_file(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
+async def _read_file(params: dict[str, Any], *, core: MoRECore) -> ToolResult:
     """Read the contents of a file."""
     file_path = params.get("path", "")
     if not file_path:
@@ -222,7 +222,7 @@ async def _read_file(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
     root = await _project_root(core)
     try:
         target = (root / file_path).resolve()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return ToolResult(tool="read_file", success=False, error=f"invalid path: {e}")
 
     try:
@@ -247,13 +247,13 @@ async def _read_file(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
         try:
             content = target.read_bytes().decode("utf-8", errors="replace")
             return ToolResult(tool="read_file", success=True, output=content)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return ToolResult(tool="read_file", success=False, error=f"cannot read file: {e}")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return ToolResult(tool="read_file", success=False, error=f"read error: {e}")
 
 
-async def _write_file(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
+async def _write_file(params: dict[str, Any], *, core: MoRECore) -> ToolResult:
     """Write contents to a file."""
     file_path = params.get("path", "")
     content = params.get("content", "")
@@ -266,7 +266,7 @@ async def _write_file(params: dict[str, Any], *, core: "MoRECore") -> ToolResult
     root = await _project_root(core)
     try:
         target = (root / file_path).resolve()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return ToolResult(tool="write_file", success=False, error=f"invalid path: {e}")
 
     try:
@@ -281,11 +281,11 @@ async def _write_file(params: dict[str, Any], *, core: "MoRECore") -> ToolResult
         return ToolResult(
             tool="write_file", success=True, output=f"wrote {len(content)} chars to {file_path}"
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return ToolResult(tool="write_file", success=False, error=f"write error: {e}")
 
 
-async def _list_directory(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
+async def _list_directory(params: dict[str, Any], *, core: MoRECore) -> ToolResult:
     """List files in a directory."""
     dir_path = params.get("path", "")
     recursive = params.get("recursive", False)
@@ -297,7 +297,7 @@ async def _list_directory(params: dict[str, Any], *, core: "MoRECore") -> ToolRe
     else:
         try:
             target = (root / dir_path).resolve()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return ToolResult(tool="list_directory", success=False, error=f"invalid path: {e}")
 
         try:
@@ -338,11 +338,11 @@ async def _list_directory(params: dict[str, Any], *, core: "MoRECore") -> ToolRe
                     }
                 )
         return ToolResult(tool="list_directory", success=True, output=json.dumps(entries, indent=2))
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return ToolResult(tool="list_directory", success=False, error=f"list error: {e}")
 
 
-async def _search_code(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
+async def _search_code(params: dict[str, Any], *, core: MoRECore) -> ToolResult:
     """Search for text or regex patterns in code files."""
     query = params.get("query", "")
     file_pattern = params.get("file_pattern", "**/*")
@@ -419,7 +419,7 @@ async def _search_code(params: dict[str, Any], *, core: "MoRECore") -> ToolResul
 
             if len(matches) > 500:
                 break
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return ToolResult(tool="search_code", success=False, error=f"search error: {e}")
 
     output = {
@@ -430,7 +430,7 @@ async def _search_code(params: dict[str, Any], *, core: "MoRECore") -> ToolResul
     return ToolResult(tool="search_code", success=True, output=json.dumps(output, indent=2))
 
 
-async def _run_tests(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
+async def _run_tests(params: dict[str, Any], *, core: MoRECore) -> ToolResult:
     """Run pytest tests."""
     test_path = params.get("path", ".")
     pattern = params.get("pattern", "test_*.py")
@@ -465,11 +465,11 @@ async def _run_tests(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
             output=output[:2000] if output else "no output",
             error=error[:2000] if error else "",
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return ToolResult(tool="run_tests", success=False, error=f"test execution error: {e}")
 
 
-async def _lint_file(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
+async def _lint_file(params: dict[str, Any], *, core: MoRECore) -> ToolResult:
     """Lint a Python file."""
     file_path = params.get("path", "")
 
@@ -480,7 +480,7 @@ async def _lint_file(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
     try:
         target = (root / file_path).resolve()
         target.relative_to(root)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return ToolResult(tool="lint_file", success=False, error="invalid path")
 
     if not target.exists() or not target.is_file():
@@ -495,7 +495,7 @@ async def _lint_file(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
                 sbx2 = await core.sandbox.run(f"python -m py_compile {shlex.quote(file_path)}")
                 if sbx2.exit_code == 0:
                     output = "Syntax OK"
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
 
         return ToolResult(
@@ -504,11 +504,11 @@ async def _lint_file(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
             output=output[:3000] if output else "No issues found",
             error="",
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return ToolResult(tool="lint_file", success=False, error=f"lint error: {e}")
 
 
-async def _format_code(params: dict[str, Any], *, core: "MoRECore") -> ToolResult:
+async def _format_code(params: dict[str, Any], *, core: MoRECore) -> ToolResult:
     """Format Python code with black."""
     file_path = params.get("path", "")
     check_only = params.get("check", False)
@@ -520,7 +520,7 @@ async def _format_code(params: dict[str, Any], *, core: "MoRECore") -> ToolResul
     try:
         target = (root / file_path).resolve()
         target.relative_to(root)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return ToolResult(tool="format_code", success=False, error="invalid path")
 
     if not target.exists() or not target.is_file():
@@ -542,11 +542,11 @@ async def _format_code(params: dict[str, Any], *, core: "MoRECore") -> ToolResul
             return ToolResult(tool="format_code", success=True, output=msg)
         else:
             return ToolResult(tool="format_code", success=False, error=f"formatter error: {output}")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return ToolResult(tool="format_code", success=False, error=f"format error: {e}")
 
 
-def register_builtins(registry: "ToolRegistry", core: "MoRECore") -> None:
+def register_builtins(registry: ToolRegistry, core: MoRECore) -> None:
     """Register platform-level tools.  Called during :meth:`MoRECore.start`."""
 
     registry.register(

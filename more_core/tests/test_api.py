@@ -8,6 +8,7 @@ import pytest
 pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient
+
 from more_core.api.server import (
     API_KEY_MIN_LENGTH,
     API_KEY_PREFIX,
@@ -16,7 +17,7 @@ from more_core.api.server import (
     validate_api_key,
 )
 from more_core.core.config import Settings
-from more_core.core.import_task import ImportTaskGenerator, ImportTaskDocument
+from more_core.core.import_task import ImportTaskDocument, ImportTaskGenerator
 from more_core.runtime.orchestrator import MoRECore
 
 

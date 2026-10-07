@@ -223,7 +223,7 @@ def adjudicate_codegen(
             if run_id:
                 artifacts["evolution_run_id"] = run_id
                 verdict.artifacts["evolution_run_id"] = run_id
-        except Exception as exc:  # pragma: no cover - never break the verdict path
+        except Exception as exc:  # pragma: no cover - never break the verdict path  # noqa: BLE001
             _log.debug("adjudicate_codegen: evolution signal export skipped: %s", exc)
 
     return verdict

@@ -19,11 +19,11 @@ from enum import Enum
 from typing import Any
 
 __all__ = [
+    "BLOCKING_CAUSES",
+    "INFRA_CAUSES",
     "EscalationCause",
     "EscalationInfo",
     "classify_escalation",
-    "BLOCKING_CAUSES",
-    "INFRA_CAUSES",
 ]
 
 

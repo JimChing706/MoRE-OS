@@ -113,7 +113,7 @@ class BrowserHand(Hand):
                 },
                 metrics={"pages_visited": 1, "status_code": resp.status_code},
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return HandResult(hand_id="browser", success=False, error=str(exc))
 
     async def _screenshot(self, url: str, context: dict[str, Any]) -> HandResult:
@@ -147,7 +147,7 @@ class BrowserHand(Hand):
                     "extracted": content[:2000],
                 },
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return HandResult(hand_id="browser", success=False, error=str(exc))
 
     async def _search(self, query: str, context: dict[str, Any]) -> HandResult:

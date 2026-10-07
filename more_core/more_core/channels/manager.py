@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Callable, Awaitable
 
 from .base import ChannelAdapter, Message, Response
 
@@ -78,7 +78,7 @@ class ChannelManager:
         for name, adapter in self._channels.items():
             try:
                 await adapter.start()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 _log.error(f"Failed to start channel {name}: {e}")
 
     async def stop_all(self) -> None:
@@ -87,7 +87,7 @@ class ChannelManager:
         for name, adapter in self._channels.items():
             try:
                 await adapter.stop()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 _log.error(f"Failed to stop channel {name}: {e}")
 
     async def send_message(
@@ -105,7 +105,7 @@ class ChannelManager:
         try:
             response = Response(content=content, chat_id=chat_id)
             return await adapter.send_message(response)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             _log.error(f"Failed to send message: {e}")
             return False
 

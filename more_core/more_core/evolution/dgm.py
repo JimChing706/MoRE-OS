@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 from ..core.types import TaskRequest
 from ..llm.provider import LLMRequest
 from .archive import EvolutionArchive, EvolvedAgent
-from .benchmark import BenchmarkRunner, BenchmarkReport
+from .benchmark import BenchmarkReport, BenchmarkRunner
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..runtime.orchestrator import MoRECore
@@ -34,12 +34,12 @@ class DGMEngine:
     def __init__(self, archive: EvolutionArchive) -> None:
         self.archive = archive
         self._runner: BenchmarkRunner | None = None
-        self._core: "MoRECore | None" = None
+        self._core: MoRECore | None = None
 
     def set_runner(self, runner: BenchmarkRunner) -> None:
         self._runner = runner
 
-    def set_core(self, core: "MoRECore") -> None:
+    def set_core(self, core: MoRECore) -> None:
         self._core = core
 
     # -- snapshot ----------------------------------------------------------
@@ -116,7 +116,7 @@ CONFIG = AgentConfig()
             _log.info("Created LLM variant %s from parent %s", variant.id, parent.id)
             return variant
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             _log.error("LLM variant generation failed: %s; using basic", e)
             return await self.propose_variant(parent, request)
 
@@ -148,7 +148,7 @@ Output the improved code in <variant_code> tags:
         if match:
             return match.group(1).strip()
         if "```python" in content:
-            code_block = content.split("```python")[1].split("```")[0]
+            code_block = content.split("```python")[1].split("```", maxsplit=1)[0]
             return code_block.strip()
         return None
 

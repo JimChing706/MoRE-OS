@@ -8,18 +8,19 @@ Each mixin:
 """
 
 from __future__ import annotations
-import abc
-from typing import Any, ClassVar, Optional
 
-from .types import TaskTemplateKey
+import abc
+from typing import Any, ClassVar
+
 from .payload_cs_docs import (
-    CS_SRS_DOC,
-    CS_PLAN_DOC,
     CS_IMPL_DOC,
-    CS_TECH_DOC,
-    CS_MAIN_JS,
     CS_INDEX_HTML,
+    CS_MAIN_JS,
+    CS_PLAN_DOC,
+    CS_SRS_DOC,
+    CS_TECH_DOC,
 )
+from .types import TaskTemplateKey
 
 
 class PayloadWriterMixin(abc.ABC):
@@ -30,14 +31,14 @@ class PayloadWriterMixin(abc.ABC):
 
     @abc.abstractmethod
     def build_payload_map(
-        self, task_request: Any, doc: Optional[str], steps: list[Any]
+        self, task_request: Any, doc: str | None, steps: list[Any]
     ) -> dict[str, str]: ...
 
 
 class TetrisWriterMixin(PayloadWriterMixin):
     template_key: ClassVar[TaskTemplateKey] = "tetris"
 
-    _EXPECTED_MANIFEST: set[str] = {
+    _EXPECTED_MANIFEST: ClassVar[set[str]] = {
         "Cargo.toml",
         "Makefile",
         ".gitignore",
@@ -57,7 +58,7 @@ class TetrisWriterMixin(PayloadWriterMixin):
         return set(self._EXPECTED_MANIFEST)
 
     def build_payload_map(
-        self, task_request: Any, doc: Optional[str], steps: list[Any]
+        self, task_request: Any, doc: str | None, steps: list[Any]
     ) -> dict[str, str]:
         """委托现有 Writer.build_tetris_payload_map()。
 
@@ -73,7 +74,7 @@ class TetrisWriterMixin(PayloadWriterMixin):
 class CSShooterWriterMixin(PayloadWriterMixin):
     template_key: ClassVar[TaskTemplateKey] = "cs_shooter"
 
-    _MIN_MANIFEST: set[str] = {
+    _MIN_MANIFEST: ClassVar[set[str]] = {
         "Cargo.toml",
         "Makefile",
         "rust-toolchain.toml",
@@ -114,7 +115,7 @@ class CSShooterWriterMixin(PayloadWriterMixin):
         return set(self._MIN_MANIFEST)
 
     def build_payload_map(
-        self, task_request: Any, doc: Optional[str], steps: list[Any]
+        self, task_request: Any, doc: str | None, steps: list[Any]
     ) -> dict[str, str]:
         result: dict[str, str] = {
             "Cargo.toml": _cs_workspace_cargo_toml(),
@@ -158,7 +159,7 @@ class CSShooterWriterMixin(PayloadWriterMixin):
 class GenericWriterMixin(PayloadWriterMixin):
     template_key: ClassVar[TaskTemplateKey] = "generic"
 
-    _MANIFEST: set[str] = {
+    _MANIFEST: ClassVar[set[str]] = {
         "README.md",
         "Cargo.toml",
         "Dockerfile",
@@ -172,7 +173,7 @@ class GenericWriterMixin(PayloadWriterMixin):
         return set(self._MANIFEST)
 
     def build_payload_map(
-        self, task_request: Any, doc: Optional[str], steps: list[Any]
+        self, task_request: Any, doc: str | None, steps: list[Any]
     ) -> dict[str, str]:
         q = getattr(task_request, "query", "Generic scaffold") or "Generic scaffold"
         return {

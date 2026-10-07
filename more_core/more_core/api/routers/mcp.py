@@ -12,11 +12,11 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
-from ...version import __version__
-from ...runtime.orchestrator import MoRECore
 from ...mcp.client import MCPClient, MCPClientError
 from ...mcp.protocol import ClientCapabilities
 from ...mcp.transport import ProcessTransport
+from ...runtime.orchestrator import MoRECore
+from ...version import __version__
 
 
 def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
@@ -63,7 +63,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                 "tools": [t.name for t in tools],
                 "tool_count": len(tools),
             }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"status": "error", "error": str(e)}
 
     @router.post("/mcp/tools/{server_name}/{tool_name}", dependencies=[Depends(require_api_key)])
@@ -97,7 +97,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                 "tools": [{"name": t.name, "description": t.description} for t in tools],
                 "count": len(tools),
             }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"status": "error", "error": str(e)}
 
     @router.post("/mcp/disconnect/{server_name}", dependencies=[Depends(require_api_key)])
@@ -106,7 +106,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         client: MCPClient = core.mcp_client
         try:
             await client.disconnect(server_name)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"status": "error", "error": str(e)}
         return {"status": "disconnected", "server": server_name}
 

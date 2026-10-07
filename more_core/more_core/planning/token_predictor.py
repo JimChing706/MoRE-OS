@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from collections import deque
 from dataclasses import dataclass
-from typing import Deque
+from typing import ClassVar
 
 _log = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class TokenPredictor:
     """
 
     # Empirical base token consumption per task type
-    _BASE_TOKENS: dict[str, int] = {
+    _BASE_TOKENS: ClassVar[dict[str, int]] = {
         "code_generation": 2048,
         "code_debugging": 1536,
         "code_review": 1024,
@@ -55,7 +55,7 @@ class TokenPredictor:
     _TOKENS_PER_CHAR = 0.35
 
     def __init__(self, history_window: int = 200) -> None:
-        self._history: Deque[TokenObservation] = deque(maxlen=history_window)
+        self._history: deque[TokenObservation] = deque(maxlen=history_window)
         self._ema_error: float = 0.0  # Exponential moving average of prediction error
         self._ema_alpha: float = 0.15  # Smoothing factor
 

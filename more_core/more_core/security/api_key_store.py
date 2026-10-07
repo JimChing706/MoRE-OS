@@ -37,13 +37,13 @@ from pathlib import Path
 from typing import Any
 
 __all__ = [
+    "WILDCARD_SCOPE",
     "APIKeyRecord",
     "APIKeyStore",
-    "WILDCARD_SCOPE",
     "get_default_store",
-    "set_default_store",
     "hash_api_key",
     "new_key_id",
+    "set_default_store",
 ]
 
 #: Scope that grants every permission (used by the legacy env-var key).
@@ -229,6 +229,7 @@ class APIKeyRecord:
 
 
 def _row_to_record(row: sqlite3.Row) -> APIKeyRecord:
+    # 注意：sqlite3.Row 的 `in` 判断的是**值**而非列名，必须用 .keys()（SIM118 误报）。
     try:
         scopes = tuple(json.loads(row["scopes"] or "[]"))
     except (TypeError, ValueError):
@@ -243,17 +244,17 @@ def _row_to_record(row: sqlite3.Row) -> APIKeyRecord:
         revoked_at=row["revoked_at"],
         last_used_at=row["last_used_at"],
         rotated_from=row["rotated_from"],
-        owner=row["owner"] if "owner" in row.keys() else "",
-        consumer=row["consumer"] if "consumer" in row.keys() else "",
-        purpose=row["purpose"] if "purpose" in row.keys() else "",
-        issued_by=row["issued_by"] if "issued_by" in row.keys() else "",
-        channel=row["channel"] if "channel" in row.keys() else "",
-        quota_per_min=row["quota_per_min"] if "quota_per_min" in row.keys() else None,
-        call_count=int(row["call_count"] or 0) if "call_count" in row.keys() else 0,
-        denied_count=int(row["denied_count"] or 0) if "denied_count" in row.keys() else 0,
-        tokens_used=int(row["tokens_used"] or 0) if "tokens_used" in row.keys() else 0,
-        first_used_at=row["first_used_at"] if "first_used_at" in row.keys() else None,
-        last_used_ip=row["last_used_ip"] if "last_used_ip" in row.keys() else "",
+        owner=row["owner"] if "owner" in row.keys() else "",  # noqa: SIM118
+        consumer=row["consumer"] if "consumer" in row.keys() else "",  # noqa: SIM118
+        purpose=row["purpose"] if "purpose" in row.keys() else "",  # noqa: SIM118
+        issued_by=row["issued_by"] if "issued_by" in row.keys() else "",  # noqa: SIM118
+        channel=row["channel"] if "channel" in row.keys() else "",  # noqa: SIM118
+        quota_per_min=row["quota_per_min"] if "quota_per_min" in row.keys() else None,  # noqa: SIM118
+        call_count=int(row["call_count"] or 0) if "call_count" in row.keys() else 0,  # noqa: SIM118
+        denied_count=int(row["denied_count"] or 0) if "denied_count" in row.keys() else 0,  # noqa: SIM118
+        tokens_used=int(row["tokens_used"] or 0) if "tokens_used" in row.keys() else 0,  # noqa: SIM118
+        first_used_at=row["first_used_at"] if "first_used_at" in row.keys() else None,  # noqa: SIM118
+        last_used_ip=row["last_used_ip"] if "last_used_ip" in row.keys() else "",  # noqa: SIM118
         _key_hash=row["key_hash"],
     )
 
@@ -497,7 +498,7 @@ class APIKeyStore:
                     ),
                 )
                 self._conn.commit()
-        except Exception:  # pragma: no cover - 用量写入不得影响主链路
+        except Exception:  # pragma: no cover - 用量写入不得影响主链路  # noqa: BLE001, S110
             pass
 
     def record_denied(self, key_id: str, *, ip: str = "") -> None:
@@ -510,7 +511,7 @@ class APIKeyStore:
                     (ip[:64], key_id),
                 )
                 self._conn.commit()
-        except Exception:  # pragma: no cover
+        except Exception:  # pragma: no cover  # noqa: BLE001, S110
             pass
 
     def quota_check(self, key_id: str, *, window_s: int = 60) -> tuple[bool, int, int | None]:
@@ -527,7 +528,7 @@ class APIKeyStore:
                     (key_id, since),
                 ).fetchone()
             used = int(row["n"] if row is not None else 0)
-        except Exception:  # pragma: no cover
+        except Exception:  # pragma: no cover  # noqa: BLE001
             return True, 0, limit
         return used < int(limit), used, int(limit)
 
@@ -542,7 +543,7 @@ class APIKeyStore:
                        ORDER BY ts DESC""",
                     (key_id, since),
                 ).fetchall()
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc:  # pragma: no cover  # noqa: BLE001
             return {"key_id": key_id, "window_s": int(window_s), "calls": 0, "error": str(exc)}
         calls = len(rows)
         ok = sum(1 for r in rows if 200 <= int(r["status"]) < 400)
@@ -558,7 +559,7 @@ class APIKeyStore:
         def _pct(q: float) -> float:
             if not lat:
                 return 0.0
-            idx = min(len(lat) - 1, max(0, int(round(q * (len(lat) - 1)))))
+            idx = min(len(lat) - 1, max(0, round(q * (len(lat) - 1))))
             return round(lat[idx], 1)
 
         record = self.get(key_id)
@@ -601,7 +602,7 @@ class APIKeyStore:
                        GROUP BY u.key_id ORDER BY calls DESC LIMIT ?""",
                     (since, int(top)),
                 ).fetchall()
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc:  # pragma: no cover  # noqa: BLE001
             return {"window_s": int(window_s), "keys": [], "error": str(exc)}
         out = []
         for r in rows:

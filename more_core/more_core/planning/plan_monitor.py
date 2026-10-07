@@ -12,11 +12,12 @@ from __future__ import annotations
 import logging
 import time
 from collections import deque
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable
+from typing import Any
 
-from .coordinator import ExecutionPlan, PlanStep, PlanStatus, StepPriority
+from .coordinator import ExecutionPlan, PlanStatus, PlanStep, StepPriority
 
 _log = logging.getLogger(__name__)
 

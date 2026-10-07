@@ -116,7 +116,7 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
             _ledger = get_default_ledger()
             delivery = _ledger.stats(delivery_window_s)
             delivery_windows = _ledger.stats_windows()
-        except Exception as exc:  # pragma: no cover - ledger read must not break overview
+        except Exception as exc:  # noqa: BLE001 - ledger read must not break overview
             delivery = {"error": str(exc)}
             delivery_windows = {}
         skill_windows = _obs.query_skill_stats_windows()
@@ -364,7 +364,8 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
         属**死代码**（0% 覆盖）。本端点把它接通为可内省能力：
         返回场景分类结果 + 叠加场景提示后的管道（**不改变实际执行链路**）。
         """
-        from ...core.types import TaskRequest, TaskType as _TT
+        from ...core.types import TaskRequest
+        from ...core.types import TaskType as _TT
         from ...router.scene_router import resolve_scene
 
         try:
@@ -406,6 +407,7 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
                 return
         await websocket.accept()
         import asyncio as _aio
+
         from ..monitor import build_dashboard_snapshot
 
         try:
@@ -416,7 +418,7 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
                 await websocket.send_json({"event": "update", "data": snapshot})
         except WebSocketDisconnect:
             pass
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
 
     return router

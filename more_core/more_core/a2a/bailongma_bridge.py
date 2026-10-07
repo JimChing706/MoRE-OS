@@ -108,8 +108,9 @@ class BaiLongmaBridge:
         """
         if not self._endpoint:
             return BridgeStatus(False, 0.0, "", "endpoint not configured")
-        import httpx
         import time
+
+        import httpx
 
         t0 = time.perf_counter()
         try:
@@ -119,7 +120,7 @@ class BaiLongmaBridge:
             if 200 <= r.status_code < 300:
                 return BridgeStatus(True, latency_ms, self._endpoint)
             return BridgeStatus(False, latency_ms, self._endpoint, f"HTTP {r.status_code}")
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:  # pragma: no cover - defensive  # noqa: BLE001
             latency_ms = (time.perf_counter() - t0) * 1000.0
             return BridgeStatus(False, latency_ms, self._endpoint, repr(exc))
 
@@ -165,7 +166,7 @@ class BaiLongmaBridge:
             if not parts:
                 return ""
             return str(parts[0].get("text", ""))
-        except Exception:  # pragma: no cover - defensive
+        except Exception:  # pragma: no cover - defensive  # noqa: BLE001
             return ""
 
     async def delegate_task(
@@ -206,7 +207,7 @@ class BaiLongmaBridge:
             task.id = result.get("taskId", task.id)
             task.state = state
             return task
-        except Exception:  # pragma: no cover - defensive
+        except Exception:  # pragma: no cover - defensive  # noqa: BLE001
             return None
 
     async def poll_task(self, task_id: str) -> A2ATask | None:
@@ -228,7 +229,7 @@ class BaiLongmaBridge:
                     )
                 )
             return A2ATask(id=task_id, state=state, messages=messages)
-        except Exception:  # pragma: no cover - defensive
+        except Exception:  # pragma: no cover - defensive  # noqa: BLE001
             return None
 
     async def cancel_task(self, task_id: str) -> bool:
@@ -237,7 +238,7 @@ class BaiLongmaBridge:
             return False
         try:
             return bool(await self._post("tasks/cancel", taskId=task_id))
-        except Exception:  # pragma: no cover - defensive
+        except Exception:  # pragma: no cover - defensive  # noqa: BLE001
             return False
 
     # ------------------------------------------------------------------
@@ -249,8 +250,9 @@ class BaiLongmaBridge:
 
         Raises on transport / JSON / JSON-RPC ``error`` — callers wrap.
         """
-        import httpx
         import uuid
+
+        import httpx
 
         payload = {
             "jsonrpc": "2.0",

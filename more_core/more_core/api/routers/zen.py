@@ -28,7 +28,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
 
     @router.get("/zen/violations")
     async def zen_violations(severity: str | None = None) -> dict[str, Any]:
-        from ...zen_rules import get_enforcer, RuleSeverity
+        from ...zen_rules import RuleSeverity, get_enforcer
 
         enforcer = get_enforcer()
         try:
@@ -94,7 +94,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
 
         try:
             project_root = getattr(getattr(core, "settings", None), "project_root", None) or None
-        except Exception:
+        except Exception:  # noqa: BLE001
             project_root = None
         summary = compute_evolution_summary(
             task_type=task_type or "",

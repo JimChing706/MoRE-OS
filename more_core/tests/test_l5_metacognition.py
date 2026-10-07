@@ -168,7 +168,7 @@ class TestPlanMonitoring:
             ctx = _make_ctx(decomposed=True, plan_id=None)
             ctx.scratch["plan"] = {"subtasks": ["s1"], "decomposed": True}
             await MetacognitionLayer().process(ctx)
-            assert ctx.scratch["plan_health"]["status"] in ("no_active_plan",)
+            assert ctx.scratch["plan_health"]["status"] == "no_active_plan"
 
     @pytest.mark.asyncio
     async def test_plan_health_in_output(self):

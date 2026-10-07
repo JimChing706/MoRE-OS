@@ -12,7 +12,7 @@ import hmac
 import logging
 import os
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
@@ -33,14 +33,14 @@ if TYPE_CHECKING:  # pragma: no cover
     from ..security.api_key_store import APIKeyStore
 
 from .routers import (
-    create_admin_api_key_router,
     create_a2a_router,
+    create_admin_api_key_router,
     create_channels_router,
     create_commands_router,
     create_cron_router,
-    create_deployments_router,
-    create_delivery_router,
     create_deliberate_router,
+    create_delivery_router,
+    create_deployments_router,
     create_hands_router,
     create_health_router,
     create_hotreload_router,
@@ -130,23 +130,23 @@ def validate_api_key(*, require: bool | None = None) -> str:
     return key
 
 
-def _key_store() -> "APIKeyStore | None":
+def _key_store() -> APIKeyStore | None:
     """Return the process API-key store, or ``None`` when storage is unavailable."""
     try:
         from ..security.api_key_store import get_default_store
 
         return get_default_store()
-    except Exception as exc:  # pragma: no cover - defensive: never block boot
+    except Exception as exc:  # pragma: no cover - defensive: never block boot  # noqa: BLE001
         _log.warning("API key store unavailable, falling back to MORE_API_KEY: %s", exc)
         return None
 
 
-def _has_registered_keys(store: "APIKeyStore | None") -> bool:
+def _has_registered_keys(store: APIKeyStore | None) -> bool:
     if store is None:
         return False
     try:
         return store.has_keys()
-    except Exception:  # pragma: no cover - defensive
+    except Exception:  # pragma: no cover - defensive  # noqa: BLE001
         return False
 
 
@@ -222,7 +222,7 @@ def create_app(core: MoRECore | None = None) -> FastAPI:
     validate_api_key()
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await core.start()
         try:
             yield
@@ -310,7 +310,7 @@ See docs/API_KEY.md for key format, rotation, and troubleshooting.
                         latency_ms=latency_ms,
                         ip=(request.client.host if request.client else ""),
                     )
-            except Exception:  # pragma: no cover - 用量写入不得影响响应
+            except Exception:  # pragma: no cover - 用量写入不得影响响应  # noqa: BLE001, S110
                 pass
         return response
 

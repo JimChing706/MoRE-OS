@@ -16,7 +16,7 @@ from typing import Any
 
 import httpx
 
-__all__ = ["ProviderCheck", "LLMPreflight", "preflight_llm"]
+__all__ = ["LLMPreflight", "ProviderCheck", "preflight_llm"]
 
 _TIMEOUT = 5.0
 
@@ -103,7 +103,7 @@ async def _fetch_models(url: str) -> list[str] | None:
             if resp.status_code != 200:
                 return None
             data = resp.json()
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
     if isinstance(data, dict):
         if isinstance(data.get("data"), list):  # OpenAI 兼容
@@ -150,7 +150,7 @@ async def preflight_llm(
         check = ProviderCheck(name=name, registered=True, endpoint=endpoint, configured_model=model)
         try:
             check.healthy = bool(await provider.health())
-        except Exception:
+        except Exception:  # noqa: BLE001
             check.healthy = False
         if not check.healthy:
             check.warnings.append(f"provider {name} health check failed")
@@ -206,7 +206,7 @@ async def preflight_llm(
                         f"(provider {report.state_provider!r}) not found among "
                         f"{len(served)} served models — per-request calls will fail"
                     )
-    except Exception:  # pragma: no cover - state check must never break preflight
+    except Exception:  # noqa: BLE001, S110 - state check must never break preflight
         pass
 
     if report.degraded:

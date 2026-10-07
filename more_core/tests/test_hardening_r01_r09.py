@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 from fastapi import Depends, FastAPI, Request
 from fastapi.testclient import TestClient
 
 from more_core.core.native_executor.planner import TaskTemplateSelector
+from more_core.layers.l0_execution import ExecutionLayer
 from more_core.security.principal import (
     ANONYMOUS,
     ENV_KEY_PRINCIPAL,
@@ -17,10 +19,6 @@ from more_core.security.principal import (
     reset_principal,
     set_principal,
 )
-from more_core.layers.l0_execution import ExecutionLayer
-
-from types import SimpleNamespace
-
 
 # ---------------------------------------------------------------------------
 # R-04 模板路由：不再把 docs/metrics/statistics/fps 误判为 CS 射击

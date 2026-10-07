@@ -13,9 +13,10 @@ This replaces the baseline ontology-only check with a genuine inference loop.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable
+from typing import Any
 
 from ..core.unicode_utils import semantic_length
 
@@ -25,7 +26,8 @@ class RulePriority(int, Enum):
     HIGH = 75
     NORMAL = 50
     LOW = 25
-    DEFAULT = 50
+    # 有意别名：对外保留 DEFAULT 名称，数值语义与 NORMAL 相同。
+    DEFAULT = 50  # noqa: PIE796
 
 
 @dataclass(slots=True)
@@ -167,7 +169,7 @@ def _act_long_query(facts: list[Fact], ctx: dict[str, Any]) -> list[RuleAction]:
 
 def _cond_self_improvement_without_gate(facts: list[Fact]) -> bool:
     for f in facts:
-        if f.kind == "request":
+        if f.kind == "request":  # noqa: SIM102 - 保留嵌套以承载逐条件注释
             if f.data.get("allow_self_improvement") and not f.data.get("evolution_enabled"):
                 return True
     return False
@@ -186,10 +188,7 @@ def _act_block_ungated_evolution(facts: list[Fact], ctx: dict[str, Any]) -> list
 
 def _cond_dangerous_code(facts: list[Fact]) -> bool:
     dangerous = re.compile(r"(os\.system|subprocess\.call|eval\(|exec\(|__import__)")
-    for f in facts:
-        if f.kind == "code_output" and dangerous.search(f.data.get("code", "")):
-            return True
-    return False
+    return any(f.kind == "code_output" and dangerous.search(f.data.get("code", "")) for f in facts)
 
 
 def _act_flag_dangerous(facts: list[Fact], ctx: dict[str, Any]) -> list[RuleAction]:
@@ -258,10 +257,7 @@ _REVIEW_DIMENSIONS = [
 
 
 def _cond_code_review_task(facts: list[Fact]) -> bool:
-    for f in facts:
-        if f.kind == "request" and f.data.get("type") == "code_review":
-            return True
-    return False
+    return any(f.kind == "request" and f.data.get("type") == "code_review" for f in facts)
 
 
 def _act_code_review_annotate(facts: list[Fact], ctx: dict[str, Any]) -> list[RuleAction]:
@@ -302,10 +298,7 @@ _ARCHITECTURE_CHECKLIST = [
 
 
 def _cond_architecture_design_task(facts: list[Fact]) -> bool:
-    for f in facts:
-        if f.kind == "request" and f.data.get("type") == "architecture_design":
-            return True
-    return False
+    return any(f.kind == "request" and f.data.get("type") == "architecture_design" for f in facts)
 
 
 def _act_architecture_design_annotate(facts: list[Fact], ctx: dict[str, Any]) -> list[RuleAction]:

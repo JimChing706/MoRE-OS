@@ -21,7 +21,6 @@ from more_core.a2a.client import (
 )
 from more_core.core.types import TaskStatus, TaskType
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

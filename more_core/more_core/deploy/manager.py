@@ -148,7 +148,7 @@ class DeploymentManager:
             dep.health.healthy = True
             dep.health.last_check = time.time()
             _log.info("Deployed %s: %s (%s)", dtype.value, name, dep_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             dep.status = DeploymentStatus.FAILED
             dep.health.healthy = False
             dep.health.message = str(exc)
@@ -166,7 +166,7 @@ class DeploymentManager:
             handler = self._undeploy_handlers.get(dep.type)
             if handler:
                 await handler(dep.target_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             _log.warning("Undeploy handler error: %s", exc)
 
         dep.status = DeploymentStatus.STOPPED
@@ -197,7 +197,7 @@ class DeploymentManager:
             dep.health.healthy = True
             dep.health.consecutive_failures = 0
             return True
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             dep.status = DeploymentStatus.FAILED
             dep.health.message = str(exc)
             return False

@@ -60,8 +60,9 @@ def core_with_project_root(more_core_with_tools, temp_project):
 
 def test_read_file(core_with_project_root):
     """Test reading a file."""
-    from more_core.tools.builtins import _read_file
     import asyncio
+
+    from more_core.tools.builtins import _read_file
 
     result = asyncio.run(_read_file({"path": "test_file.py"}, core=core_with_project_root))
     assert result.success
@@ -71,8 +72,9 @@ def test_read_file(core_with_project_root):
 
 def test_read_file_not_found(core_with_project_root):
     """Test reading non-existent file."""
-    from more_core.tools.builtins import _read_file
     import asyncio
+
+    from more_core.tools.builtins import _read_file
 
     result = asyncio.run(_read_file({"path": "nonexistent.py"}, core=core_with_project_root))
     assert not result.success
@@ -81,8 +83,9 @@ def test_read_file_not_found(core_with_project_root):
 
 def test_write_file(core_with_project_root, temp_project):
     """Test writing a file."""
-    from more_core.tools.builtins import _write_file
     import asyncio
+
+    from more_core.tools.builtins import _write_file
 
     result = asyncio.run(
         _write_file(
@@ -101,8 +104,9 @@ def test_write_file(core_with_project_root, temp_project):
 
 def test_list_directory(core_with_project_root):
     """Test listing a directory."""
-    from more_core.tools.builtins import _list_directory
     import asyncio
+
+    from more_core.tools.builtins import _list_directory
 
     result = asyncio.run(_list_directory({"recursive": False}, core=core_with_project_root))
     assert result.success
@@ -112,8 +116,9 @@ def test_list_directory(core_with_project_root):
 
 def test_list_directory_recursive(core_with_project_root):
     """Test recursive directory listing."""
-    from more_core.tools.builtins import _list_directory
     import asyncio
+
+    from more_core.tools.builtins import _list_directory
 
     result = asyncio.run(_list_directory({"recursive": True}, core=core_with_project_root))
     assert result.success
@@ -125,6 +130,7 @@ def test_list_directory_recursive(core_with_project_root):
 def test_search_code(core_with_project_root):
     """Test searching for code."""
     import asyncio
+
     from more_core.tools.builtins import _search_code
 
     result = asyncio.run(
@@ -143,6 +149,7 @@ def test_search_code(core_with_project_root):
 def test_search_code_regex(core_with_project_root):
     """Test regex search."""
     import asyncio
+
     from more_core.tools.builtins import _search_code
 
     result = asyncio.run(
@@ -162,6 +169,7 @@ def test_search_code_regex(core_with_project_root):
 def test_run_basic_tests(core_with_project_root):
     """Test running pytest."""
     import asyncio
+
     from more_core.tools.builtins import _run_tests
 
     result = asyncio.run(
@@ -180,6 +188,7 @@ def test_run_basic_tests(core_with_project_root):
 def test_lint_file(core_with_project_root):
     """Test linting a file."""
     import asyncio
+
     from more_core.tools.builtins import _lint_file
 
     result = asyncio.run(_lint_file({"path": "test_file.py"}, core=core_with_project_root))
@@ -189,6 +198,7 @@ def test_lint_file(core_with_project_root):
 def test_format_code(core_with_project_root):
     """Test formatting code."""
     import asyncio
+
     from more_core.tools.builtins import _format_code
 
     result = asyncio.run(

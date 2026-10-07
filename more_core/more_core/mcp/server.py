@@ -6,17 +6,18 @@ import asyncio
 import hmac
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 from .protocol import (
+    ClientCapabilities,
     ErrorCode,
     JSONRPCError,
+    JSONRPCProtocol,
     MCPRequest,
     MCPResponse,
-    JSONRPCProtocol,
     ServerCapabilities,
-    ClientCapabilities,
     ToolCallResult,
 )
 
@@ -25,8 +26,6 @@ _log = logging.getLogger(__name__)
 
 class MCPServerError(Exception):
     """MCP Server error."""
-
-    pass
 
 
 @dataclass
@@ -185,7 +184,7 @@ class MCPRequestHandler:
             return None
 
         # 鉴权守卫：仅 initialize 可免令牌；其余方法必须是已鉴权会话。
-        if isinstance(msg, MCPRequest) and msg.method != "initialize":
+        if isinstance(msg, MCPRequest) and msg.method != "initialize":  # noqa: SIM102 - 保留嵌套以承载逐条件注释
             if not self._is_authorized(msg):
                 _log.warning("MCP rejected unauthenticated method=%s", msg.method)
                 unauthorized = MCPResponse(
@@ -397,7 +396,7 @@ class MCPServer:
                         await writer.drain()
                     buffer = ""
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             _log.error(f"MCP stdio error: {e}")
         finally:
             writer.close()

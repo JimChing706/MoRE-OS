@@ -129,7 +129,7 @@ class SimpleBenchmark(Benchmark):
 class BenchmarkRunner:
     """Runs an :class:`EvolvedAgent` through a suite and returns a report."""
 
-    def __init__(self, core: "MoRECore") -> None:
+    def __init__(self, core: MoRECore) -> None:
         self._core = core
         self._benchmarks: dict[str, Benchmark] = {}
 
@@ -170,7 +170,7 @@ class BenchmarkRunner:
                     cr = await bm.evaluate(case, result.output)
                     cr.duration_ms = (time.perf_counter() - t0) * 1000
                     return cr
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     return CaseResult(
                         case_id=case.id,
                         passed=False,

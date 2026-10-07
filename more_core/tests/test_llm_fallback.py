@@ -11,9 +11,8 @@ import pytest
 from more_core.core.errors import LLMError
 from more_core.core.types import TaskType
 from more_core.llm.dynamic_router import DynamicModelRouter
-from more_core.llm.manager import LLMManager, _LRU
+from more_core.llm.manager import _LRU, LLMManager
 from more_core.llm.provider import LLMRequest, LLMResponse
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -169,7 +168,7 @@ class _FakeLLMManagerForRouting:
         return list(self._providers)
 
     async def health(self):
-        return {name: True for name in self._providers}
+        return dict.fromkeys(self._providers, True)
 
 
 def test_dynamic_router_resolves_alias():

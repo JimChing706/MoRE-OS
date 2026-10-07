@@ -15,17 +15,18 @@ _INNER_ROOT = _Path(__file__).resolve().parents[1]
 if str(_INNER_ROOT) not in _sys.path:
     _sys.path.insert(0, str(_INNER_ROOT))
 
-import pytest  # noqa: E402
+import pytest
 
 # fastapi 为可选依赖：先 importorskip，再导入其余模块（故 E402 属预期行为）。
 pytest.importorskip("fastapi")
 
-from datetime import datetime, timezone  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
+from datetime import datetime, timezone
 
-from more_core.api.server import create_app  # noqa: E402
-from more_core.core.config import Settings  # noqa: E402
-from more_core.core.import_task import (  # noqa: E402
+from fastapi.testclient import TestClient
+
+from more_core.api.server import create_app
+from more_core.core.config import Settings
+from more_core.core.import_task import (
     ImportKillCriterion,
     ImportTaskDocument,
     ImportTaskGenerator,
@@ -33,7 +34,7 @@ from more_core.core.import_task import (  # noqa: E402
     RequirementItem,
     ResourceBudget,
 )
-from more_core.runtime.orchestrator import MoRECore  # noqa: E402
+from more_core.runtime.orchestrator import MoRECore
 
 
 @pytest.fixture(autouse=True)
@@ -65,8 +66,8 @@ def client(_core, monkeypatch, tmp_path):
     monkeypatch.delenv("MORE_REQUIRE_API_KEY", raising=False)
     # Force the routers to share a single tasks.db per test.
     # Always import through top-level more_core package.
-    from more_core.api.routers import tasks as _tasks_mod
     from more_core.api.routers import import_task as _itd_mod
+    from more_core.api.routers import tasks as _tasks_mod
 
     _tmp_db = tmp_path / "itd_test_tasks.db"
     _new_store = _tasks_mod.SQLiteTaskStore(str(_tmp_db))
@@ -233,8 +234,8 @@ class TestImportParentSubTasks:
         # Use the *same* _task_store singleton that the routers import from
         # (guaranteed identical because the client fixture already swapped it
         # to a per-test tmp DB before create_app ran).
-        from more_core.api.routers import tasks as _tasks_rtr
         from more_core.api.routers import import_task as _itd_rtr
+        from more_core.api.routers import tasks as _tasks_rtr
 
         store1 = _tasks_rtr._task_store
         store2 = _itd_rtr._task_store

@@ -7,9 +7,10 @@ import hmac
 import json
 import logging
 import time
-from typing import Any, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 import httpx
 
@@ -108,7 +109,7 @@ class WebhookAdapter(ChannelAdapter):
                 _log.warning(f"Webhook failed: {r.status_code} {r.text}")
                 return False
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self._stats["failed"] += 1
             _log.error(f"Webhook error: {e}")
             return False
@@ -144,7 +145,7 @@ class WebhookAdapter(ChannelAdapter):
             else:
                 r = await self._session.head(self._url)
             return r.status_code < 400
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False
 
     def get_stats(self) -> dict[str, Any]:
@@ -176,7 +177,7 @@ class WebhookAdapter(ChannelAdapter):
                 "status_code": r.status_code,
                 "response": r.text[:200],
             }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {
                 "success": False,
                 "error": str(e),
@@ -227,7 +228,7 @@ class WebhookServer:
             data = json.loads(body) if body else {}
             result = await handler(data, headers)
             return {"status": 200, "body": result}
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"status": 500, "body": str(e)}
 
     async def start(self) -> None:

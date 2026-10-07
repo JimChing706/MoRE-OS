@@ -39,10 +39,7 @@ def is_cjk_char(char: str) -> bool:
 def is_wide_char(char: str) -> bool:
     """Return True if *char* occupies two display columns (CJK, fullwidth)."""
     cp = ord(char)
-    for lo, hi in _CJK_RANGES + _FULLWIDTH_RANGES:
-        if lo <= cp <= hi:
-            return True
-    return False
+    return any(lo <= cp <= hi for lo, hi in _CJK_RANGES + _FULLWIDTH_RANGES)
 
 
 def cjk_ratio(text: str) -> float:

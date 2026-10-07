@@ -1,8 +1,8 @@
 """Tests for the Slash Command Registry."""
 
 from more_core.commands.registry import (
-    CommandRegistry,
     Command,
+    CommandRegistry,
     CommandSurface,
     register_builtin_commands,
 )

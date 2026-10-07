@@ -3,9 +3,9 @@
 
 def test_types_import_and_blocking_level_hard_block_default():
     from more_core.core.native_executor.types import (
-        ValidationBlockingLevel,
         AggregatedValidationResult,
         TemplateDispatchResult,
+        ValidationBlockingLevel,
     )
 
     assert ValidationBlockingLevel.HARD_BLOCK.value == "hard_block"
@@ -49,7 +49,7 @@ def test_cs_shooter_payload_has_no_tetris():
 
     mixin = CSShooterWriterMixin()
     payload = mixin.build_payload_map(task_request=None, doc=None, steps=[])
-    for path in payload.keys():
+    for path in payload:
         assert "tetris" not in path.lower(), f"CS payload 泄漏 Tetris 路径: {path}"
     assert any(p.startswith("shooter_core/") for p in payload)
     assert any(p.startswith("shooter_server/") for p in payload)
@@ -83,9 +83,10 @@ def test_tetris_payload_backward_compatible_exact_13_paths():
 
 
 def test_aggregated_validator_blocking_truth_table():
+    from dataclasses import dataclass
+
     from more_core.core.native_executor.types import ValidationBlockingLevel
     from more_core.core.native_executor.validator import aggregate_results
-    from dataclasses import dataclass
 
     @dataclass
     class FakeVR:

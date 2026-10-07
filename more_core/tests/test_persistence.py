@@ -2,10 +2,10 @@
 
 import pytest
 
+from more_core.evolution.archive import EvolvedAgent
+from more_core.evolution.sqlite_archive import SQLiteEvolutionArchive
 from more_core.memory.sqlite_store import SQLiteMemoryStore
 from more_core.memory.store import MemoryEntry, MemoryKind
-from more_core.evolution.sqlite_archive import SQLiteEvolutionArchive
-from more_core.evolution.archive import EvolvedAgent
 
 
 @pytest.fixture

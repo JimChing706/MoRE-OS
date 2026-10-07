@@ -6,8 +6,8 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from ...security.rbac import Permission, require_permission
 from ...runtime.orchestrator import MoRECore
+from ...security.rbac import Permission, require_permission
 
 
 def _skill_to_dict(meta: Any, core: MoRECore) -> dict[str, Any]:
@@ -58,7 +58,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         payload = _skill_to_dict(skill.metadata, core)
         try:
             payload["healthy"] = await skill.health_check()
-        except Exception:
+        except Exception:  # noqa: BLE001
             payload["healthy"] = False
         return {"status": "ok", "skill": payload}
 

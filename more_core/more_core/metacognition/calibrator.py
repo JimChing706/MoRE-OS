@@ -5,7 +5,6 @@ from __future__ import annotations
 import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Deque
 
 
 @dataclass(slots=True)
@@ -17,7 +16,7 @@ class CalibrationPoint:
 
 class Calibrator:
     def __init__(self, window: int = 128) -> None:
-        self._history: Deque[CalibrationPoint] = deque(maxlen=window)
+        self._history: deque[CalibrationPoint] = deque(maxlen=window)
         self._last_alignment: float = 1.0
 
     def observe(self, confidence: float, accuracy: float) -> float:

@@ -55,7 +55,7 @@ CREATE INDEX IF NOT EXISTS idx_skill_deliver_status ON skill_deliverables(status
 def _load(raw: Any, fallback: Any) -> Any:
     try:
         return json.loads(raw)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return fallback
 
 
@@ -127,7 +127,7 @@ class SkillDeliveryLedger:
         try:
             with self._connect() as conn:
                 conn.executescript(_SCHEMA)
-        except Exception as exc:  # pragma: no cover - 台账不可用不影响主链路
+        except Exception as exc:  # pragma: no cover - 台账不可用不影响主链路  # noqa: BLE001
             self.last_error = str(exc)
             _log.warning("skill ledger init failed: %s", exc)
 
@@ -179,7 +179,7 @@ class SkillDeliveryLedger:
                     ),
                 )
             return True
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:  # pragma: no cover - defensive  # noqa: BLE001
             self.last_error = str(exc)
             return False
 
@@ -192,7 +192,7 @@ class SkillDeliveryLedger:
                     (STATUS_ACCEPTED, time.time(), skill_id),
                 )
                 return cur.rowcount > 0
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc:  # pragma: no cover  # noqa: BLE001
             self.last_error = str(exc)
             return False
 
@@ -205,7 +205,7 @@ class SkillDeliveryLedger:
                     "SELECT * FROM skill_deliverables WHERE skill_id = ?", (skill_id,)
                 ).fetchone()
             return self._row_to_record(row) if row else None
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc:  # pragma: no cover  # noqa: BLE001
             self.last_error = str(exc)
             return None
 
@@ -214,7 +214,7 @@ class SkillDeliveryLedger:
             with self._connect() as conn:
                 rows = conn.execute("SELECT * FROM skill_deliverables ORDER BY skill_id").fetchall()
             return [self._row_to_record(r) for r in rows]
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc:  # pragma: no cover  # noqa: BLE001
             self.last_error = str(exc)
             return []
 

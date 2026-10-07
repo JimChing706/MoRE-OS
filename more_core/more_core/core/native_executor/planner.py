@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # 仅类型检查期导入，避免运行时循环依赖
     from .types import TaskTemplateKey
@@ -42,8 +42,8 @@ class Step:
     action: str
     depends_on: list[str] = field(default_factory=list)
     expected_outputs: list[str] = field(default_factory=list)
-    payload_when_write_file: Optional[dict[str, str]] = None
-    cmd_when_cmd: Optional[list[str]] = None
+    payload_when_write_file: dict[str, str] | None = None
+    cmd_when_cmd: list[str] | None = None
 
 
 # ============================================================
@@ -150,7 +150,7 @@ class Planner:
         self,
         task_request: Any,
         project_root: str,
-        doc: Optional[str] = None,
+        doc: str | None = None,
     ) -> list[Step]:
         """生成执行步骤列表。
 
@@ -178,11 +178,11 @@ class Planner:
                 plan = selector.plan_for_key(key)
                 if plan:
                     return plan
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
 
         # ---- 路径 1：LLM ----
-        llm_result: Optional[list[Step]] = self._try_llm_plan(task_request, project_root, doc)
+        llm_result: list[Step] | None = self._try_llm_plan(task_request, project_root, doc)
         if self._is_valid_step_list(llm_result):
             return llm_result  # type: ignore[return-value]
 
@@ -196,8 +196,8 @@ class Planner:
         self,
         task_request: Any,
         project_root: str,
-        doc: Optional[str],
-    ) -> Optional[list[Step]]:
+        doc: str | None,
+    ) -> list[Step] | None:
         """尝试通过 LLM 路径生成步骤。失败统一返回 None 交给调用方 fallback。"""
         try:
             execute_fn = self._llm_execute_fn or self._default_core_execute
@@ -205,7 +205,7 @@ class Planner:
             if result is None:
                 return None
             return result
-        except Exception:
+        except Exception:  # noqa: BLE001
             # 任何异常（未配置 LLM、网络错误、返回格式错误等）都 fallback
             return None
 
@@ -213,7 +213,7 @@ class Planner:
     def _default_core_execute(
         task_request: Any,
         project_root: str,
-        doc: Optional[str],
+        doc: str | None,
     ) -> list[Step]:
         """默认 LLM 执行占位：直接抛异常触发 fallback。
 
@@ -361,7 +361,7 @@ class TaskTemplateSelector:
     CS_CONTEXT_RE = r"(?i)(?:游戏|对战|竞技|\bgame\b|\barena\b)"
     TETRIS_RE = r"(?i)(?:\b(?:tetris)\b|俄罗斯方块|方块消除|消行)"
 
-    def _frontmatter_title_type_tags(self, doc: Optional[str]) -> tuple[str, str, list[str]]:
+    def _frontmatter_title_type_tags(self, doc: str | None) -> tuple[str, str, list[str]]:
         title = typ = ""
         tags: list[str] = []
         if not doc:
@@ -391,7 +391,7 @@ class TaskTemplateSelector:
             tags = [t.strip().strip("\"'").lower() for t in m.group(1).split(",") if t.strip()]
         return title, typ, tags
 
-    def key_for(self, task_request: Any, doc: Optional[str]) -> TaskTemplateKey:
+    def key_for(self, task_request: Any, doc: str | None) -> TaskTemplateKey:
         title, typ, tags = self._frontmatter_title_type_tags(doc)
         q = getattr(task_request, "query", "") or ""
         corpus = " ".join(filter(None, [title, typ, q, *tags]))

@@ -64,7 +64,7 @@ class TelegramAdapter(ChannelAdapter):
         try:
             result = await self._call_api("getMe")
             return bool(result.get("ok", False))
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False
 
     async def _poll_loop(self) -> None:
@@ -79,7 +79,7 @@ class TelegramAdapter(ChannelAdapter):
                     for update in updates.get("result", []):
                         await self._handle_update(update)
                         self._offset = update["update_id"] + 1
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 _log.error("Telegram poll error: %s", e)
                 await asyncio.sleep(5)
 

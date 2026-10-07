@@ -1,4 +1,4 @@
-from .store import MemoryStore, MemoryEntry, MemoryKind
 from .sqlite_store import SQLiteMemoryStore
+from .store import MemoryEntry, MemoryKind, MemoryStore
 
-__all__ = ["MemoryStore", "MemoryEntry", "MemoryKind", "SQLiteMemoryStore"]
+__all__ = ["MemoryEntry", "MemoryKind", "MemoryStore", "SQLiteMemoryStore"]

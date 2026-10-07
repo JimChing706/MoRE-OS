@@ -201,7 +201,7 @@ class Settings(BaseModel):
         }
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         providers: list[LLMProviderConfig] = []
         # Ollama
         if os.getenv("MORE_OLLAMA_ENDPOINT"):

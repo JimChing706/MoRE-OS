@@ -8,14 +8,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from more_core.core.types import LayerId, TaskRequest, TaskStatus, TaskType
+from more_core.layers.base import LayerContext
 from more_core.layers.l0_execution import (
     ExecutionLayer,
     _extract_llm_confidence,
 )
-from more_core.layers.base import LayerContext
 from more_core.llm.provider import LLMResponse
 from more_core.tools.registry import ToolResult
-
 
 # =========================================================================
 # Unit tests — _is_clarification_question
@@ -333,32 +332,32 @@ class TestCheckCodeSafety:
 
     def test_dangerous_eval_detected(self):
         ctx = self._make_ctx()
-        safe, violations = ExecutionLayer._check_code_safety("eval('x')", ctx)
+        safe, _violations = ExecutionLayer._check_code_safety("eval('x')", ctx)
         assert safe is False
 
     def test_dangerous_exec_detected(self):
         ctx = self._make_ctx()
-        safe, violations = ExecutionLayer._check_code_safety("exec('x')", ctx)
+        safe, _violations = ExecutionLayer._check_code_safety("exec('x')", ctx)
         assert safe is False
 
     def test_dangerous_subprocess_call_detected(self):
         ctx = self._make_ctx()
-        safe, violations = ExecutionLayer._check_code_safety("subprocess.call('ls')", ctx)
+        safe, _violations = ExecutionLayer._check_code_safety("subprocess.call('ls')", ctx)
         assert safe is False
 
     def test_fallback_when_l3_unavailable(self):
         ctx = self._make_ctx(l3_available=False)
-        safe, violations = ExecutionLayer._check_code_safety("eval('danger')", ctx)
+        safe, _violations = ExecutionLayer._check_code_safety("eval('danger')", ctx)
         assert safe is False
 
     def test_safe_code_when_l3_unavailable(self):
         ctx = self._make_ctx(l3_available=False)
-        safe, violations = ExecutionLayer._check_code_safety("print('ok')", ctx)
+        safe, _violations = ExecutionLayer._check_code_safety("print('ok')", ctx)
         assert safe is True
 
     def test_l3_without_rule_engine_falls_back(self):
         ctx = self._make_ctx(l3_available=True, l3_has_rule_engine=False)
-        safe, violations = ExecutionLayer._check_code_safety("print('ok')", ctx)
+        safe, _violations = ExecutionLayer._check_code_safety("print('ok')", ctx)
         assert safe is True
 
 
@@ -548,7 +547,7 @@ class TestRunFixLoop:
     async def test_assertions_reject_code_that_runs_but_fails(self):
         """Code that runs yet violates an acceptance assertion triggers a fix round."""
         ctx = self._make_ctx()
-        result, added_in, added_out = await self._run(
+        result, _added_in, _added_out = await self._run(
             ctx,
             [self._sbx(False, error="AssertionError"), self._sbx(True)],
             gen_content="```python\nx = 2\n```",
@@ -566,7 +565,7 @@ class TestRunFixLoop:
     @pytest.mark.asyncio
     async def test_assertions_pass_without_extra_round(self):
         ctx = self._make_ctx()
-        result, added_in, added_out = await self._run(
+        result, _added_in, _added_out = await self._run(
             ctx,
             [self._sbx(True)],
             gen_content="n/a",
@@ -941,8 +940,8 @@ class TestRunFixLoop:
 class TestBuildFixPrompt:
     @pytest.mark.asyncio
     async def test_embeds_error_and_code(self):
-        from more_core.llm.provider import LLMRequest
         from more_core.layers.l0_execution import ExecutionLayer
+        from more_core.llm.provider import LLMRequest
         from more_core.tools.registry import ToolResult
 
         req = LLMRequest(prompt="fix my code", system="sys", temperature=0.4, max_tokens=200)
@@ -955,8 +954,8 @@ class TestBuildFixPrompt:
 
     @pytest.mark.asyncio
     async def test_english_directive(self):
-        from more_core.llm.provider import LLMRequest
         from more_core.layers.l0_execution import ExecutionLayer
+        from more_core.llm.provider import LLMRequest
         from more_core.tools.registry import ToolResult
 
         req = LLMRequest(
@@ -983,7 +982,7 @@ class _CodeFakeLLMProvider:
 
     name = "fake-code"
 
-    async def generate(self, request):  # noqa: ANN001
+    async def generate(self, request):
         return LLMResponse(
             content='```python\nprint("hello from fake code")\n```',
             provider=self.name,

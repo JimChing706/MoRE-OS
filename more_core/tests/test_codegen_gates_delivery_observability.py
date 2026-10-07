@@ -11,7 +11,7 @@ from more_core.codegen.gates import (
     run_gates,
     syntax_gate,
 )
-from more_core.security.output_filter import OutputFilter, _DEFAULT_RULES
+from more_core.security.output_filter import _DEFAULT_RULES, OutputFilter
 
 GOOD_CODE = """```python
 def merge_intervals(intervals):

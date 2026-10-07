@@ -12,7 +12,7 @@ import logging
 import random
 import time
 from dataclasses import dataclass
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .base import ChannelAdapter
@@ -58,7 +58,7 @@ class ReconnectManager:
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._running = False
 
-    def register(self, name: str, adapter: "ChannelAdapter") -> None:
+    def register(self, name: str, adapter: ChannelAdapter) -> None:
         """Register an adapter for reconnection monitoring."""
         self._states[name] = ReconnectState(channel_name=name)
 
@@ -82,7 +82,7 @@ class ReconnectManager:
         self._tasks.clear()
         _log.info("ReconnectManager stopped")
 
-    async def on_disconnect(self, name: str, adapter: "ChannelAdapter") -> None:
+    async def on_disconnect(self, name: str, adapter: ChannelAdapter) -> None:
         """Called when a channel disconnects. Starts reconnection loop."""
         state = self._states.get(name)
         if state is None:
@@ -110,7 +110,7 @@ class ReconnectManager:
         state.total_reconnects += 1
         _log.info("Channel %s reconnected (attempt %d)", name, state.total_reconnects)
 
-    async def _reconnect_loop(self, name: str, adapter: "ChannelAdapter") -> None:
+    async def _reconnect_loop(self, name: str, adapter: ChannelAdapter) -> None:
         """Reconnection loop with exponential backoff."""
         state = self._states[name]
         state.current_delay_s = self._config.initial_delay_s
@@ -134,7 +134,7 @@ class ReconnectManager:
                 await adapter.start()
                 await self.on_connect(name)
                 return  # Success
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 _log.warning("Channel %s: reconnect failed: %s", name, exc)
                 state.current_delay_s = min(
                     state.current_delay_s * self._config.backoff_factor,

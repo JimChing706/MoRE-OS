@@ -6,12 +6,15 @@ import asyncio
 import hashlib
 import logging
 import time
+import types
 from collections import OrderedDict
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
+from typing import Any, TypeVar, cast
 
-from typing import Any, Callable, TypeVar, Awaitable, cast
+from typing_extensions import Self
 
 from .core.errors import MoREError
 
@@ -229,12 +232,17 @@ class ConnectionPool:
         self._active = 0
         self._waiting = 0
 
-    async def __aenter__(self) -> ConnectionPool:
+    async def __aenter__(self) -> Self:
         await self._semaphore.acquire()
         self._active += 1
         return self
 
-    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: types.TracebackType | None,
+    ) -> None:
         self._active -= 1
         self._semaphore.release()
 

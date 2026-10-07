@@ -26,6 +26,7 @@ toward repair strategies that historically worked.
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import logging
 import os
@@ -238,10 +239,10 @@ def _ensure_schema_migrated(conn: sqlite3.Connection) -> None:
                 conn.execute(
                     "CREATE INDEX IF NOT EXISTS idx_runs_delegated ON codegen_runs(delegated)"
                 )
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
         conn.commit()
-    except Exception:  # pragma: no cover - defensive
+    except Exception:  # pragma: no cover - defensive  # noqa: BLE001, S110
         pass
 
 
@@ -260,7 +261,7 @@ def export_codegen_evolution_signal(
         ctx = run_ctx or CodegenRunContext()
         db_path = _resolve_db_path(ctx.project_root)
         conn = _get_conn(db_path)
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:  # pragma: no cover - defensive  # noqa: BLE001
         _log.debug("codegen evolution signal: DB init failed: %s", exc)
         return None
 
@@ -269,7 +270,7 @@ def export_codegen_evolution_signal(
             v_dict = verdict.to_dict()
         else:
             v_dict = dict(verdict)
-    except Exception:
+    except Exception:  # noqa: BLE001
         _log.debug("codegen evolution signal: verdict.to_dict/dict() failed — skipping export")
         return None
 
@@ -318,7 +319,7 @@ def export_codegen_evolution_signal(
     tier_used = scratch.get("tier_used", artifacts.get("tier_used"))
     try:
         tier_used = int(tier_used) if tier_used is not None else -1
-    except Exception:
+    except Exception:  # noqa: BLE001
         tier_used = -1
     if tier_used < 0:
         if delegated and trigger == "evolution_escalation":
@@ -332,7 +333,7 @@ def export_codegen_evolution_signal(
     thinking_tokens = scratch.get("thinking_tokens", artifacts.get("thinking_tokens"))
     try:
         thinking_tokens = max(0, int(thinking_tokens)) if thinking_tokens is not None else 0
-    except Exception:
+    except Exception:  # noqa: BLE001
         thinking_tokens = 0
     uplift_from_ctx = bool(
         scratch.get("diff_uplift_applied") or artifacts.get("diff_uplift_applied")
@@ -346,7 +347,7 @@ def export_codegen_evolution_signal(
             if isinstance(val, str) and "bias-l1-diff-uplift applied" in val:
                 uplift_from_str = True
                 break
-    except Exception:
+    except Exception:  # noqa: BLE001, S110
         pass
     diff_uplift_applied = 1 if (uplift_from_ctx or uplift_from_str) else 0
 
@@ -484,17 +485,17 @@ def export_codegen_evolution_signal(
                         (run_id, cls, fp, "llm", iterations, succeeded_all, fp),
                     )
             conn.commit()
-    except Exception as exc:  # pragma: no cover - defensive, must not break callers
+    except Exception as exc:  # pragma: no cover - defensive, must not break callers  # noqa: BLE001
         try:
             conn.rollback()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
         _log.debug("codegen evolution signal: insert failed: %s", exc)
         return None
     finally:
         try:
             conn.close()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
 
     return run_id
@@ -526,7 +527,7 @@ def query_top_fixes_for_failure(
     try:
         db_path = _resolve_db_path(project_root)
         conn = _get_conn(db_path)
-    except Exception as exc:  # pragma: no cover
+    except Exception as exc:  # pragma: no cover  # noqa: BLE001
         _log.debug("query_top_fixes: DB init failed: %s", exc)
         return []
     try:
@@ -544,13 +545,13 @@ def query_top_fixes_for_failure(
             """,
             (failure_class, min_samples),
         ).fetchall()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         _log.debug("query_top_fixes: query failed: %s", exc)
         return []
     finally:
         try:
             conn.close()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
     out: list[dict[str, Any]] = []
     for fix_kind, total, successes, distinct in rows:
@@ -583,7 +584,7 @@ def query_verdict_stats(
     try:
         db_path = _resolve_db_path(project_root)
         conn = _get_conn(db_path)
-    except Exception as exc:  # pragma: no cover
+    except Exception as exc:  # pragma: no cover  # noqa: BLE001
         _log.debug("query_verdict_stats: DB init failed: %s", exc)
         return {}
     try:
@@ -608,13 +609,13 @@ def query_verdict_stats(
             "FROM codegen_failure_modes "
             "GROUP BY failure_class ORDER BY occurrences DESC LIMIT 8"
         ).fetchall()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         _log.debug("query_verdict_stats: query failed: %s", exc)
         return {}
     finally:
         try:
             conn.close()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
     return {
         "total_runs": total,
@@ -661,7 +662,7 @@ def get_repair_bias_for_failure(
         try:
             db_path = _resolve_db_path(project_root)
             conn = _get_conn(db_path)
-        except Exception:
+        except Exception:  # noqa: BLE001
             return ""
         try:
             fp_rows = conn.execute(
@@ -683,12 +684,12 @@ def get_repair_bias_for_failure(
                 }
                 for kind, n, s in fp_rows
             ]
-        except Exception:
+        except Exception:  # noqa: BLE001
             rows_fp = []
         finally:
             try:
                 conn.close()
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
 
         signal = rows_fp[0] if rows_fp else None
@@ -702,7 +703,7 @@ def get_repair_bias_for_failure(
         if not signal:
             return ""
 
-        rate_pct = int(round(float(signal["success_rate"]) * 100))
+        rate_pct = round(float(signal["success_rate"]) * 100)
         samples = int(signal.get("samples") or 0)
         kind_label = {
             "deterministic": "确定性修复（语法/导入/缩进层，零 LLM 开销）",
@@ -722,7 +723,7 @@ def get_repair_bias_for_failure(
             f"Prefer that strategy before anything else."
         )
         return f"{zh}\n{en}"
-    except Exception:
+    except Exception:  # noqa: BLE001
         return ""
 
 
@@ -750,7 +751,7 @@ def query_dynamic_k(
     try:
         db_path = _resolve_db_path(project_root)
         conn = _get_conn(db_path)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return k, rationale
     try:
         params: list[Any] = []
@@ -785,12 +786,12 @@ def query_dynamic_k(
             f"< {escalate_threshold:.0%} (n={total}); escalating to best-of-2 "
             f"for reliability."
         )
-    except Exception:
+    except Exception:  # noqa: BLE001
         return 0, ""
     finally:
         try:
             conn.close()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
     return k, rationale
 
@@ -838,7 +839,7 @@ def get_delegation_success_stats(
     try:
         db_path = _resolve_db_path(project_root)
         conn = _get_conn(db_path)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return result
     try:
         # 三个统计桶。每个查询都按 key 现场重建（shared_where + bucket_filter），
@@ -877,13 +878,13 @@ def get_delegation_success_stats(
                 "passed": float(passed),
                 "rate": rate if n >= min_samples else 0.0,
             }
-    except Exception:
+    except Exception:  # noqa: BLE001
         # Never raise — bias is an opportunistic optimisation, not a hard dependency.
         return result
     finally:
         try:
             conn.close()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
     return result
 
@@ -1008,7 +1009,7 @@ def query_dynamic_k_with_delegation_bias(
         )
         final_rationale = biased_rationale + suffix
         return biased_k, final_rationale
-    except Exception:
+    except Exception:  # noqa: BLE001
         # Never fail — bias is best-effort.
         return base_k, base_rationale
 
@@ -1076,7 +1077,7 @@ def compute_evolution_summary(
     try:
         db_path = _resolve_db_path(project_root)
         conn = _get_conn(db_path)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return result
     try:
         where_parts: list[str] = []
@@ -1149,8 +1150,8 @@ def compute_evolution_summary(
         # tier_used == -1 are re-bucketed via delegation triad.
         tb = {f"T{i}": dict(_tier_empty) for i in range(4)}
         _tier_thinking_defaults = (0.55, 0.20, 0.02, 0.0)
-        tb_thinking_sum: dict[int, float] = {i: 0.0 for i in range(4)}
-        tb_thinking_n: dict[int, int] = {i: 0 for i in range(4)}
+        tb_thinking_sum: dict[int, float] = dict.fromkeys(range(4), 0.0)
+        tb_thinking_n: dict[int, int] = dict.fromkeys(range(4), 0)
         transitions_count = 0
         ts_list: list[float] = []
         tier_seq: list[int] = []
@@ -1166,7 +1167,7 @@ def compute_evolution_summary(
         ).fetchall():
             try:
                 tier_i = int(tier_raw) if tier_raw is not None else -1
-            except Exception:
+            except Exception:  # noqa: BLE001
                 tier_i = -1
             # Legacy re-bucket (mirrors the INSERT logic above).
             if tier_i not in (0, 1, 2, 3):
@@ -1187,7 +1188,7 @@ def compute_evolution_summary(
             # avg_thinking_ratio — prefer actual to tier-default heuristic
             try:
                 tt = max(0, int(think_tok or 0))
-            except Exception:
+            except Exception:  # noqa: BLE001
                 tt = 0
             if tt > 0:
                 ratio = tt / (tt + 128.0)  # ~ answer heuristic
@@ -1210,15 +1211,15 @@ def compute_evolution_summary(
         # tier_transitions_per_hour (shared single value, broadcast to all buckets
         # so dashboards can display it at T0 without needing a special key)
         if len(tier_seq) >= 2:
-            for a, b in zip(tier_seq, tier_seq[1:]):
+            for a, b in itertools.pairwise(tier_seq):
                 if a != b:
                     transitions_count += 1
         span_h = (
             max((max(ts_list) - min(ts_list)) / 3600.0, 1.0 / 3600.0) if len(ts_list) >= 2 else 1.0
         )
         tph = transitions_count / max(span_h, 1.0 / 3600.0)
-        for key in tb:
-            tb[key]["tier_transitions_per_hour"] = round(tph, 3)
+        for _bucket in tb.values():
+            _bucket["tier_transitions_per_hour"] = round(tph, 3)
         result["tier_breakdown"] = tb
 
         # 5.6) R3 L1 diff-uplift bias count + two-way alignment with the
@@ -1250,11 +1251,11 @@ def compute_evolution_summary(
         result["strategy_rates"] = get_delegation_success_stats(
             task_type=task_type, query_fp=query_fp, project_root=project_root
         )
-    except Exception:
+    except Exception:  # noqa: BLE001
         return result
     finally:
         try:
             conn.close()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
     return result

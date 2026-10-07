@@ -7,10 +7,10 @@ imports.  Remote/cluster registries can implement the same API.
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Callable, Awaitable
+from collections.abc import Awaitable, Callable
 
 from .errors import MoREError
-from .types import ServiceMetadata, EngineStatus
+from .types import EngineStatus, ServiceMetadata
 
 
 class ServiceRegistry:
@@ -67,7 +67,7 @@ class ServiceRegistry:
         if name in self._health_checks:
             try:
                 return await self._health_checks[name]()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 return False
         return md.status == EngineStatus.RUNNING
 

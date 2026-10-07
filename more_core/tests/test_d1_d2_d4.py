@@ -8,7 +8,6 @@ from more_core.codegen.delivery_policy import resolve_delivery_decision
 from more_core.codegen.escalation import EscalationCause, classify_escalation
 from more_core.codegen.gates import derive_required_symbols
 
-
 # ---------------------------------------------------------------------------
 # D-1：升级原因分类 + 交付判据统一
 # ---------------------------------------------------------------------------
@@ -221,7 +220,7 @@ async def test_gate_block_records_cause_end_to_end(tmp_path, monkeypatch):
     class _BrokenLLM:
         """返回语法被破坏的代码 → 必然被 syntax 闸门拦截。"""
 
-        async def generate(self, req, **kw):  # noqa: ANN001
+        async def generate(self, req, **kw):
             return LLMResponse(
                 content="```python\nsorted(xs, [REDACTED] k: k)\n```",
                 provider="fake",

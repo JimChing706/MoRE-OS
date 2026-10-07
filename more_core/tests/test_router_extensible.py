@@ -11,13 +11,13 @@ from more_core.router.layer_router import DEFAULT_PIPELINES, LayerRouter
 
 
 def _settings(**overrides: object) -> Settings:
-    base = dict(
-        providers=[],
-        fallback_chain=[],
-        enable_evolution=False,
-        enable_metacognition=False,
-        enable_symbolic=True,
-    )
+    base = {
+        "providers": [],
+        "fallback_chain": [],
+        "enable_evolution": False,
+        "enable_metacognition": False,
+        "enable_symbolic": True,
+    }
     base.update(overrides)
     return Settings(**base)  # type: ignore[arg-type]
 

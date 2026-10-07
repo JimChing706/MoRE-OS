@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from ..core.config import Settings
 from ..core.errors import GovernanceError
 from ..core.types import TaskRequest
-from typing import Any
 
 
 class PolicyEnforcer:

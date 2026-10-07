@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from .calibrator import Calibrator
 from .hyperagent import HyperAgent
@@ -24,7 +25,7 @@ class MetacognitionService:
     def register_governance_workflow(self, workflow: Any) -> None:
         self._governance_workflow = workflow
 
-    async def calibrate(self, ctx: "LayerContext") -> dict[str, object]:
+    async def calibrate(self, ctx: LayerContext) -> dict[str, object]:
         if ctx.accumulated_steps:
             avg_conf = sum(s.confidence for s in ctx.accumulated_steps) / len(ctx.accumulated_steps)
         else:
@@ -45,7 +46,7 @@ class MetacognitionService:
         self.calibrator.observe(confidence=avg_conf, accuracy=accuracy)
         return self.calibrator.snapshot()
 
-    async def maybe_self_modify(self, ctx: "LayerContext", calibration: dict[str, object]) -> None:
+    async def maybe_self_modify(self, ctx: LayerContext, calibration: dict[str, object]) -> None:
         proposal = await self.hyperagent.consider(ctx, calibration)
         if not proposal:
             return

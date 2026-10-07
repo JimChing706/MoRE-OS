@@ -5,19 +5,18 @@ ValidationResult pass 聚合、artifacts 归档路径解析、_run_with_retries 
 共 ≥ 5 tests。
 """
 
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import tempfile
 from pathlib import Path
 
-
 from more_core.core.native_executor.validator import (
-    Validator,
-    ValidationResult,
     CommandRun,
+    ValidationResult,
+    Validator,
 )
 
 

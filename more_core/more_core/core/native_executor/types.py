@@ -1,6 +1,7 @@
 """Native executor shared types (zero external deps, stdlib only)."""
 
 from __future__ import annotations
+
 import enum
 from dataclasses import dataclass, field
 from typing import Any, Literal

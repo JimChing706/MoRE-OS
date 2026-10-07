@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import logging
 import re
-import time
 import threading
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable
 from functools import wraps
+from typing import Any, ClassVar
+
+from typing_extensions import Self
 
 _log = logging.getLogger(__name__)
 
@@ -94,9 +97,7 @@ _FORBIDDEN_PATTERNS = (
 def _check_zero_trust(context: dict[str, Any]) -> bool:
     """ZEN-01: 零信任原则 — verify actor is authenticated."""
     actor = context.get("actor", "anonymous")
-    if actor == "anonymous" or actor == "":
-        return False
-    return True
+    return not (actor == "anonymous" or actor == "")
 
 
 def _check_least_privilege(context: dict[str, Any]) -> bool:
@@ -108,10 +109,7 @@ def _check_least_privilege(context: dict[str, Any]) -> bool:
     if not granted_permissions:
         return True
 
-    for perm in required_permissions:
-        if perm not in granted_permissions:
-            return False
-    return True
+    return all(perm in granted_permissions for perm in required_permissions)
 
 
 def _check_llm_output(context: dict[str, Any]) -> bool:
@@ -124,9 +122,7 @@ def _check_llm_output(context: dict[str, Any]) -> bool:
         return False
     if _DANGEROUS_SHELL_RE.search(output):
         return False
-    if _DANGEROUS_FILE_RE.search(output):
-        return False
-    return True
+    return not _DANGEROUS_FILE_RE.search(output)
 
 
 def _check_absolute_prohibition(context: dict[str, Any]) -> bool:
@@ -136,20 +132,17 @@ def _check_absolute_prohibition(context: dict[str, Any]) -> bool:
     query = context.get("query", "")
 
     check_text = f"{operation} {command} {query}".lower()
-    for pattern in _FORBIDDEN_PATTERNS:
-        if pattern.search(check_text):
-            return False
-    return True
+    return all(not pattern.search(check_text) for pattern in _FORBIDDEN_PATTERNS)
 
 
 class ZENRulesEnforcer:
     """ZEN规则执行器"""
 
-    _instance: ZENRulesEnforcer | None = None
+    _instance: ClassVar[Self | None] = None
     _initialized: bool = False
     _lock = threading.Lock()
 
-    def __new__(cls) -> ZENRulesEnforcer:
+    def __new__(cls) -> Self:
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -262,7 +255,7 @@ class ZENRulesEnforcer:
                 if not rule.check_fn(context):
                     self._record_violation(rule, context)
                     return True
-            except Exception:
+            except Exception:  # noqa: BLE001
                 _log.exception("check_fn for rule %s raised", rule_id)
 
         return False
@@ -286,7 +279,7 @@ class ZENRulesEnforcer:
         for callback in self._callbacks.get(rule.severity, []):
             try:
                 callback(violation)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 _log.exception("violation callback failed for rule %s", violation.rule_id)
 
     def get_violations(self, severity: RuleSeverity | None = None) -> list[ViolationRecord]:

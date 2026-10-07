@@ -20,10 +20,10 @@ from typing import Literal
 from .escalation import INFRA_CAUSES, EscalationCause
 
 __all__ = [
-    "DeliveryStatus",
     "DeliveryDecision",
-    "resolve_delivery_status",
+    "DeliveryStatus",
     "resolve_delivery_decision",
+    "resolve_delivery_status",
 ]
 
 DeliveryStatus = Literal["delivered", "blocked", "failed"]

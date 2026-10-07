@@ -173,14 +173,14 @@ class TestEvolutionDelegationIntegration:
             return _delegated("CHASSIS DONE", "completed")
 
         # Force evolution escalator by patching query_dynamic_k.
-        with patch(
-            "more_core.codegen.evolution_signal.query_dynamic_k",
-            return_value=(2, "escalated in test"),
+        with (
+            patch(
+                "more_core.codegen.evolution_signal.query_dynamic_k",
+                return_value=(2, "escalated in test"),
+            ),
+            patch.object(ExecutionLayer, "_try_chassis_delegation", AsyncMock(side_effect=_hook)),
         ):
-            with patch.object(
-                ExecutionLayer, "_try_chassis_delegation", AsyncMock(side_effect=_hook)
-            ):
-                result = await ExecutionLayer().process(ctx)
+            result = await ExecutionLayer().process(ctx)
 
         assert "CHASSIS DONE" in result.output
         assert seen.get("trigger") == "evolution_escalation"
@@ -204,14 +204,14 @@ class TestEvolutionDelegationIntegration:
             return _delegated("DEFAULT_GATE_OK", "completed")
 
         # No signal — dynamic_k returns 0 (not enough history path).
-        with patch(
-            "more_core.codegen.evolution_signal.query_dynamic_k",
-            return_value=(0, "not enough history"),
+        with (
+            patch(
+                "more_core.codegen.evolution_signal.query_dynamic_k",
+                return_value=(0, "not enough history"),
+            ),
+            patch.object(ExecutionLayer, "_try_chassis_delegation", AsyncMock(side_effect=_hook)),
         ):
-            with patch.object(
-                ExecutionLayer, "_try_chassis_delegation", AsyncMock(side_effect=_hook)
-            ):
-                result = await ExecutionLayer().process(ctx)
+            result = await ExecutionLayer().process(ctx)
 
         assert "DEFAULT_GATE_OK" in result.output
         assert seen.get("trigger") == "default_gate"
@@ -226,13 +226,13 @@ class TestEvolutionDelegationIntegration:
             # Simulate chassis side returning None (e.g. ping unreachable).
             return None
 
-        with patch(
-            "more_core.codegen.evolution_signal.query_dynamic_k", return_value=(2, "escalated")
+        with (
+            patch(
+                "more_core.codegen.evolution_signal.query_dynamic_k", return_value=(2, "escalated")
+            ),
+            patch.object(ExecutionLayer, "_try_chassis_delegation", AsyncMock(side_effect=_hook)),
         ):
-            with patch.object(
-                ExecutionLayer, "_try_chassis_delegation", AsyncMock(side_effect=_hook)
-            ):
-                result = await ExecutionLayer().process(ctx)
+            result = await ExecutionLayer().process(ctx)
 
         # Local path executed.
         assert _LOCAL in result.output

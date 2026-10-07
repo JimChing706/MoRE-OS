@@ -1,17 +1,16 @@
 """Tests for the security module (RBAC, taint tracking, output filter)."""
 
+from more_core.security.output_filter import FilterRule, OutputFilter
 from more_core.security.rbac import (
-    RBACManager,
-    UnifiedRBAC,
     Permission,
+    RBACManager,
     Role,
+    UnifiedRBAC,
     require_permission,
     requires_permission,
     set_rbac_instance,
 )
-from more_core.security.taint import TaintTracker, TaintLabel, TaintedValue
-from more_core.security.output_filter import OutputFilter, FilterRule
-
+from more_core.security.taint import TaintedValue, TaintLabel, TaintTracker
 
 # -- RBAC ------------------------------------------------------------------
 

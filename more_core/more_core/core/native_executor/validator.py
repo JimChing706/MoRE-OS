@@ -17,9 +17,9 @@ from __future__ import annotations
 import subprocess
 import time
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Optional, Union
 
 from .types import AggregatedValidationResult, ValidationBlockingLevel
 
@@ -86,8 +86,8 @@ class Validator:
         *,
         retries: int = 3,
         initial_backoff_s: float = 0.1,
-        timeout_s: Optional[int] = 600,
-        _run_hook: Optional[Callable[[list[str], str, int], CommandRun]] = None,
+        timeout_s: int | None = 600,
+        _run_hook: Callable[[list[str], str, int], CommandRun] | None = None,
     ) -> None:
         """初始化 Validator。
 
@@ -145,7 +145,7 @@ class Validator:
     def aggregate(
         source: ValidationResult,
         archives: ValidationResult,
-        level: Union[ValidationBlockingLevel, str] = ValidationBlockingLevel.HARD_BLOCK,
+        level: ValidationBlockingLevel | str = ValidationBlockingLevel.HARD_BLOCK,
     ) -> AggregatedValidationResult:
         """将两阶段结果合并为 AggregatedValidationResult，按 blocking_level 算 should_block_release。
 
@@ -205,13 +205,13 @@ class Validator:
     def _find_artifact(
         artifacts: dict[str, str],
         key_suffixes: tuple[str, ...],
-    ) -> Optional[str]:
+    ) -> str | None:
         """从 artifacts 字典中查找 tar.gz / zip 路径（支持多种 key 命名风格）。"""
         if not artifacts:
             return None
         # 优先精确 key
         for k in key_suffixes:
-            if k in artifacts and artifacts[k]:
+            if artifacts.get(k):
                 return artifacts[k]
         # 退化：按 value 后缀匹配
         for v in artifacts.values():
@@ -225,7 +225,7 @@ class Validator:
 
     def _run_with_retries(self, cmd: list[str], cwd: str) -> CommandRun:
         """对单条命令执行最多 retries 次重试，返回最后一次（或首次成功）的结果。"""
-        last_run: Optional[CommandRun] = None
+        last_run: CommandRun | None = None
         backoff = self.initial_backoff_s
         for attempt in range(1, self.retries + 1):
             run = self._run_once(cmd, cwd, attempt)
@@ -295,7 +295,7 @@ def aggregate_results(
     source: ValidationResult,
     archives: ValidationResult,
     *,
-    level: Union[ValidationBlockingLevel, str, None] = None,
+    level: ValidationBlockingLevel | str | None = None,
 ) -> AggregatedValidationResult:
     """Module-level 聚合入口。level 缺省 → HARD_BLOCK 默认。"""
     if level is None:

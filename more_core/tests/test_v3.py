@@ -4,15 +4,14 @@ Covers: UncertaintyAssessor, MetaOrchestrator, DynamicGuardrails
 """
 
 from more_core.core.types import TaskType
-from more_core.v3.uncertainty import UncertaintyAssessor
-from more_core.v3.meta_orchestrator import MetaOrchestrator
 from more_core.v3.dynamic_guardrails import (
     GuardrailConfig,
     SandboxLevel,
-    reset_dynamic_guardrails,
     get_dynamic_guardrails,
+    reset_dynamic_guardrails,
 )
-
+from more_core.v3.meta_orchestrator import MetaOrchestrator
+from more_core.v3.uncertainty import UncertaintyAssessor
 
 # ── UncertaintyAssessor tests ────────────────────────────────────────────
 
@@ -229,7 +228,7 @@ class TestDynamicGuardrails:
         dg = get_dynamic_guardrails()
         spectrum = dg.get_intensity_spectrum()
         assert len(spectrum) == 8  # 0.0 to 1.0
-        for key, config in spectrum.items():
+        for config in spectrum.values():
             assert isinstance(config, GuardrailConfig)
 
     def test_config_to_dict(self):

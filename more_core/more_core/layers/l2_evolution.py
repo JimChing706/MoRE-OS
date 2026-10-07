@@ -55,7 +55,7 @@ class EvolutionLayer(Layer):
                     reason=f"evolution cycle error: {exc}",
                     verification_output=None,
                 )
-            except Exception:  # pragma: no cover - incident path must not cascade
+            except Exception:  # pragma: no cover - incident path must not cascade  # noqa: BLE001
                 _log.warning("L2 incident recording failed", exc_info=True)
             return LayerResult(
                 layer=self.layer_id,

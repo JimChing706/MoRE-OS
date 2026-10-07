@@ -32,7 +32,7 @@ class PluginMetadata:
 class PluginContext:
     """Dependency container handed to plugins at activation time."""
 
-    core: "MoRECore"
+    core: MoRECore
     settings: Any
     event_bus: Any
     logger: Any

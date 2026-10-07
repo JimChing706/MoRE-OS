@@ -24,8 +24,8 @@ Mapping:
 from __future__ import annotations
 
 import logging
-import time
 import random
+import time
 from dataclasses import dataclass, field
 
 _log = logging.getLogger(__name__)

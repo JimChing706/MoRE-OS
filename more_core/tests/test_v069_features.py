@@ -1,20 +1,21 @@
 """Tests for OpenFang v0.6.1–v0.6.9 parity features."""
 
-import pytest
 import time
+
+import pytest
+
+from more_core.channels.base import MediaAttachment, MediaType, Message, Response
+from more_core.channels.reconnect import ReconnectConfig, ReconnectManager, ReconnectState
+from more_core.hands.browser_hand import BrowserHand
+from more_core.hands.persistence import HandPersistence
+from more_core.llm.model_aliases import ModelAlias, ModelAliasRegistry
 from more_core.llm.reasoning import (
+    ReasoningRouter,
+    get_reasoning_params,
     is_reasoning_model,
     supports_budget_tokens,
-    get_reasoning_params,
-    ReasoningRouter,
 )
-from more_core.llm.model_aliases import ModelAliasRegistry, ModelAlias
-from more_core.channels.reconnect import ReconnectManager, ReconnectConfig, ReconnectState
-from more_core.channels.base import Message, Response, MediaType, MediaAttachment
-from more_core.hands.persistence import HandPersistence
-from more_core.hands.browser_hand import BrowserHand
 from more_core.runtime.hot_reload import ReloadScope
-
 
 # -- Reasoning Models (v0.6.3) --------------------------------------------
 

@@ -7,9 +7,10 @@ Reference: Google A2A Protocol (https://a2aprotocol.github.io)
 from __future__ import annotations
 
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Awaitable, cast
+from typing import Any, cast
 
 
 class A2ATaskState(Enum):

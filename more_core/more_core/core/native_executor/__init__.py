@@ -3,25 +3,26 @@
 全部零新增第三方依赖，仅使用 Python 标准库与 more_core 内部已存在类型。
 """
 
-from .types import (
-    TaskTemplateKey,
-    ValidationBlockingLevel,
-    AggregatedValidationResult,
-    TemplateDispatchResult,
-)
-from .planner import Planner, Step, RULE_BASED_TETRIS_PLAN, TaskTemplateSelector
-from .writer import Writer, ProvenanceViolation, TaskPayloadTemplateRegistry
-from .validator import Validator, ValidationResult
 from .delivery import Delivery, DeliveryArtifact
 from .dispatcher import TemplateDispatcher
 from .payload_mixins import (
-    PayloadWriterMixin,
-    TetrisWriterMixin,
     CSShooterWriterMixin,
     GenericWriterMixin,
+    PayloadWriterMixin,
+    TetrisWriterMixin,
 )
+from .planner import RULE_BASED_TETRIS_PLAN, Planner, Step, TaskTemplateSelector
+from .types import (
+    AggregatedValidationResult,
+    TaskTemplateKey,
+    TemplateDispatchResult,
+    ValidationBlockingLevel,
+)
+from .validator import ValidationResult, Validator
+from .writer import ProvenanceViolation, TaskPayloadTemplateRegistry, Writer
 
 __all__ = [
+    "RULE_BASED_TETRIS_PLAN",
     "AggregatedValidationResult",
     "CSShooterWriterMixin",
     "Delivery",
@@ -30,7 +31,6 @@ __all__ = [
     "PayloadWriterMixin",
     "Planner",
     "ProvenanceViolation",
-    "RULE_BASED_TETRIS_PLAN",
     "Step",
     "TaskPayloadTemplateRegistry",
     "TaskTemplateKey",

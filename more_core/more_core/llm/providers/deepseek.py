@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
+from typing import ClassVar
 
 import httpx
 
@@ -19,7 +20,7 @@ class DeepSeekProvider:
     and connection setup on every call.
     """
 
-    MODELS = {
+    MODELS: ClassVar[dict[str, str]] = {
         "deepseek-chat": "deepseek-chat",
         "deepseek-coder": "deepseek-coder",
         "deepseek-chat-v2": "deepseek-chat-v2",
@@ -111,7 +112,7 @@ class DeepSeekProvider:
                         chunk = obj["choices"][0].get("delta", {}).get("content")
                         if chunk:
                             yield chunk
-                    except Exception:
+                    except Exception:  # noqa: BLE001, S112
                         continue
 
     async def health(self) -> bool:
@@ -121,7 +122,7 @@ class DeepSeekProvider:
                 timeout=5,
             )
             return r.status_code == 200
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False
 
     async def close(self) -> None:

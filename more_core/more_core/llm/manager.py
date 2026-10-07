@@ -9,17 +9,18 @@ import os
 import re
 import time
 from collections import OrderedDict
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, cast
+from typing import Any, cast
 
 from ..core.config import LLMProviderConfig
 from ..core.errors import LLMError, ThinkingBudgetExhaustedError
 from .provider import LLMProvider, LLMRequest, LLMResponse
-from .providers.ollama import OllamaProvider
-from .providers.lmstudio import LMStudioProvider
-from .providers.openai_compat import OpenAICompatProvider
 from .providers.deepseek import DeepSeekProvider
+from .providers.lmstudio import LMStudioProvider
 from .providers.mock import MockProvider
+from .providers.ollama import OllamaProvider
+from .providers.openai_compat import OpenAICompatProvider
 
 
 def _optional_record_llm_call() -> Any:
@@ -28,7 +29,7 @@ def _optional_record_llm_call() -> Any:
         from ..governance.observability import record_llm_call
 
         return record_llm_call
-    except Exception:  # pragma: no cover - defensive
+    except Exception:  # pragma: no cover - defensive  # noqa: BLE001
         return None
 
 
@@ -105,27 +106,33 @@ def _is_hard_model_failure(error: str) -> bool:
 # everything from opening tag to end of string" so partial thinking payloads
 # never leak (S-3 invariant).
 _STRIP_PATTERNS: list[tuple[re.Pattern[str], re.Pattern[str]]] = [
-    (re.compile(r"<\s*think[^>]*\s*>", re.I | re.S), re.compile(r"<\s*/\s*think\s*>", re.I | re.S)),
     (
-        re.compile(r"<\s*reasoning[^>]*\s*>", re.I | re.S),
-        re.compile(r"<\s*/\s*reasoning\s*>", re.I | re.S),
+        re.compile(r"<\s*think[^>]*\s*>", re.IGNORECASE | re.DOTALL),
+        re.compile(r"<\s*/\s*think\s*>", re.IGNORECASE | re.DOTALL),
     ),
     (
-        re.compile(r"<\s*chain[_-]?of[_-]?thought[^>]*\s*>", re.I | re.S),
-        re.compile(r"<\s*/\s*chain[_-]?of[_-]?thought\s*>", re.I | re.S),
+        re.compile(r"<\s*reasoning[^>]*\s*>", re.IGNORECASE | re.DOTALL),
+        re.compile(r"<\s*/\s*reasoning\s*>", re.IGNORECASE | re.DOTALL),
     ),
     (
-        re.compile(r"<\s*thought[^>]*\s*>", re.I | re.S),
-        re.compile(r"<\s*/\s*thought\s*>", re.I | re.S),
+        re.compile(r"<\s*chain[_-]?of[_-]?thought[^>]*\s*>", re.IGNORECASE | re.DOTALL),
+        re.compile(r"<\s*/\s*chain[_-]?of[_-]?thought\s*>", re.IGNORECASE | re.DOTALL),
     ),
     (
-        re.compile(r"<\|\s*Begin\s+of\s+Thought\s*\|>", re.I | re.S),
-        re.compile(r"<\|\s*End\s+of\s+Thought\s*\|>", re.I | re.S),
+        re.compile(r"<\s*thought[^>]*\s*>", re.IGNORECASE | re.DOTALL),
+        re.compile(r"<\s*/\s*thought\s*>", re.IGNORECASE | re.DOTALL),
     ),
-    (re.compile(r"<\|\s*BOT\s*\|>", re.I | re.S), re.compile(r"<\|\s*EOT\s*\|>", re.I | re.S)),
     (
-        re.compile(r"<\|\s*thinking_begin\s*\|>", re.I | re.S),
-        re.compile(r"<\|\s*thinking_end\s*\|>", re.I | re.S),
+        re.compile(r"<\|\s*Begin\s+of\s+Thought\s*\|>", re.IGNORECASE | re.DOTALL),
+        re.compile(r"<\|\s*End\s+of\s+Thought\s*\|>", re.IGNORECASE | re.DOTALL),
+    ),
+    (
+        re.compile(r"<\|\s*BOT\s*\|>", re.IGNORECASE | re.DOTALL),
+        re.compile(r"<\|\s*EOT\s*\|>", re.IGNORECASE | re.DOTALL),
+    ),
+    (
+        re.compile(r"<\|\s*thinking_begin\s*\|>", re.IGNORECASE | re.DOTALL),
+        re.compile(r"<\|\s*thinking_end\s*\|>", re.IGNORECASE | re.DOTALL),
     ),
 ]
 
@@ -385,7 +392,7 @@ class LLMManager:
         else:
             answer_tokens = completion_explicit
         reasoning_approx_toks = _approx_tokens(resp.reasoning_content or "")
-        thinking_tokens = reasoning_approx_toks if reasoning_approx_toks > 0 else 0
+        thinking_tokens = max(0, reasoning_approx_toks)
 
         # 2. 思考预算守卫（生产事故修复）
         #    原始判据会误杀"答案本来就短"的合法回答：例如 max_tokens=2048、
@@ -422,7 +429,7 @@ class LLMManager:
             healthy = await asyncio.wait_for(
                 self._providers[name].health(), timeout=_HEALTH_CHECK_TIMEOUT_S
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             healthy = False
         self._health_cache[name] = (healthy, now)
         return healthy
@@ -692,7 +699,7 @@ class LLMManager:
                     max_tokens=request.max_tokens,
                 )
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 _elapsed = (time.perf_counter() - start) * 1000
                 self._record_failure(name, attempt_req.model_override, _exc_summary(exc, _elapsed))
                 record_llm_call = _optional_record_llm_call()
@@ -744,7 +751,7 @@ class LLMManager:
         """
         try:
             from ..governance.observability import record_llm_call
-        except Exception:  # pragma: no cover - telemetry must never break the call
+        except Exception:  # pragma: no cover - telemetry must never break the call  # noqa: BLE001
             return
         try:
             record_llm_call(
@@ -762,7 +769,7 @@ class LLMManager:
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-        except Exception:  # pragma: no cover - defensive
+        except Exception:  # pragma: no cover - defensive  # noqa: BLE001, S110
             pass
 
     async def generate_with_fallback_chain(
@@ -884,7 +891,7 @@ class LLMManager:
                     max_tokens=request.max_tokens,
                 )
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 _elapsed = (time.perf_counter() - start) * 1000
                 self._record_failure(pair.provider, pair.model, _exc_summary(exc, _elapsed))
                 self._emit_llm_call(
@@ -1056,7 +1063,7 @@ class LLMManager:
                         t.cancel()
                     await _aio.gather(*pending, return_exceptions=True)
                     return resp
-                except BaseException as exc:
+                except BaseException as exc:  # noqa: BLE001
                     # 并行批次起点（_try_one 的 start 是嵌套局部变量，外层不可见）
                     _elapsed = (time.perf_counter() - par_start) * 1000
                     self._record_failure(pair.provider, pair.model, _exc_summary(exc, _elapsed))
@@ -1120,7 +1127,7 @@ class LLMManager:
                             t.cancel()
                         await _aio.gather(*pending, return_exceptions=True)
                         return resp
-                    except BaseException as exc:
+                    except BaseException as exc:  # noqa: BLE001
                         self._record_failure(pair.provider, pair.model)
                         errors.append((pair.provider, pair.model, str(exc)))
 
@@ -1129,7 +1136,7 @@ class LLMManager:
                 t.cancel()
                 try:
                     await t
-                except BaseException:
+                except BaseException:  # noqa: BLE001, S110
                     pass
 
         except _aio.TimeoutError:
@@ -1208,7 +1215,7 @@ class LLMManager:
                     max_tokens=request.max_tokens,
                 )
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 _stream_elapsed = (time.perf_counter() - started) * 1000
                 self._record_failure(name, model_override, _exc_summary(exc, _stream_elapsed))
                 self._emit_llm_call(
@@ -1249,5 +1256,5 @@ class LLMManager:
             if hasattr(provider, "close"):
                 try:
                     await provider.close()
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     _logger.warning("Error closing provider: %s", exc)

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-from asyncio import Task as AsyncTask
 import logging
 import re
+from asyncio import Task as AsyncTask
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 _log = logging.getLogger(__name__)
 
@@ -54,9 +55,8 @@ class EventPattern:
         if self.event_type and event.event_type != self.event_type:
             return False
 
-        if self.source_pattern:
-            if not re.match(self.source_pattern, event.source):
-                return False
+        if self.source_pattern and not re.match(self.source_pattern, event.source):
+            return False
 
         if self.data_pattern:
             for key, value in self.data_pattern.items():
@@ -210,7 +210,7 @@ class TriggerEngine:
 
             except asyncio.TimeoutError:
                 continue
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 _log.error(f"Error processing event: {e}")
 
     async def _handle_event(self, event: TriggerEvent) -> None:
@@ -238,7 +238,7 @@ class TriggerEngine:
                 trigger.last_execution = event.timestamp
                 _log.info(f"Trigger {trigger.name} executed successfully")
 
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 _log.error(f"Trigger {trigger.name} failed: {e}")
 
     def get_event_history(

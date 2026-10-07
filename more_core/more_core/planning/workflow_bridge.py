@@ -16,14 +16,14 @@ import time
 from typing import TYPE_CHECKING
 
 from .coordinator import ExecutionPlan, PlanStatus, StepPriority
-from .token_predictor import TokenPredictor, TokenObservation
+from .token_predictor import TokenObservation, TokenPredictor
 
 if TYPE_CHECKING:
     from ..workflows.engine import (
         WorkflowDefinition,
-        WorkflowStep,
-        WorkflowRun,
         WorkflowEngine,
+        WorkflowRun,
+        WorkflowStep,
     )
 
 _log = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ class PlanWorkflowBridge:
 
     def __init__(
         self,
-        workflow_engine: "WorkflowEngine",
+        workflow_engine: WorkflowEngine,
         token_predictor: TokenPredictor | None = None,
     ) -> None:
         self._engine = workflow_engine
@@ -65,7 +65,7 @@ class PlanWorkflowBridge:
         self,
         plan: ExecutionPlan,
         task_type: str = "nlp_task",
-    ) -> "WorkflowDefinition":
+    ) -> WorkflowDefinition:
         """Convert an ExecutionPlan into a WorkflowDefinition.
 
         Each PlanStep becomes a WorkflowStep of type TASK with:
@@ -73,7 +73,7 @@ class PlanWorkflowBridge:
         - Token budget injected into config
         - Timeout/retry derived from priority
         """
-        from ..workflows.engine import WorkflowDefinition, WorkflowStep, StepType
+        from ..workflows.engine import StepType, WorkflowDefinition, WorkflowStep
 
         # Predict token allocations
         subtask_descs = [s.description for s in plan.steps]
@@ -139,7 +139,7 @@ class PlanWorkflowBridge:
         self,
         plan: ExecutionPlan,
         task_type: str = "nlp_task",
-    ) -> "WorkflowRun":
+    ) -> WorkflowRun:
         """Convert plan to workflow, register, and start execution."""
         definition = self.plan_to_workflow(plan, task_type)
         self._engine.register_workflow(definition)
@@ -159,7 +159,7 @@ class PlanWorkflowBridge:
     def sync_results(
         self,
         plan: ExecutionPlan,
-        run: "WorkflowRun",
+        run: WorkflowRun,
     ) -> None:
         """Synchronize workflow run results back into the plan.
 

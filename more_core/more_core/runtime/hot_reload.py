@@ -10,9 +10,10 @@ from __future__ import annotations
 import logging
 import time
 from collections import deque
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Awaitable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .orchestrator import MoRECore
@@ -54,7 +55,7 @@ class HotReloader:
         await reloader.reload(ReloadScope.HANDS)
     """
 
-    def __init__(self, core: "MoRECore") -> None:
+    def __init__(self, core: MoRECore) -> None:
         self._core = core
         self._history: deque[ReloadEvent] = deque(maxlen=200)
         self._handlers: dict[ReloadScope, Callable[..., Awaitable[ReloadEvent]]] = {
@@ -94,7 +95,7 @@ class HotReloader:
             self._history.append(event)
             _log.info("Hot-reload %s: success (%.1fms)", scope.value, event.duration_ms)
             return event
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             event = ReloadEvent(
                 scope=scope,
                 success=False,
@@ -199,7 +200,7 @@ class HotReloader:
 
     async def _reload_commands(self, **kwargs: Any) -> ReloadEvent:
         """Re-register built-in commands."""
-        from ..commands.registry import register_builtin_commands, CommandRegistry
+        from ..commands.registry import CommandRegistry, register_builtin_commands
 
         self._core.commands = CommandRegistry()
         register_builtin_commands(self._core.commands)

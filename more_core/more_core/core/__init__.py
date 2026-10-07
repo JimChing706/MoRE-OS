@@ -1,5 +1,12 @@
 """Core primitives: types, errors, configuration, registry, event bus, deliverable."""
 
+from .config import LLMProviderConfig, Settings
+from .convergence import (
+    ConvergenceReport,
+    ConvergenceSnapshot,
+    ConvergenceState,
+    ConvergenceTracker,
+)
 from .deliverable import (
     DeliverableContract,
     DeliverableKind,
@@ -7,34 +14,27 @@ from .deliverable import (
     KillSeverity,
     TaskExpectation,
 )
-from .convergence import (
-    ConvergenceReport,
-    ConvergenceSnapshot,
-    ConvergenceState,
-    ConvergenceTracker,
-)
-from .types import (
-    LayerId,
-    TaskType,
-    TaskStatus,
-    TaskRequest,
-    TaskResult,
-    ReasoningStep,
-    PerformanceMetrics,
-    EngineStatus,
-    ServiceMetadata,
-)
 from .errors import (
+    GovernanceError,
+    LLMError,
     MoREError,
     PluginError,
-    LLMError,
-    SandboxError,
-    GovernanceError,
     RoutingError,
+    SandboxError,
 )
-from .config import Settings, LLMProviderConfig
+from .event_bus import Event, EventBus
 from .service_registry import ServiceRegistry
-from .event_bus import EventBus, Event
+from .types import (
+    EngineStatus,
+    LayerId,
+    PerformanceMetrics,
+    ReasoningStep,
+    ServiceMetadata,
+    TaskRequest,
+    TaskResult,
+    TaskStatus,
+    TaskType,
+)
 
 __all__ = [
     "ConvergenceReport",
@@ -49,9 +49,9 @@ __all__ = [
     "GovernanceError",
     "KillCriterion",
     "KillSeverity",
-    "LayerId",
     "LLMError",
     "LLMProviderConfig",
+    "LayerId",
     "MoREError",
     "PerformanceMetrics",
     "PluginError",

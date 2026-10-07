@@ -21,7 +21,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from .planner import Step
 from .types import TaskTemplateKey
@@ -43,7 +43,7 @@ class ProvenanceViolation(Exception):
     抛出此异常前必须保证 **0 写盘**，即没有任何文件被创建或修改。
     """
 
-    def __init__(self, message: str, offending_path: Optional[str] = None) -> None:
+    def __init__(self, message: str, offending_path: str | None = None) -> None:
         self.offending_path = offending_path
         super().__init__(message)
 
@@ -63,7 +63,7 @@ class WriteAuditRecord:
     size_bytes: int
     sha256_hex: str
     step_id: str
-    error: Optional[str] = None
+    error: str | None = None
 
 
 # ============================================================
@@ -89,9 +89,9 @@ class Writer:
 
     def __init__(
         self,
-        work_root: Optional[str] = None,
+        work_root: str | None = None,
         *,
-        _inject_file_contents: Optional[dict[str, str]] = None,
+        _inject_file_contents: dict[str, str] | None = None,
     ) -> None:
         """初始化 Writer。
 
@@ -140,7 +140,7 @@ class Writer:
         audit_root_abs = os.path.abspath(audit_root)
 
         # ---------- 阶段 0：按 template_key 取 manifest 白名单（防错位） ----------
-        from .payload_mixins import TetrisWriterMixin, CSShooterWriterMixin, GenericWriterMixin
+        from .payload_mixins import CSShooterWriterMixin, GenericWriterMixin, TetrisWriterMixin
 
         _MANIFEST_MAP: dict[TaskTemplateKey, set[str]] = {
             "tetris": TetrisWriterMixin().expected_file_manifest(),
@@ -262,7 +262,7 @@ class Writer:
     def build_payload_map(
         self,
         task_request: Any,
-        doc: Optional[str],
+        doc: str | None,
         steps: list[Step],
         *,
         template_key: TaskTemplateKey,
@@ -622,11 +622,13 @@ mod tests;
     # -- src/tests.rs (≥ 24 个 #[test] 标注) --------------------------------
     @staticmethod
     def _default_tests_rs() -> str:
-        parts = []
-        parts.append(
-            "//! 俄罗斯方块核心逻辑单元测试。\n//! 本文件包含 ≥ 24 个 #[test] 标注，覆盖核心算法。\n\n"
+        parts: list[str] = []
+        parts.extend(
+            (
+                "//! 俄罗斯方块核心逻辑单元测试。\n//! 本文件包含 ≥ 24 个 #[test] 标注，覆盖核心算法。\n\n",
+                "use super::*;\n\n",
+            )
         )
-        parts.append("use super::*;\n\n")
 
         test_cases = [
             ("test_board_empty_new", "assert_eq!(b.get(0,0), None);"),
@@ -715,8 +717,7 @@ mod tests;
             ),
         ]
         for name, body in test_cases:
-            parts.append("#[test]\n")
-            parts.append(f"fn {name}() {{ let mut b = Board::new(); {body} }}\n\n")
+            parts.extend(("#[test]\n", f"fn {name}() {{ let mut b = Board::new(); {body} }}\n\n"))
 
         return "".join(parts)
 
@@ -1630,11 +1631,11 @@ class TaskPayloadTemplateRegistry:
     支持：动态加载、热替换（通过 .register() 运行时覆盖）、模板版本化（预留 template_key 语义）。
     """
 
-    _singletons: dict[str, "PayloadWriterMixin"]
+    _singletons: dict[str, PayloadWriterMixin]
 
     def __init__(self) -> None:
         # 避免顶层循环 import —— 这里做 lazy import
-        from .payload_mixins import TetrisWriterMixin, CSShooterWriterMixin, GenericWriterMixin
+        from .payload_mixins import CSShooterWriterMixin, GenericWriterMixin, TetrisWriterMixin
 
         self._singletons = {
             "tetris": TetrisWriterMixin(),
@@ -1642,14 +1643,14 @@ class TaskPayloadTemplateRegistry:
             "generic": GenericWriterMixin(),
         }
 
-    def register(self, key: TaskTemplateKey, mixin: "PayloadWriterMixin") -> None:
+    def register(self, key: TaskTemplateKey, mixin: PayloadWriterMixin) -> None:
         """运行时热更新（动态加载）：替换或新增给定 key 的 mixin。"""
         self._singletons[key] = mixin
 
     def list_keys(self) -> list[str]:
         return sorted(self._singletons.keys())
 
-    def get(self, key: TaskTemplateKey) -> "PayloadWriterMixin":
+    def get(self, key: TaskTemplateKey) -> PayloadWriterMixin:
         """按 key 返回 mixin；未知 key 自动回退到 generic（但记录 warning）。"""
         if key in self._singletons:
             return self._singletons[key]

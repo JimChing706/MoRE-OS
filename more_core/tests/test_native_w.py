@@ -5,9 +5,9 @@
 共 ≥ 5 tests。
 """
 
-import sys
-import os
 import json
+import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -16,11 +16,11 @@ from pathlib import Path
 
 import pytest
 
-from more_core.core.native_executor.writer import (
-    Writer,
-    ProvenanceViolation,
-)
 from more_core.core.native_executor.planner import Step
+from more_core.core.native_executor.writer import (
+    ProvenanceViolation,
+    Writer,
+)
 
 
 # ---------------------------------------------------------------------------

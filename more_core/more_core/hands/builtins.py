@@ -8,7 +8,8 @@ adapted to the six-layer architecture.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from .base import Hand, HandManifest, HandResult
 from .registry import HandRegistry
@@ -214,7 +215,7 @@ def register_hand_function(
                     output=result,
                     metrics=result if isinstance(result, dict) else {},
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 return HandResult(hand_id=hand_id, success=False, error=str(exc))
 
     instance = _FunctionHand()

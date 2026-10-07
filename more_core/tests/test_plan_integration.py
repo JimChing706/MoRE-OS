@@ -8,33 +8,33 @@ Covers:
 """
 
 import asyncio
-import pytest
 import time
 
+import pytest
+
 from more_core.planning.coordinator import (
-    PlanCoordinator,
     ExecutionPlan,
-    PlanStep,
+    PlanCoordinator,
     PlanStatus,
+    PlanStep,
     StepPriority,
 )
-from more_core.planning.token_predictor import TokenPredictor, TokenObservation
-from more_core.planning.workflow_bridge import PlanWorkflowBridge
 from more_core.planning.plan_monitor import (
-    PlanMonitor,
     AdaptiveAction,
     PlanHealthReport,
+    PlanMonitor,
 )
+from more_core.planning.token_predictor import TokenObservation, TokenPredictor
+from more_core.planning.workflow_bridge import PlanWorkflowBridge
 from more_core.workflows.engine import (
-    WorkflowEngine,
-    WorkflowDefinition,
-    WorkflowStep,
-    WorkflowRun,
-    StepType,
     StepStatus,
+    StepType,
+    WorkflowDefinition,
+    WorkflowEngine,
+    WorkflowRun,
     WorkflowStatus,
+    WorkflowStep,
 )
-
 
 # =========================================================================
 # TokenPredictor Tests
@@ -156,7 +156,7 @@ class TestPlanWorkflowBridge:
         return PlanWorkflowBridge(engine, predictor), engine
 
     def test_plan_to_workflow_basic(self):
-        bridge, engine = self._make_bridge()
+        bridge, _engine = self._make_bridge()
         coordinator = PlanCoordinator()
         plan = coordinator.create_plan(
             goal="Build feature X",

@@ -14,7 +14,7 @@ import socket
 import time
 from typing import Any
 
-__all__ = ["check_skill_network", "DEFAULT_NETWORK_TARGETS"]
+__all__ = ["DEFAULT_NETWORK_TARGETS", "check_skill_network"]
 
 # 通用"公网可达"代表目标（未单独声明 network_targets 的出网技能用它）
 DEFAULT_NETWORK_TARGETS: tuple[str, ...] = ("example.com:443",)
@@ -45,7 +45,7 @@ async def _tcp_ok(host: str, port: int) -> tuple[bool, str, float]:
         writer.close()
         try:
             await writer.wait_closed()
-        except Exception:  # pragma: no cover - 关闭异常忽略
+        except Exception:  # pragma: no cover - 关闭异常忽略  # noqa: BLE001, S110
             pass
         del reader
         return True, "", (time.perf_counter() - start) * 1000
@@ -72,7 +72,7 @@ async def check_skill_network(skill_manager: Any) -> dict[str, Any]:
 
     try:
         metas = skill_manager.list_skills()
-    except Exception as exc:  # pragma: no cover - 防御
+    except Exception as exc:  # pragma: no cover - 防御  # noqa: BLE001
         return {
             "ok": False,
             "required_egress": [],

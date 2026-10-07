@@ -14,10 +14,9 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
-
-from typing import Any, cast
 
 from ..core.types import LayerId
 
@@ -125,7 +124,7 @@ def _load_config(path: Path | str = CONFIG_PATH) -> dict[str, Any]:
     except yaml.YAMLError as e:
         _log.warning("场景配置文件解析失败: %s，使用默认配置", e)
         return dict(_DEFAULT_CONFIG)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         _log.warning("场景配置加载异常: %s，使用默认配置", e)
         return dict(_DEFAULT_CONFIG)
 

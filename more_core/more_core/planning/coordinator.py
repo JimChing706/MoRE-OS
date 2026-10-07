@@ -231,8 +231,7 @@ class PlanCoordinator:
                 _log.warning("Plan %s: deadlock, %d steps unreachable", plan.id, len(remaining))
                 break
             waves.append(wave)
-            for s in wave:
-                completed.add(s.id)
+            completed.update(s.id for s in wave)
             remaining = [s for s in remaining if s.id not in completed]
 
         return waves

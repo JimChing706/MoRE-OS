@@ -12,7 +12,6 @@ from more_core.core.requirement_verifier import (
 )
 from more_core.persistence.task_store import SQLiteTaskStore
 
-
 # ---------------------------------------------------------------------------
 # 需求核验器
 # ---------------------------------------------------------------------------
@@ -114,12 +113,13 @@ def test_store_accepts_explicit_parent_id(tmp_path):
 
 @pytest.mark.asyncio
 async def test_executor_dispatches_requirements_and_gates_parent(tmp_path):
+    from conftest import _FakeLLMProvider
+
+    from more_core.api.routers.tasks import _execute_task_background_v2
     from more_core.core.config import Settings
     from more_core.core.guardrails import provenance_audit as _pa
     from more_core.core.guardrails.provenance_audit import ProvenanceLayer
     from more_core.runtime.orchestrator import MoRECore
-    from conftest import _FakeLLMProvider
-    from more_core.api.routers.tasks import _execute_task_background_v2
 
     settings = Settings(
         providers=[],

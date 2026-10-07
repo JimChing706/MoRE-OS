@@ -100,7 +100,7 @@ async def _chat_interactive(task_type: str = "nlp_task") -> None:
                     print(f"{CYAN}[{layers} | {result.performance.total_duration_ms:.0f}ms]{RESET}")
                 print(output)
                 print()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 print(f"  Error: {exc}")
     finally:
         await core.stop()
@@ -140,8 +140,9 @@ def _cmd_api_key_generate(args: argparse.Namespace) -> int:
 
 
 def _cmd_api_key_validate(args: argparse.Namespace) -> int:
-    from .security.api_key_ops import validate_api_key_report, ENV_PATHS
     import os as _os
+
+    from .security.api_key_ops import ENV_PATHS, validate_api_key_report
 
     key = args.key
     if not key:
@@ -186,7 +187,7 @@ def _cmd_api_key_validate(args: argparse.Namespace) -> int:
                     "entropy_bits": rep.entropy_bits,
                 },
             )
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
     out = rep.as_dict()
     out["key_prefix"] = (key[:8] + "***") if key else ""
@@ -211,12 +212,13 @@ def _cmd_api_key_inject(args: argparse.Namespace) -> int:
 
 
 def _cmd_api_key_rotate_proof(args: argparse.Namespace) -> int:
+    import os as _os
+
     from .security.api_key_ops import (
+        generate_api_key,
         sign_rotation_proof,
         verify_rotation_proof,
-        generate_api_key,
     )
-    import os as _os
 
     master = args.master_key or _os.getenv("MORE_MASTER_ROTATION_KEY", "")
     if not master:

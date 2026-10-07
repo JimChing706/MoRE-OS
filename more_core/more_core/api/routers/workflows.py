@@ -18,7 +18,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
 
     @router.post("/workflows", dependencies=[Depends(require_api_key)])
     async def create_workflow(payload: dict[str, Any]) -> dict[str, Any]:
-        from ...workflows.engine import WorkflowDefinition, WorkflowStep, StepType
+        from ...workflows.engine import StepType, WorkflowDefinition, WorkflowStep
 
         steps = []
         for s in payload.get("steps", []):
