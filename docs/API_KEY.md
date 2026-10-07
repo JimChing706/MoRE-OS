@@ -67,7 +67,7 @@ openssl rand -base64 32 | sed 's/+/-/g; s#/#_#g'
 正确：
 
 ```
-MORE_API_KEY=sk-more-os-3Qm9xK2pLw7vRt4YbN8cZ1aD6fH0jS5g
+MORE_API_KEY=sk-more-os-REPLACE_WITH_YOUR_OWN_KEY   # 请用 `more-os api-key issue` 生成，勿照抄示例
 ```
 
 错误：

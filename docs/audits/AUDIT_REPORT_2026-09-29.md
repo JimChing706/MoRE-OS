@@ -384,7 +384,7 @@ Makefile:126  mypy more_core/ || true            ← 同样屏蔽
 | AUD-14 | 版本漂移 | `version.py=0.9.9`；`CHANGELOG.md` 顶层仍是 `[0.8.0] 2026-05-21`；`Makefile:4` 注释 `Version: 0.8.0`；`mcp/server.py:64` 硬编码 `"0.3.0"` |
 | AUD-15 | 文档与实现不一致 | README:131-132 写 `POST /a2a`、`GET /a2a/agent-card`，实际路由前缀 `api/v1`（`routers/a2a.py:18,23,32,46`）；`CLAUDE.md` 的 `cd more_core && .venv/bin/python` 路径不存在（venv 在仓库根） |
 | AUD-16 | 仓库体积与残留 | 根目录 `mahjong_suite_v2-*.zip/.tar.gz` 各约 71 MB；`.kilo/worktrees/panoramic-swamp/`（5.2 MB 全量副本）；`MagicMock/`、`more_core/MagicMock/`；`bailongma_chassis/` 342 MB |
-| AUD-17 | 示例密钥可被误用 | `docs/API_KEY.md:70` `MORE_API_KEY=sk-more-os-3Qm9xK2pLw7vRt4YbN8cZ1aD6fH0jS5g` 是格式合法、可直接复制启用的"真实形态"示例 |
+| AUD-17 | 示例密钥可被误用 | `docs/API_KEY.md:70` `MORE_API_KEY=sk-more-os-3Qm9…S5g`（此处已脱敏）是格式合法、可直接复制启用的"真实形态"示例 |
 | AUD-18 | 关键模块低覆盖 | `router/scene_router.py` 0%、`mcp/client.py` 22%、`llm/providers/openai_compat.py` 21%、`skills/code_skills.py` 21%、各 `channels/*_adapter.py` 27–31%、`mcp/server.py` 46% |
 
 > AUD-18 与 AUD-04 直接相关：MCP Server 覆盖率不足正是认证绕过未被测试捕获的原因。
