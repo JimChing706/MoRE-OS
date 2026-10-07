@@ -32,6 +32,17 @@ def is_linux() -> bool:
     return sys.platform.startswith("linux")
 
 
+# unshare 包装器自身失败时的 stderr 标记。注意："unshare 二进制存在" ≠
+# "内核允许"——容器 / 受限 CI runner 会返回 EPERM（Operation not permitted），
+# 老版本 util-linux 还可能不认识我们用的选项。
+_UNSHARE_FAILURE_MARKERS = (
+    "unshare failed",
+    "unshare: unrecognized option",
+    "unshare: cannot",
+    "Operation not permitted",
+)
+
+
 def _cgroup_v2_available() -> bool:
     return Path("/sys/fs/cgroup/cgroup.controllers").exists()
 
@@ -119,13 +130,44 @@ class LinuxSandbox(SubprocessSandbox):
             if cgroup_dir is not None:
                 await self._teardown_cgroup(cgroup_dir)
 
-        return SandboxResult(
+        result = SandboxResult(
             stdout=out.decode("utf-8", "replace"),
             stderr=err.decode("utf-8", "replace"),
             exit_code=proc.returncode if proc.returncode is not None else -1,
             duration_ms=(asyncio.get_running_loop().time() - start) * 1000,
             timed_out=False,
         )
+
+        # 运行期兜底：若失败来自 unshare 包装器本身（而非被测代码），说明本机
+        # 内核不允许创建命名空间。此时永久降级为基础沙箱并**重试一次**，
+        # 避免把"沙箱能力缺失"直接变成"用户代码执行失败"。
+        if self._unshare_wrapper_failed(result):
+            _log.warning(
+                "unshare 不可用（%s），本实例降级为基础沙箱并重试",
+                (result.stderr or "").strip()[:200],
+            )
+            self._use_unshare = False
+            return await super().run(argv, cwd=cwd, env=env, stdin=stdin)
+
+        return result
+
+    @staticmethod
+    def _unshare_wrapper_failed(result: SandboxResult) -> bool:
+        """判断失败是否来自 unshare 包装器本身（而非被测程序）。
+
+        判据（三者同时满足，避免误伤被测代码的正常失败）：
+          1. 非超时、非 0 退出；
+          2. stdout 为空（被测代码根本没跑起来）；
+          3. stderr 由 unshare 自己发出（含 ``unshare:`` 前缀 + 已知原因短语）。
+        """
+        if result.timed_out or result.exit_code == 0:
+            return False
+        if (result.stdout or "").strip():
+            return False
+        err = result.stderr or ""
+        if "unshare:" not in err:
+            return False
+        return any(marker in err for marker in _UNSHARE_FAILURE_MARKERS)
 
     # -- cgroup management -------------------------------------------------
 

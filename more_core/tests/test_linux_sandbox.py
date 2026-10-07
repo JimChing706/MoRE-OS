@@ -138,6 +138,49 @@ async def test_run_skips_net_isolation_when_enabled(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_run_falls_back_when_unshare_is_denied(monkeypatch):
+    """容器/受限 runner：unshare 存在但内核 EPERM -> 自动降级基础沙箱并重试一次。"""
+    calls: list[list[str]] = []
+
+    async def fake_exec(*argv, **kw):
+        calls.append([str(a) for a in argv])
+        if str(argv[0]) == "unshare":
+            return _FakeProc(
+                out=b"", err=b"unshare: unshare failed: Operation not permitted\n", rc=1
+            )
+        return _FakeProc(out=b"hi\n", rc=0)
+
+    monkeypatch.setattr(ls.asyncio, "create_subprocess_exec", fake_exec)
+    sbx = ls.LinuxSandbox(timeout_s=5)
+    sbx._use_unshare = True
+    sbx._use_cgroup = False
+
+    result = await sbx.run(["echo", "hi"])
+
+    assert result.exit_code == 0 and result.stdout == "hi\n"
+    assert sbx._use_unshare is False, "降级应被记住，避免每次都先撞一次 EPERM"
+    assert len(calls) == 2 and calls[0][0] == "unshare" and calls[1][0] == "echo"
+
+
+@pytest.mark.asyncio
+async def test_run_does_not_fall_back_on_user_code_failure(monkeypatch):
+    """被测代码自身非 0 退出（stderr 无 unshare: 前缀）不得触发降级。"""
+
+    async def fake_exec(*argv, **kw):
+        return _FakeProc(out=b"", err=b"boom\n", rc=2)
+
+    monkeypatch.setattr(ls.asyncio, "create_subprocess_exec", fake_exec)
+    sbx = ls.LinuxSandbox(timeout_s=5)
+    sbx._use_unshare = True
+    sbx._use_cgroup = False
+
+    result = await sbx.run(["false"])
+
+    assert result.exit_code == 2
+    assert sbx._use_unshare is True
+
+
+@pytest.mark.asyncio
 async def test_run_timeout_marks_timed_out(monkeypatch):
     async def fake_exec(*argv, **kw):
         return _FakeProc(hang=True)
