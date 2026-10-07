@@ -42,7 +42,7 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "pytest-cov>=4.0",
-    "ruff>=0.4",
+    "ruff==0.16.10",
     "mypy>=1.9",
 ]
 all = ["qnming-more-os[api,redis,dev]"]
@@ -66,6 +66,15 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.ruff.lint]
+# 显式声明规则集，而不是依赖 ruff 的"版本相关默认值"。
+# 背景（D-20）：ruff 0.16.x 起默认规则集显著扩大 —— 同一份代码在 0.15.16 下 0 项，
+# 在 0.16.10 下 1109 项（BLE001 338 / I001 246 / UP037 106 / S110 73 / ...）。
+# 若不显式声明，CI 门禁会随"装到哪个 ruff 版本"漂移，结果不可复现。
+# 更严格规则（I001/UP/SIM/RUF/BLE/DTZ…）的收编列为独立专项，
+# 见 docs/audits/STAGE_ACCEPTANCE_2026-10-05.md §8.2（D-20）。
+select = ["E4", "E7", "E9", "F"]
 
 [tool.mypy]
 python_version = "3.10"

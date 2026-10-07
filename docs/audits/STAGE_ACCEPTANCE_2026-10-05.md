@@ -238,7 +238,23 @@ CI **首次真实执行**（此前仓库无 remote，工作流从未被触发）
 
 > #1/#2 属**产出正确性**方向：`静默放行` 正是该维度最典型的失效模式。
 
-### 8.2.3 D-19：前端静态检查欠债（已修复）
+### 8.2.3 D-20：lint 规则集随 ruff 版本漂移（已修复）
+
+`28ba602` 推送后 CI 复跑（run `37633313957`）：`Frontend Tests & Build` ✅、`Layer Matrix Gate (L0-L5)` ✅，
+但 `Python Tests` 三个矩阵**仍**卡在 `Lint (ruff)` —— **同一个提交，本地 0 项 / CI 1109 项**。
+
+| 项 | 内容 |
+|----|------|
+| 直接原因 | CI 由 `pip install -e ".[all]"` 安装 `ruff>=0.4`，实际拿到 **0.16.10**；本地为 **0.15.16** |
+| 根本原因 | `[tool.ruff]` **从未声明 `select`**，门禁继承的是 ruff 的"**版本相关默认规则集**"；0.16.x 起默认集显著扩大 |
+| 证据 | 本地装 0.16.10 后**完全复现**同一组 1109 项：`BLE001 338 / I001 246 / UP037 106 / S110 73 / UP035 44 / RUF022 44 / UP045 35 / FURB167 28 / RUF059 23 / SIM118 20 / RUF100 18 / PIE790 16` |
+| 性质 | **交付可信度**问题：同一份代码、同一个提交，门禁结论取决于"机器上装到哪个 ruff"，**结果不可复现** |
+| 处置① | `[tool.ruff.lint] select = ["E4","E7","E9","F"]` —— **显式**声明规则集，不再依赖版本默认值 |
+| 处置② | dev 依赖 `ruff>=0.4` → `ruff==0.16.10`，工具链版本可复现 |
+| 验证 | 用 CI 同版本 0.16.10 本地复跑：`ruff check` → **All checks passed**；`ruff format --check` → **330 files already formatted**（格式基线跨 0.15/0.16 一致，说明 §8.2.2 的格式提交有效） |
+| 未收编 | 上述 1109 项（其中 **562 项可自动修复**）转为独立专项；建议优先排期 `BLE001`（裸 `except`）338 处与 `S110`（`try/except: pass`）73 处 |
+
+### 8.2.4 D-19：前端静态检查欠债（已修复）
 
 `npm run lint` 26 个 error，其中**多数是真实缺陷**：
 
@@ -252,23 +268,24 @@ CI **首次真实执行**（此前仓库无 remote，工作流从未被触发）
 
 **前端验证**：`npm run lint` ✅ · `npx tsc -b --noEmit` ✅ · `npm test` **56 passed** ✅ · `npm run build` ✅
 
-### 8.2.4 回归证据
+### 8.2.5 回归证据
 
 | 项 | 命令 | 结果 |
 |----|------|------|
 | 后端全量 | `cd more_core && ../.venv/bin/python -m pytest tests/ -q` | **1911 passed**（与改动前用例数一致，0 失败） |
-| 后端 lint | `python -m ruff check more_core/ tests/` | **All checks passed** |
+| 后端 lint | `python -m ruff check more_core/ tests/`（**ruff 0.16.10**，与 CI 同版本） | **All checks passed** |
 | 后端格式 | `python -m ruff format --check more_core/ tests/` | **329 files already formatted** |
 | 分层门禁 | `make test-layers` | 72 + 23 + 3 全绿 |
 | 前端 | lint / tsc / vitest 56 / build | 全绿 |
 
-### 8.2.5 残留风险更新
+### 8.2.6 残留风险更新
 
 | # | 维度 | 状态 | 结论 |
 |---|------|:----:|------|
 | **RR-1** | 安全 | ✅ 已缓解 | 容器后端已实现并**真实容器实测**（网络隔离、只读根文件系统均生效）；未配置镜像时自动回退 `SecureSandbox`，行为不变 |
 | **RR-3** | 流程 | ⚠️ **受限，需人工决策** | 脚本 + 补偿控制（pre-push 本地门禁）已就绪；但 `POST /repos/.../branches/main/protection` 与 Rulesets API 对本仓库均返回 **403 `Upgrade to GitHub Pro or make this repository public to enable this feature.`** —— **免费版私有仓库不支持分支保护**。二选一：①升级 GitHub Pro ②仓库转 public；否则只能依赖补偿控制 |
 | **RR-6** | 交付 | ⚠️ **阻塞** | 本机出网**全阻断**（`pypi.org` / `registry.npmjs.org` / `github.com` / `api.github.com` 一律 `connection reset by peer`），且 `gh` token 已失效（`The token in keyring is invalid`）。修复提交 `28ba602` 已在**本地就绪**，恢复出网 + `gh auth login` 后 `git push origin main` 即可触发 CI 复跑 |
+| **RR-8** | 质量 | 📋 已登记 | ruff 0.16 默认规则集（`BLE001`/`I001`/`UP`/`S`…）**未收编**，共 ~1109 项（562 项可自动修复）；当前门禁只覆盖 `E4/E7/E9/F`，属**已知、已量化、待排期**的债务，非隐藏项 |
 | **RR-7** | 兼容性 | ⚠️ 待 CI 判定 | 本地 venv 为 **Python 3.14.3**；已静态核查无 3.12+ 专有语法（无 PEP 695 `type`、无 `except*`），但 3.10/3.11 实跑结论仍需 CI 给出 |
 
 ---
