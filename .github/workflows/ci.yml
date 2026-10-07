@@ -140,7 +140,7 @@ jobs:
         working-directory: app
         run: docker build -t more-console .
 
-      - name: Scan for secrets (trivy)
+      - name: Scan image vulnerabilities (trivy)
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: more-console
