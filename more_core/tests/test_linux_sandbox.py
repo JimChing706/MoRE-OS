@@ -70,8 +70,14 @@ def test_init_detects_capabilities(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_run_falls_back_to_base_sandbox_when_no_unshare():
+    """无 unshare 时走基础沙箱。
+
+    注意：不能断言"构造后即为 False" —— 在 Linux runner 上 unshare 二进制
+    通常存在（`_use_unshare` 初值为 True，真正不可用时由运行期降级兜底）。
+    这里显式置为 False，使本用例在 macOS / Linux CI 上都稳定验证该分支。
+    """
     sbx = ls.LinuxSandbox(timeout_s=5)
-    assert sbx._use_unshare is False
+    sbx._use_unshare = False
     result = await sbx.run(["/bin/echo", "hi"])
     assert isinstance(result, SandboxResult)
     assert result.exit_code == 0 and "hi" in result.stdout
