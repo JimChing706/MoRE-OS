@@ -193,6 +193,84 @@ river_deep = [L5, L2, L4, L3, L1, L0]        # 高（U≥0.7 或 require_metacog
 > 说明：容器后端为**纵深防御**——生产启用后，即便 AST/策略层被绕过，仍有容器边界兜底。
 > 未配置时保持既有行为，不引入回归。
 
+
+---
+
+## 8.2 远端接入 + CI 首次真跑收口（2026-10-07 追加）
+
+### 8.2.1 远端接入
+
+| 项 | 内容 |
+|----|------|
+| 远端 | `https://github.com/JimChing706/MoRE-OS.git`（**private**，默认分支 `main`） |
+| 远端既有历史 | `6e39566 Initial commit`（仅 LICENSE + 2 行 README 骨架），与本仓库历史**无共同祖先** |
+| 合并方式 | `git merge origin/main --allow-unrelated-histories`，LICENSE/README 冲突按**本仓库版本**保留 → 合并提交 `7cbcc87` |
+| 结果 | 两条历史均保留为 HEAD 祖先；`git push -u origin main` → `6e39566..7cbcc87 main -> main` ✅ |
+
+### 8.2.2 D-18：后端全仓静态检查欠债（已修复）
+
+CI **首次真实执行**（此前仓库无 remote，工作流从未被触发）即失败：run `37630324423` ——
+`Python Tests (3.10/3.11/3.12)` 三个矩阵全部卡在 `Lint (ruff)`，`Frontend Tests & Build` 卡在 `Lint (eslint)`。
+
+**根因**：工作流扫描的是**全仓**（`ruff check more_core/ tests/`），而日常开发历来只 lint 改动文件；
+仓库自建立起从未跑过全仓 lint / `ruff format --check`。
+
+| # | 规则 | 数量 | 处置 |
+|---|------|:----:|------|
+| 1 | `F401` 未使用导入 | 37 | `ruff check --fix` 自动清除 |
+| 2 | `E701/E702` 单行复合语句 | 22 | 由 `ruff format` 归一 |
+| 3 | `F841` 未使用变量 | 8 | 见下"真实缺陷" |
+| 4 | `E402` 导入不在文件顶部 | 7 | `test_itd_router_enhancements.py` 中位于 `pytest.importorskip()` **之后**（有意为之）→ 加 `# noqa: E402` 并注明原因 |
+| 5 | `F811` 重复定义 / `E401` 复合导入 | 4 | 自动修复 |
+| 6 | `F821` 未定义名 | 3 | 见下"真实缺陷" |
+| — | `ruff format --check` | **154 文件** | 一次性落地格式基线：`154 reformatted, 175 unchanged`；现 `329 files already formatted` ✅ |
+
+**顺带修复的 6 处真实缺陷（非纯风格）**：
+
+| # | 位置 | 缺陷 | 影响 |
+|---|------|------|------|
+| 1 | `core/native_executor/writer.py` | `PayloadWriterMixin` 只出现在**字符串注解**中，模块内从未导入（`F821` ×3） | 类型检查 / `get_type_hints` 必 `NameError`；已改为 `if TYPE_CHECKING:` 导入 |
+| 2 | `core/deliverable.py` | `check_completeness()` 的 `complete` 返回值被**丢弃**（`F841`） | 契约自报"不完整"却不给缺失明细时会被**静默放行** → 现补 `unspecified` 违规拦截 |
+| 3 | `tests/test_native_w.py` | "0 写盘"断言**只赋值未断言**（`F841` ×2） | 安全回归测试形同虚设 → 补 `files_after == files_before` |
+| 4 | `codegen/evolution_signal.py` | 一段构造完即弃的查询/参数死代码（`F841`） | 删除，行为不变 |
+| 5 | `tests/test_l1_orchestration.py` | 断言用**累计**翻转数（`F841`） | 改为"本次增量"，避免被历史计数污染 |
+| 6 | `tests/test_validator_blocking_e2e.py` | `layer.audit()` 结果未参与断言（`F841`） | 现断言 `files_written_count > 0` |
+
+> #1/#2 属**产出正确性**方向：`静默放行` 正是该维度最典型的失效模式。
+
+### 8.2.3 D-19：前端静态检查欠债（已修复）
+
+`npm run lint` 26 个 error，其中**多数是真实缺陷**：
+
+| # | 位置 | 缺陷 | 处置 |
+|---|------|------|------|
+| 1 | `mahjong/MahjongGamePage.tsx` | 在 render 内定义 `Btn` 组件 → 每次渲染都是新组件类型，子组件状态被重置、DOM 重挂载 | 提升到模块级（9 处报错清零） |
+| 2 | `hooks/useMahjongSocket.ts` | 自引用 `connect` + 在 render 阶段读写 ref（`handlersRef.current = handlers`、返回 `lastActionIdRef.current`） | 改为 `connectRef` + `useEffect` 同步；移除无人消费的 `lastActionId` 返回值 |
+| 3 | `mahjong/AudioMixer.tsx` | 同一文件既导出音频引擎又导出 React 组件（Fast Refresh 失效，14 处报错） | 拆为 `mahjongAudio.ts`（纯引擎）/ `AudioMixerCtx.ts`（context + hook）/ `AudioMixer.tsx`（**仅组件**） |
+| 4 | `mahjong/AudioMixer.tsx` | "试听 BGM" 按钮文案读非响应式全局量 → 点击后不刷新 | 引入本地 state 镜像 |
+| 5 | `mahjong/TileRenderer.ts` | `let sy` 从未重新赋值 | 改 `const` |
+
+**前端验证**：`npm run lint` ✅ · `npx tsc -b --noEmit` ✅ · `npm test` **56 passed** ✅ · `npm run build` ✅
+
+### 8.2.4 回归证据
+
+| 项 | 命令 | 结果 |
+|----|------|------|
+| 后端全量 | `cd more_core && ../.venv/bin/python -m pytest tests/ -q` | **1911 passed**（与改动前用例数一致，0 失败） |
+| 后端 lint | `python -m ruff check more_core/ tests/` | **All checks passed** |
+| 后端格式 | `python -m ruff format --check more_core/ tests/` | **329 files already formatted** |
+| 分层门禁 | `make test-layers` | 72 + 23 + 3 全绿 |
+| 前端 | lint / tsc / vitest 56 / build | 全绿 |
+
+### 8.2.5 残留风险更新
+
+| # | 维度 | 状态 | 结论 |
+|---|------|:----:|------|
+| **RR-1** | 安全 | ✅ 已缓解 | 容器后端已实现并**真实容器实测**（网络隔离、只读根文件系统均生效）；未配置镜像时自动回退 `SecureSandbox`，行为不变 |
+| **RR-3** | 流程 | ⚠️ **受限，需人工决策** | 脚本 + 补偿控制（pre-push 本地门禁）已就绪；但 `POST /repos/.../branches/main/protection` 与 Rulesets API 对本仓库均返回 **403 `Upgrade to GitHub Pro or make this repository public to enable this feature.`** —— **免费版私有仓库不支持分支保护**。二选一：①升级 GitHub Pro ②仓库转 public；否则只能依赖补偿控制 |
+| **RR-6** | 交付 | ⚠️ **阻塞** | 本机出网**全阻断**（`pypi.org` / `registry.npmjs.org` / `github.com` / `api.github.com` 一律 `connection reset by peer`），且 `gh` token 已失效（`The token in keyring is invalid`）。修复提交 `28ba602` 已在**本地就绪**，恢复出网 + `gh auth login` 后 `git push origin main` 即可触发 CI 复跑 |
+| **RR-7** | 兼容性 | ⚠️ 待 CI 判定 | 本地 venv 为 **Python 3.14.3**；已静态核查无 3.12+ 专有语法（无 PEP 695 `type`、无 `except*`），但 3.10/3.11 实跑结论仍需 CI 给出 |
+
 ---
 
 ## 9. 变更与留痕
@@ -222,6 +300,15 @@ aff58f7 fix(skills): R-1 代码执行接入 OS 级安全沙箱
 cbd3a43 feat(skills): 参数 JSON Schema 校验 + 交付台账 + 全景评估
 f6a93fa feat(skills): 错误隔离/超时/真实指标 + 遥测看板
 （另 4 个：8a914d2/50d747e 分层矩阵与 CI 门禁、4bb5121/2ca856e 治理拦截率与总览）
+```
+
+**2026-10-06 ~ 10-07 追加提交线**（见 §8.1 / §8.2）:
+
+```
+28ba602 fix(lint,web): 清零全仓 ruff/eslint 欠债 + 修复 6 处真实缺陷（D-18/D-19）
+7cbcc87 merge: 合并 GitHub 初始骨架（LICENSE/README）  [远端接入]
+9796981 fix(skills): 容器后端显式覆盖 ENTRYPOINT + 真实容器验证
+6ef660f feat(skills,ci): P1 容器化沙箱后端 + P0 分支保护脚本与本地门禁
 ```
 
 **关联文档**: 见 `docs/README.md` §2.2 索引（LAYER_TEST_MATRIX / LAYER_MATRIX_RETROSPECTIVE /
