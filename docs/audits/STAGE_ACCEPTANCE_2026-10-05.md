@@ -285,8 +285,9 @@ CI **首次真实执行**（此前仓库无 remote，工作流从未被触发）
 | **RR-1** | 安全 | ✅ 已缓解 | 容器后端已实现并**真实容器实测**（网络隔离、只读根文件系统均生效）；未配置镜像时自动回退 `SecureSandbox`，行为不变 |
 | **RR-3** | 流程 | ⚠️ **受限，需人工决策（已用有效凭据复核）** | 仓库确认为 **private**；`make setup-branch-protection` 实跑仍返回 **403 `Upgrade to GitHub Pro or make this repository public to enable this feature.`** ⇒ **GitHub 免费账号的私有仓库不支持分支保护**。补偿控制**已实际安装并验证**：`.git/hooks/pre-push`（推送前跑 `make test-layers`，实测退出码 0）。二选一解锁强制力：①升级 GitHub Pro ②仓库转 public |
 | **RR-6** | 交付 | ✅ 已解除 | 期间出现出网中断 + `gh` token 失效，已恢复：`gh auth status` 正常（scopes: gist/read:org/repo/workflow），`git push` 成功，CI 实际跑通 |
-| **RR-8** | 质量 | 📋 已登记 | ruff 0.16 默认规则集（`BLE001`/`I001`/`UP`/`S`…）**未收编**，共 ~1109 项（562 项可自动修复）；当前门禁只覆盖 `E4/E7/E9/F`，属**已知、已量化、待排期**的债务，非隐藏项 |
 | **RR-7** | 兼容性 | ✅ 已判定通过 | `Python Tests (3.10)` / `(3.11)` / `(3.12)` 三个矩阵**全部绿灯**（本地无法验证的 3.10/3.11 由 CI 补齐） |
+| **RR-8** | 质量 | 📋 已登记 | ruff 0.16 默认规则集（`BLE001`/`I001`/`UP`/`S`…）**未收编**，共 ~1109 项（562 项可自动修复）；当前门禁只覆盖 `E4/E7/E9/F`，属**已知、已量化、待排期**的债务，非隐藏项 |
+| **RR-9** | 质量 | 📋 已登记 | `mypy --strict` 实测 **69 errors / 21 files**（`mypy 2.1.0`；主因 `type-arg` 泛型缺参、`unused-ignore`、`union-attr`）；CI 的 `Type check (mypy)` 步骤与 `make typecheck` 均以 `|| true` **非阻断**运行 —— 属**已知、已量化**债务。若要把它变成真门禁，需先清零这 69 项 |
 
 
 ### 8.2.7 CI 收敛过程与最终结论（2026-10-07）
@@ -322,6 +323,14 @@ CI **首次真实执行**（此前仓库无 remote，工作流从未被触发）
 | `pre-commit` 钩子 | 由 `make check`（lint+typecheck+**全量 1913 用例**，实测每次提交约 5 分钟）→ `make lint typecheck`（实测 **0.3s**） |
 | 全量门禁 | 仍在：`pre-push` → `make test-layers`；CI → 6 个 job；发版前 `make check` |
 | 理由 | 每次提交等 5 分钟会直接诱发 `git commit --no-verify`，**反而削弱**补偿控制的可信度 |
+
+**稳定性复验（非偶然通过）**：其后连续 3 次 push 的 CI 均**全绿** ——
+
+| run | 提交 | 结果 |
+|-----|------|------|
+| `37638589927` | `5f74c0a`（D-22 镜像修复） | ✅ 6/6 |
+| `37640112558` | `0a61850`（文档） | ✅ 6/6 |
+| `37640197169` | `0706f63`（本地门禁对齐） | ✅ 6/6 |
 
 **D-22 本地实证**：构建镜像后读包版本 → `libexpat-2.8.5-r0`、`pcre2-10.49-r0`，
 均等于 trivy 给出的 Fixed Version，CVE 消解有据。
