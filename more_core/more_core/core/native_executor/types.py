@@ -51,6 +51,6 @@ class AggregatedValidationResult:
 @dataclass
 class TemplateDispatchResult:
     key: TaskTemplateKey
-    plan_steps: list
+    plan_steps: list[Any]
     payload_map: dict[str, str]
     warnings: list[str] = field(default_factory=list)

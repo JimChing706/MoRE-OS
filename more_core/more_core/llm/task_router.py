@@ -65,7 +65,7 @@ def _parse_tier_config(
     → lmstudio, tier 3 → ollama).  Missing/malformed entries fall back to
     defaults.  Returns ``(models, providers)`` aligned tuples.
     """
-    env = os.environ if env is None else env
+    env = dict(os.environ) if env is None else env
     models: list[str] = []
     providers: list[str] = []
     for i, (def_provider, def_model) in enumerate(_TIER_DEFAULTS):
@@ -92,7 +92,7 @@ def _parse_prev_tier_config(
     用于灰度发布后，经 RBAC 受控 rollback API 一键切回上一版 (G-2)。未配置则
     回退为当前版，保证永不出现空梯子。
     """
-    env = os.environ if env is None else env
+    env = dict(os.environ) if env is None else env
     models: list[str] = []
     providers: list[str] = []
     for i, (def_provider, def_model) in enumerate(_TIER_DEFAULTS):
@@ -128,7 +128,7 @@ _DEFAULT_REASONING_TASK_TYPES_CSV = "MATH_REASONING,ARCHITECTURE_DESIGN,DATA_ANA
 
 
 def _parse_cooldown_s(env: dict[str, str] | None = None) -> float:
-    env = os.environ if env is None else env
+    env = dict(os.environ) if env is None else env
     raw = env.get("MORE_TIER_SWITCH_COOLDOWN_S")
     if not raw:
         return _DEFAULT_COOLDOWN_S
@@ -151,7 +151,7 @@ def _parse_t0_whitelist(env: dict[str, str] | None = None) -> frozenset[TaskType
     difficulty classifier says 8+ (覃朗专家 R1-B 限流加固).  Unknown names
     are skipped with a warning.
     """
-    env = os.environ if env is None else env
+    env = dict(os.environ) if env is None else env
     raw = env.get("MORE_REASONING_TIER_TASK_TYPES", _DEFAULT_REASONING_TASK_TYPES_CSV)
     out: set[TaskType] = set()
     for piece in raw.split(","):
@@ -193,7 +193,7 @@ def _parse_tier0_disabled(env: dict[str, str] | None = None) -> bool:
     completely bypassed (甲方合规场景: "no CoT model allowed").  Any other
     value or unset disables it.
     """
-    env = os.environ if env is None else env
+    env = dict(os.environ) if env is None else env
     raw = env.get("MORE_DISABLE_TIER_0", "").strip().lower()
     return raw in {"1", "true", "yes", "on"}
 

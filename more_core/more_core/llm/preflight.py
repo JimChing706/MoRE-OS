@@ -137,6 +137,9 @@ async def preflight_llm(
 
     for name in registered:
         provider = getattr(llm, "_providers", {}).get(name)
+        if provider is None:
+            report.warnings.append(f"provider {name} registered but instance missing")
+            continue
         endpoint = str(
             getattr(provider, "_base", "")
             or getattr(provider, "_endpoint", "")

@@ -363,8 +363,9 @@ class MoRECore:
         不能用 ``allow_self_improvement`` 触发，否则会出现
         "L5/L2 先自修改 → L3 才以 policy.metacog_review 拒绝" 的危险顺序。
         """
-        if getattr(self, "meta_orchestrator", None) is not None:
-            meta_decision = self.meta_orchestrator.route(
+        _meta_orch = getattr(self, "meta_orchestrator", None)
+        if _meta_orch is not None:
+            meta_decision = _meta_orch.route(
                 request.type,
                 request.query,
                 context=request.context,
@@ -1388,10 +1389,10 @@ class MoRECore:
                             )
                             # Extract output text for completeness check.
                             _output_text = ""
-                            if isinstance(getattr(result, "data", None), dict):
-                                _output_text = str(result.data.get("output", ""))
+                            _data = getattr(result, "data", None)
+                            if isinstance(_data, dict):
+                                _output_text = str(_data.get("output", ""))
                             if not _output_text:
-                                _data = getattr(result, "data", None)
                                 _output_text = "" if _data is None else str(_data)
                             check_res = check_deliverable_contract(
                                 contract,
@@ -1431,10 +1432,10 @@ class MoRECore:
                         # the orchestrator returned a dict with `output` use
                         # that, otherwise just use str(result.data).
                         output_text = ""
-                        if isinstance(getattr(result, "data", None), dict):
-                            output_text = str(result.data.get("output", ""))
+                        data = getattr(result, "data", None)
+                        if isinstance(data, dict):
+                            output_text = str(data.get("output", ""))
                         if not output_text:
-                            data = getattr(result, "data", None)
                             output_text = "" if data is None else str(data)
                         msg = A2AMessage(
                             role="agent",

@@ -1316,7 +1316,7 @@ def close() -> None:
             _INSTANCE.conn = None
 
 
-__all__: Iterable[str] = (
+__all__: tuple[str, ...] = (
     "configure",
     "record_llm_call",
     "summary",

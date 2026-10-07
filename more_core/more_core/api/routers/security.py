@@ -139,6 +139,6 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         将 T0~T3 四元组梯子在"当前版 <-> MORE_PREV_TIER_*_MODEL 前版"之间做
         内存态 toggle。长度不一致 (≠4 tiers) 时拒绝回滚，返回 reason 字段。
         """
-        return core.task_model_router.apply_previous_tier_ladder()
+        return dict(core.task_model_router.apply_previous_tier_ladder())
 
     return router

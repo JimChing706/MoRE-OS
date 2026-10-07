@@ -191,7 +191,9 @@ async def _require_api_key(request: Request) -> None:
         set_principal(request.state.principal)
         return
 
-    record = store.verify(token) if store is not None else None
+    if store is None:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+    record = store.verify(token)
     if record is None:
         raise HTTPException(status_code=403, detail="Invalid API key")
     # 配额（每分钟调用上限）：超限 → 429，且只累加拒绝计数

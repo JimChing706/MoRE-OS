@@ -34,12 +34,12 @@ class DeliverableCheckResult:
     """
 
     ok: bool = True
-    violations: list = field(default_factory=list)
+    violations: list[str] = field(default_factory=list)
     kill_severity: Any = None  # DeliverableContract.KillSeverity or None
     final_state: str = "COMPLETED"
     output_text: str = ""
 
-    def to_metadata(self) -> dict:
+    def to_metadata(self) -> dict[str, Any]:
         """Serialize for embedding into A2ATask.metadata dict."""
         try:
             sev_value = (

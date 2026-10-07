@@ -44,6 +44,17 @@ from typing import Any
 
 _log = logging.getLogger(__name__)
 
+
+def _optional_record_injection() -> Any:
+    """注入记录器（可选依赖）：导入失败返回 None，绝不影响主链路。"""
+    try:
+        from ..governance.observability import record_injection
+
+        return record_injection
+    except Exception:  # pragma: no cover - defensive
+        return None
+
+
 # Fallback dangerous-code patterns used when L3 rule engine is unavailable.
 # Mirrors the patterns in ontology/rule_engine.py:_cond_dangerous_code.
 _FALLBACK_DANGEROUS_RE = re.compile(
@@ -1342,7 +1353,8 @@ class ExecutionLayer(Layer):
         caller falls through to the local L0 path.
         """
         try:
-            from ..a2a.bailongma_bridge import BaiLongmaBridge, A2ATaskState
+            from ..a2a.bailongma_bridge import BaiLongmaBridge
+            from ..a2a.client import A2ATaskState
         except Exception:
             return None
         try:
@@ -1391,7 +1403,7 @@ class ExecutionLayer(Layer):
             import time as _t
 
             started = _t.monotonic()
-            last_state = submitted.state
+            last_state: A2ATaskState = submitted.state
             final_task: Any = submitted
             while True:
                 elapsed = _t.monotonic() - started
@@ -1565,10 +1577,7 @@ class ExecutionLayer(Layer):
         except Exception:
             pass
         # ── Step-4 P0: record dynamic_k injection decision ──────────
-        try:
-            from ..governance.observability import record_injection
-        except Exception:  # pragma: no cover - defensive
-            record_injection = None
+        record_injection = _optional_record_injection()
         if record_injection is not None:
             req_id = ""
             try:
@@ -1757,7 +1766,7 @@ class ExecutionLayer(Layer):
             if isinstance(item, BaseException):
                 _log.warning("best-of-k candidate failed: %s", item)
                 continue
-            out.append(item)  # type: ignore[arg-type]
+            out.append(item)
         return out
 
     @staticmethod
@@ -1943,10 +1952,7 @@ class ExecutionLayer(Layer):
         error_text = (sbx.error or "") + "\n" + str(sbx.output or "")
         bias = get_repair_bias_for_failure(error_text, project_root=project_root) or ""
         # ── Step-4 P0 observability: record bias injection hit ────────
-        try:
-            from ..governance.observability import record_injection
-        except Exception:  # pragma: no cover - defensive
-            record_injection = None
+        record_injection = _optional_record_injection()
         if record_injection is not None:
             import hashlib as _h
 

@@ -186,11 +186,11 @@ class SecureSandbox:
         except Exception:
             pass
         # Legacy fallback for bootstrap ordering edge-cases
-        violations: list[str] = []
+        legacy_violations: list[str] = []
         for kw in self._config.blocked_python_keywords:
             if kw in code:
-                violations.append(f"blocked keyword: {kw}")
-        return violations
+                legacy_violations.append(f"blocked keyword: {kw}")
+        return legacy_violations
 
     def _check_output(self, output: str) -> str:
         max_sz = self._config.max_output_size

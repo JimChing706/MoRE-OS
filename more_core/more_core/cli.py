@@ -6,6 +6,10 @@ import argparse
 import asyncio
 import json
 import sys
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # 仅类型检查期导入，避免 CLI 冷启动成本
+    from .security.api_key_store import APIKeyStore
 
 
 def _serve(host: str, port: int) -> None:
@@ -108,9 +112,9 @@ async def _chat_interactive(task_type: str = "nlp_task") -> None:
 
 
 def _cmd_api_key_generate(args: argparse.Namespace) -> int:
-    from .security.api_key_ops import generate_api_key, validate_api_key_report
+    from .security.api_key_ops import APIKeyKind, generate_api_key, validate_api_key_report
 
-    strength = "compat"
+    strength: APIKeyKind = "compat"
     if args.hex:
         strength = "hex"
     elif args.modern or args.strength in {"modern", "256bit"}:
@@ -191,11 +195,11 @@ def _cmd_api_key_validate(args: argparse.Namespace) -> int:
 
 
 def _cmd_api_key_inject(args: argparse.Namespace) -> int:
-    from .security.api_key_ops import inject_api_key_into_env, generate_api_key
+    from .security.api_key_ops import APIKeyKind, generate_api_key, inject_api_key_into_env
 
     key = args.key
     if not key:
-        strength = "hex" if args.hex else ("modern" if args.modern else "compat")
+        strength: APIKeyKind = "hex" if args.hex else ("modern" if args.modern else "compat")
         key = generate_api_key(strength=strength, enforce_prefix=args.with_prefix)
     env_path, backup_path, prev = inject_api_key_into_env(
         key, args.env or None, backup=not args.no_backup, strict=args.strict
@@ -249,7 +253,7 @@ def _cmd_api_key_rotate_proof(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _ak_store():
+def _ak_store() -> APIKeyStore:
     from .security.api_key_store import APIKeyStore
 
     return APIKeyStore()
@@ -351,7 +355,7 @@ def _cmd_api_key_attention(args: argparse.Namespace) -> int:
     return 0
 
 
-def _build_api_key_subparser(sub: argparse._SubParsersAction) -> None:
+def _build_api_key_subparser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     p_ak = sub.add_parser(
         "api-key", help="API-key generate / validate / inject / rotate-proof (测试补缺专用)"
     )

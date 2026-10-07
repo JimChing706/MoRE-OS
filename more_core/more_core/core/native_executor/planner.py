@@ -13,7 +13,10 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:  # 仅类型检查期导入，避免运行时循环依赖
+    from .types import TaskTemplateKey
 
 
 @dataclass
@@ -388,7 +391,7 @@ class TaskTemplateSelector:
             tags = [t.strip().strip("\"'").lower() for t in m.group(1).split(",") if t.strip()]
         return title, typ, tags
 
-    def key_for(self, task_request: Any, doc: Optional[str]) -> str:
+    def key_for(self, task_request: Any, doc: Optional[str]) -> TaskTemplateKey:
         title, typ, tags = self._frontmatter_title_type_tags(doc)
         q = getattr(task_request, "query", "") or ""
         corpus = " ".join(filter(None, [title, typ, q, *tags]))

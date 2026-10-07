@@ -40,7 +40,7 @@ jobs:
 
       - name: Type check (mypy)
         working-directory: more_core
-        run: python -m mypy more_core/ || true
+        run: python -m mypy more_core/
 
       - name: Run tests
         working-directory: more_core

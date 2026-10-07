@@ -112,7 +112,7 @@ class AuditLogger:
         Returns:
             The created AuditRecord
         """
-        typed: dict[str, object] = {}
+        typed: dict[str, Any] = {}
         remainder: dict[str, object] = {}
         for k, v in payload.items():
             if k in _STRONG_AUDIT_FIELDS:

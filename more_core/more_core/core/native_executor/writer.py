@@ -263,7 +263,7 @@ class Writer:
         self,
         task_request: Any,
         doc: Optional[str],
-        steps: list,
+        steps: list[Step],
         *,
         template_key: TaskTemplateKey,
     ) -> dict[str, str]:
@@ -1644,7 +1644,7 @@ class TaskPayloadTemplateRegistry:
 
     def register(self, key: TaskTemplateKey, mixin: "PayloadWriterMixin") -> None:
         """运行时热更新（动态加载）：替换或新增给定 key 的 mixin。"""
-        self._singletons[key] = mixin  # type: ignore[assignment]
+        self._singletons[key] = mixin
 
     def list_keys(self) -> list[str]:
         return sorted(self._singletons.keys())

@@ -19,7 +19,7 @@ import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 from .types import AggregatedValidationResult, ValidationBlockingLevel
 
@@ -87,7 +87,7 @@ class Validator:
         retries: int = 3,
         initial_backoff_s: float = 0.1,
         timeout_s: Optional[int] = 600,
-        _run_hook=None,
+        _run_hook: Optional[Callable[[list[str], str, int], CommandRun]] = None,
     ) -> None:
         """初始化 Validator。
 
@@ -160,11 +160,11 @@ class Validator:
                 warnings.warn(f"unknown blocking level={level!r}, fallback HARD_BLOCK")
                 level_enum = ValidationBlockingLevel.HARD_BLOCK
         else:
-            level_enum = level  # type: ignore[assignment]
+            level_enum = level
         return AggregatedValidationResult(
             source=source,
             archives=archives,
-            blocking_level=level_enum,  # type: ignore[arg-type]
+            blocking_level=level_enum,
         )
 
     # ------------------------------------------------------------

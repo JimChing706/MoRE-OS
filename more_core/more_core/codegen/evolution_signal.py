@@ -1021,7 +1021,7 @@ def compute_evolution_summary(
     task_type: str = "",
     query_fp: str = "",
     project_root: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Snapshot statistics for the evolution signal dashboard.
 
     Shape::
@@ -1050,7 +1050,7 @@ def compute_evolution_summary(
         "avg_thinking_ratio": 0.0,
         "tier_transitions_per_hour": 0.0,
     }
-    result: dict = {
+    result: dict[str, Any] = {
         "total_runs": 0,
         "passed_runs": 0,
         "overall_pass_rate": 0.0,
@@ -1080,7 +1080,7 @@ def compute_evolution_summary(
         return result
     try:
         where_parts: list[str] = []
-        where_params: list = []
+        where_params: list[Any] = []
         if task_type:
             where_parts.append("task_type = ?")
             where_params.append(task_type)

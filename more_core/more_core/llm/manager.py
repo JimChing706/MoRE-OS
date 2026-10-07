@@ -22,6 +22,16 @@ from .providers.deepseek import DeepSeekProvider
 from .providers.mock import MockProvider
 
 
+def _optional_record_llm_call() -> Any:
+    """可观测性记录器（可选依赖）：导入失败返回 None，绝不影响主链路。"""
+    try:
+        from ..governance.observability import record_llm_call
+
+        return record_llm_call
+    except Exception:  # pragma: no cover - defensive
+        return None
+
+
 _CACHE_MAX = 256
 # Wall-clock budget for the whole serial fallback chain (all providers tried).
 # Guards against the pathological case: N providers × 5 retries × 120s timeout
@@ -597,10 +607,7 @@ class LLMManager:
                 async with self._cache_lock:
                     cached = self._cache.get(key)
                     if cached is not None:
-                        try:
-                            from ..governance.observability import record_llm_call
-                        except Exception:  # pragma: no cover
-                            record_llm_call = None
+                        record_llm_call = _optional_record_llm_call()
                         if record_llm_call is not None:
                             record_llm_call(
                                 request_id=logical_rid,
@@ -650,10 +657,7 @@ class LLMManager:
                 if use_cache:
                     async with self._cache_lock:
                         self._cache.put(key, resp)
-                try:
-                    from ..governance.observability import record_llm_call
-                except Exception:  # pragma: no cover
-                    record_llm_call = None
+                record_llm_call = _optional_record_llm_call()
                 if record_llm_call is not None:
                     record_llm_call(
                         request_id=logical_rid,
@@ -691,10 +695,7 @@ class LLMManager:
             except Exception as exc:
                 _elapsed = (time.perf_counter() - start) * 1000
                 self._record_failure(name, attempt_req.model_override, _exc_summary(exc, _elapsed))
-                try:
-                    from ..governance.observability import record_llm_call
-                except Exception:  # pragma: no cover
-                    record_llm_call = None
+                record_llm_call = _optional_record_llm_call()
                 if record_llm_call is not None:
                     record_llm_call(
                         request_id=logical_rid,

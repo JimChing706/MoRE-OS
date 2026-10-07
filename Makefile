@@ -133,8 +133,8 @@ lint: ## Run ruff linter + format check on Python code (mirrors CI)
 format: ## Auto-format with ruff
 	@cd more_core && $(PYTHON) -m ruff format more_core/ tests/
 
-typecheck: ## Run mypy type checker
-	@cd more_core && $(PYTHON) -m mypy more_core/ || true
+typecheck: ## Run mypy type checker (blocking)
+	@cd more_core && $(PYTHON) -m mypy more_core/
 
 check: lint typecheck test test-layers ## Run all quality checks (lint + typecheck + full test + layer gate)
 

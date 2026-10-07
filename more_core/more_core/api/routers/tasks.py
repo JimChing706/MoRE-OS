@@ -206,13 +206,13 @@ async def _execute_task_background_v2(
                 warnings.append(
                     f"TemplateDispatcher failed, fallback Planner: {type(e).__name__}: {e}"
                 )
-                template_key = "generic"  # type: ignore[assignment]
+                template_key = "generic"
                 try:
                     planner = Planner()
                     steps = planner.plan(req_obj, project_root, itd_doc)
                 except Exception as e2:
                     warnings.append(f"Planner fallback to RULE_BASED_GENERIC: {e2}")
-                    from ...core.native_executor.planner import RULE_BASED_GENERIC_SCAFFOLD_PLAN  # type: ignore[attr-defined]
+                    from ...core.native_executor.planner import RULE_BASED_GENERIC_SCAFFOLD_PLAN
                     import copy as _copy
 
                     steps = _copy.deepcopy(RULE_BASED_GENERIC_SCAFFOLD_PLAN)
@@ -503,8 +503,8 @@ async def _execute_task_background_v2(
 
                     arc_validation = ValidationResult(pass_=True)
                 agg_validation = aggregate_results(
-                    src_validation,  # type: ignore[arg-type]
-                    arc_validation,  # type: ignore[arg-type]
+                    src_validation,
+                    arc_validation,
                     level=ctx.get("validation_blocking_level", ValidationBlockingLevel.HARD_BLOCK)
                     if isinstance(ctx, dict)
                     else ValidationBlockingLevel.HARD_BLOCK,
@@ -730,7 +730,7 @@ async def _execute_task_background_v2(
                 from ...codegen.delivery_ledger import get_default_ledger
                 from ...codegen.gates import run_gates
 
-                _artifact_parts: list[str] = []
+                _artifact_parts_gate: list[str] = []
                 _budget = 400_000
                 for _rel in list(written_map.keys())[:60]:
                     try:
@@ -739,14 +739,14 @@ async def _execute_task_background_v2(
                         )
                     except Exception:
                         continue
-                    _artifact_parts.append(_txt)
+                    _artifact_parts_gate.append(_txt)
                     _budget -= len(_txt)
                     if _budget <= 0:
                         break
                 _artifact = (
                     "\n".join(f"# delivered file: {_p}" for _p in written_map.keys())
                     + "\n\n"
-                    + "\n\n".join(_artifact_parts)
+                    + "\n\n".join(_artifact_parts_gate)
                 )
                 _report = run_gates(_artifact, query=str(description or ""), require_logic=True)
                 _ledger_status = (

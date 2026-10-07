@@ -188,14 +188,14 @@ class MCPRequestHandler:
         if isinstance(msg, MCPRequest) and msg.method != "initialize":
             if not self._is_authorized(msg):
                 _log.warning("MCP rejected unauthenticated method=%s", msg.method)
-                response = MCPResponse(
+                unauthorized = MCPResponse(
                     id=msg.id,
                     error=JSONRPCError(
                         code=ErrorCode.INVALID_REQUEST.value,
                         message="Unauthorized: initialize with a valid MCP token first",
                     ),
                 )
-                return self._protocol.serialize_message(response)
+                return self._protocol.serialize_message(unauthorized)
 
         response = await self._protocol.handle_message(msg)
         if response:

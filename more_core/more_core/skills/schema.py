@@ -22,7 +22,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Callable
 
 __all__ = ["SchemaError", "validate_params", "check_params", "is_valid"]
 
@@ -135,12 +135,13 @@ def _validate(value: Any, schema: dict[str, Any], path: str, errors: list[str]) 
                 errors.append(f"{path}: {problem}")
 
     if isinstance(value, (int, float)) and not isinstance(value, bool):
-        for key, op, label in (
+        bound_ops: tuple[tuple[str, Callable[[Any, Any], bool], str], ...] = (
             ("minimum", lambda a, b: a < b, "小于最小值"),
             ("maximum", lambda a, b: a > b, "超过最大值"),
             ("exclusiveMinimum", lambda a, b: a <= b, "不大于（应 >）"),
             ("exclusiveMaximum", lambda a, b: a >= b, "不小于（应 <）"),
-        ):
+        )
+        for key, op, label in bound_ops:
             bound = schema.get(key)
             if bound is not None and op(value, bound):
                 errors.append(f"{path}: {value} {label} {bound}")

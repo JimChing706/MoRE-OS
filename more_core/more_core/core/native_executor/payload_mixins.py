@@ -30,12 +30,12 @@ class PayloadWriterMixin(abc.ABC):
 
     @abc.abstractmethod
     def build_payload_map(
-        self, task_request: Any, doc: Optional[str], steps: list
+        self, task_request: Any, doc: Optional[str], steps: list[Any]
     ) -> dict[str, str]: ...
 
 
 class TetrisWriterMixin(PayloadWriterMixin):
-    template_key: ClassVar[TaskTemplateKey] = "tetris"  # type: ignore[assignment]
+    template_key: ClassVar[TaskTemplateKey] = "tetris"
 
     _EXPECTED_MANIFEST: set[str] = {
         "Cargo.toml",
@@ -57,7 +57,7 @@ class TetrisWriterMixin(PayloadWriterMixin):
         return set(self._EXPECTED_MANIFEST)
 
     def build_payload_map(
-        self, task_request: Any, doc: Optional[str], steps: list
+        self, task_request: Any, doc: Optional[str], steps: list[Any]
     ) -> dict[str, str]:
         """委托现有 Writer.build_tetris_payload_map()。
 
@@ -71,7 +71,7 @@ class TetrisWriterMixin(PayloadWriterMixin):
 
 
 class CSShooterWriterMixin(PayloadWriterMixin):
-    template_key: ClassVar[TaskTemplateKey] = "cs_shooter"  # type: ignore[assignment]
+    template_key: ClassVar[TaskTemplateKey] = "cs_shooter"
 
     _MIN_MANIFEST: set[str] = {
         "Cargo.toml",
@@ -114,7 +114,7 @@ class CSShooterWriterMixin(PayloadWriterMixin):
         return set(self._MIN_MANIFEST)
 
     def build_payload_map(
-        self, task_request: Any, doc: Optional[str], steps: list
+        self, task_request: Any, doc: Optional[str], steps: list[Any]
     ) -> dict[str, str]:
         result: dict[str, str] = {
             "Cargo.toml": _cs_workspace_cargo_toml(),
@@ -156,7 +156,7 @@ class CSShooterWriterMixin(PayloadWriterMixin):
 
 
 class GenericWriterMixin(PayloadWriterMixin):
-    template_key: ClassVar[TaskTemplateKey] = "generic"  # type: ignore[assignment]
+    template_key: ClassVar[TaskTemplateKey] = "generic"
 
     _MANIFEST: set[str] = {
         "README.md",
@@ -172,7 +172,7 @@ class GenericWriterMixin(PayloadWriterMixin):
         return set(self._MANIFEST)
 
     def build_payload_map(
-        self, task_request: Any, doc: Optional[str], steps: list
+        self, task_request: Any, doc: Optional[str], steps: list[Any]
     ) -> dict[str, str]:
         q = getattr(task_request, "query", "Generic scaffold") or "Generic scaffold"
         return {
