@@ -13,7 +13,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INNER="$ROOT/more_core"
 BASELINE="$ROOT/.ruff-rule-set-baseline.txt"
-PYTHON="${PYTHON:-$ROOT/.venv/bin/python}"
+# 解释器选择：显式 PYTHON > 仓库 venv > 系统 python（CI 无 .venv）
+if [[ -n "${PYTHON:-}" ]]; then
+  :
+elif [[ -x "$ROOT/.venv/bin/python" ]]; then
+  PYTHON="$ROOT/.venv/bin/python"
+else
+  PYTHON="$(command -v python3 || command -v python || true)"
+fi
 
 [[ -x "$PYTHON" ]] || { echo "✗ 找不到 python: $PYTHON（可用 PYTHON=... 覆盖）" >&2; exit 1; }
 
