@@ -12,6 +12,14 @@ import abc
 from typing import Any, ClassVar, Optional
 
 from .types import TaskTemplateKey
+from .payload_cs_docs import (
+    CS_SRS_DOC,
+    CS_PLAN_DOC,
+    CS_IMPL_DOC,
+    CS_TECH_DOC,
+    CS_MAIN_JS,
+    CS_INDEX_HTML,
+)
 
 
 class PayloadWriterMixin(abc.ABC):
@@ -84,6 +92,7 @@ class CSShooterWriterMixin(PayloadWriterMixin):
         "frontend/package.json",
         "frontend/vite.config.ts",
         "frontend/index.html",
+        "frontend/main.js",
         "frontend/src/App.tsx",
         "frontend/src/adapters/IGameClientAdapter.ts",
         "frontend/src/adapters/LocalInProcAdapter.ts",
@@ -93,6 +102,10 @@ class CSShooterWriterMixin(PayloadWriterMixin):
         "README.md",
         "docs/USAGE.md",
         "docs/ARCHITECTURE.md",
+        "docs/01-SRS.md",
+        "docs/02-开发规划大纲.md",
+        "docs/03-软件开发实施细则.md",
+        "docs/04-技术方案优选与落地方案.md",
         "deploy/Dockerfile",
         "deploy/docker-compose.yml",
     }
@@ -113,15 +126,16 @@ class CSShooterWriterMixin(PayloadWriterMixin):
             "shooter_core/src/lib.rs": _cs_core_lib_rs(),
             "shooter_core/src/tests.rs": _cs_core_tests_rs(),
             "shooter_server/Cargo.toml": _cs_server_cargo(),
-            "shooter_server/src/lib.rs": "//! Shooter axum server library entry.\npub mod rooms;\npub use rooms::*;\n\npub(crate) mod rooms {\n    use std::collections::HashMap;\n    pub struct Room { pub id: String, pub players: usize }\n    pub struct RoomRegistry(HashMap<String, Room>);\n    impl RoomRegistry {\n        pub fn new() -> Self { Self(HashMap::new()) }\n        pub fn list(&self) -> Vec<&Room> { self.0.values().collect() }\n    }\n    impl Default for RoomRegistry { fn default() -> Self { Self::new() } }\n}\n",
+            "shooter_server/src/lib.rs": "//! Shooter axum server library entry.\n\npub mod rooms {\n    use std::collections::HashMap;\n    pub struct Room { pub id: String, pub players: usize }\n    pub struct RoomRegistry(HashMap<String, Room>);\n    impl RoomRegistry {\n        pub fn new() -> Self { Self(HashMap::new()) }\n        pub fn list(&self) -> Vec<&Room> { self.0.values().collect() }\n    }\n    impl Default for RoomRegistry { fn default() -> Self { Self::new() } }\n}\n",
             "shooter_server/src/main.rs": 'fn main(){ println!("shooter server placeholder"); }\n',
             "shooter_server/build.rs": "fn main(){} // placeholder build.rs\n",
             "shooter_bot/Cargo.toml": _cs_bot_cargo(),
-            "shooter_bot/src/lib.rs": '//! Heuristic bot logic placeholder.\npub struct HeuristicBot;\nimpl HeuristicBot {\n    pub fn new() -> Self { Self }\n    pub fn decide_action(&self, ctx: &()) -> &str { "idle" }\n}\nimpl Default for HeuristicBot { fn default() -> Self { Self::new() } }\n',
+            "shooter_bot/src/lib.rs": '//! Heuristic bot logic placeholder.\npub struct HeuristicBot;\nimpl HeuristicBot {\n    pub fn new() -> Self { Self }\n    pub fn decide_action(&self, _ctx: &()) -> &str { "idle" }\n}\nimpl Default for HeuristicBot { fn default() -> Self { Self::new() } }\n',
             "shooter_bot/src/tests.rs": "#[cfg(test)]\nmod tests { use super::*; #[test] fn placeholder_ok() { let _b = HeuristicBot::new(); } }\n",
             "frontend/package.json": '{"name":"cs-shooter-frontend","version":"0.1.0","scripts":{"dev":"vite","build":"tsc -b && vite build","test":"vitest run"}}\n',
             "frontend/vite.config.ts": 'import { defineConfig } from "vite";\nexport default defineConfig({});\n',
-            "frontend/index.html": "<!doctype html><html><head><meta charset=utf-8><title>CS Shooter</title></head><body><div id=root></div></body></html>\n",
+            "frontend/index.html": CS_INDEX_HTML,
+            "frontend/main.js": CS_MAIN_JS,
             "frontend/src/App.tsx": 'import React from "react";\nexport const App: React.FC = () => <div>CS Shooter (placeholder)</div>;\n',
             "frontend/src/adapters/IGameClientAdapter.ts": "export interface IGameClientAdapter {\n  connect(roomId:string):Promise<void>;\n  sendAction(action:unknown):Promise<void>;\n  subscribeState(cb:(s:unknown)=>void):()=>void;\n}\n",
             "frontend/src/adapters/LocalInProcAdapter.ts": 'import type { IGameClientAdapter } from "./IGameClientAdapter";\nexport class LocalInProcAdapter implements IGameClientAdapter { async connect(_r:string){} async sendAction(_a:unknown){} subscribeState(_c:any){return ()=>{};} }\n',
@@ -131,6 +145,10 @@ class CSShooterWriterMixin(PayloadWriterMixin):
             "README.md": "# CS Shooter Suite (placeholder)\n\n5-step 启动:\n1. `cargo build --workspace`\n2. cd frontend && pnpm install && pnpm dev\n3. open http://localhost:5173\n4. 后端: `cargo run -p shooter_server`\n5. docker compose up -d\n",
             "docs/USAGE.md": "# USAGE\nRun tests: `cargo test --workspace --release`\n",
             "docs/ARCHITECTURE.md": "# ARCHITECTURE\n3 crates: shooter_core (rules) + shooter_server (axum/ws) + shooter_bot (A*). Adapter pattern.\n",
+            "docs/01-SRS.md": CS_SRS_DOC,
+            "docs/02-开发规划大纲.md": CS_PLAN_DOC,
+            "docs/03-软件开发实施细则.md": CS_IMPL_DOC,
+            "docs/04-技术方案优选与落地方案.md": CS_TECH_DOC,
             "deploy/Dockerfile": "FROM rust:1.80-alpine AS chef\nRUN cargo install cargo-chef --locked\nWORKDIR /app\n",
             "deploy/docker-compose.yml": 'version: "3.9"\nservices:\n  server:\n    build: { context: .., dockerfile: deploy/Dockerfile }\n',
         }
@@ -232,7 +250,7 @@ def _cs_core_lib_rs() -> str:
 def _cs_core_tests_rs() -> str:
     return (
         "#[cfg(test)]\nmod tests {\n"
-        "    use super::*;\n"
+        "    use crate::*;\n"
         "    #[test] fn awp_head_shot_kill() {\n"
         "        let d = damage(WeaponId::Awp, 10.0, 0, 100);\n"
         '        assert!(d >= 100, "AWP 头伤应能秒杀: d={d}");\n'

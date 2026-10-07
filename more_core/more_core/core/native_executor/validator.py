@@ -252,6 +252,7 @@ class Validator:
                 cwd=cwd,
                 capture_output=True,
                 text=True,
+                errors="replace",
                 timeout=self.timeout_s,
                 check=False,
             )

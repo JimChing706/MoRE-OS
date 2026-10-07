@@ -405,7 +405,9 @@ async def _execute_task_background_v2(
             )
             delivery_artifacts_for_validator: dict[str, str] = {}
             try:
-                delivery = Delivery(_use_system_tar=False, _use_system_zip=False)
+                delivery = Delivery(
+                    _use_system_tar=False, _use_system_zip=False, template_key=template_key
+                )
                 prefix = f"task_{task_id.replace('/', '_').replace(':', '_')}_{datetime.now(_tz.utc).strftime('%Y%m%d')}"
                 art = delivery.run(project_root, project_prefix=prefix)
                 approx_tokens += 300

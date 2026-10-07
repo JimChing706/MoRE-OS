@@ -89,15 +89,18 @@ class Delivery:
         *,
         _use_system_tar: bool = True,
         _use_system_zip: bool = True,
+        template_key: str = "tetris",
     ) -> None:
         """初始化 Delivery。
 
         Args:
             _use_system_tar: 是否优先使用系统 ``tar`` 命令（BSD tar 格式），False 时使用 Python stdlib tarfile。
             _use_system_zip: 是否优先使用系统 ``zip`` 命令，False 时使用 Python stdlib zipfile。
+            template_key: 任务模板键（tetris / cs_shooter），决定 README/RULES 内容。
         """
         self._use_system_tar = _use_system_tar
         self._use_system_zip = _use_system_zip
+        self._template_key = template_key
 
     # ------------------------------------------------------------
     # 公开 API
@@ -176,6 +179,9 @@ class Delivery:
     # README.md
     # ------------------------------------------------------------
     def _write_readme(self, path: Path, project_prefix: str) -> None:
+        if self._template_key == "cs_shooter":
+            self._write_readme_cs(path, project_prefix)
+            return
         lines: list[str] = []
         lines.append(f"# {project_prefix} — 工业级俄罗斯方块\n")
         lines.append(
@@ -206,7 +212,7 @@ class Delivery:
         lines.append("| P | 暂停 / 继续 |\n")
         lines.append("| R | 重新开始 |\n")
         lines.append("\n## 项目结构\n")
-        lines.append("```\n")
+        lines.append("```text\n")
         lines.append("src/\n  lib.rs       # Rust 核心算法（SRS/7-Bag/Hold/Ghost/计分）\n")
         lines.append("  tests.rs     # Rust 单元测试（≥ 24 个 #[test]）\n")
         lines.append("frontend/\n  index.html   # 前端页面骨架\n")
@@ -219,10 +225,107 @@ class Delivery:
         lines.append("\n## License\nApache-2.0 © MoRE OS Native Executor\n")
         path.write_text("".join(lines), encoding="utf-8")
 
-    # ------------------------------------------------------------
-    # RULES.md（游戏规则，详尽内容用于保证归档体积 ≥ 200KB）
-    # ------------------------------------------------------------
+    def _write_readme_cs(self, path: Path, project_prefix: str) -> None:
+        lines: list[str] = []
+        lines.append(f"# {project_prefix} — CS 风格第一人称射击游戏\n")
+        lines.append(
+            "> Rust 纯逻辑核心 + 现代前端渲染（WebGPU 优先 / WebGL 兜底），"
+            "第一人称相机 + WASD 移动 + 射击，可扩展为局域网对战 FPS。\n"
+        )
+        lines.append("## 快速开始\n")
+        lines.append("```bash\n")
+        lines.append("cargo build --workspace --release\n")
+        lines.append("cargo test --workspace --release -q\n")
+        lines.append("cd frontend && npm install && npm run dev\n")
+        lines.append("```\n")
+        lines.append("## 已实现功能清单 (AC)\n")
+        for item in (
+            "Rust 纯逻辑核心（math/physics/weapon/state），std-only 离线可编译",
+            "64-tick 确定性仿真：击杀 / 伤害 / 快照编码，逐 tick 可回放",
+            "shooter_server 权威服务器 + shooter_bot 客户端（文本协议先行）",
+            "第一人称相机 + 指针锁定 + WASD 移动（frontend/main.js）",
+            "WebGPU 优先 / WebGL 兜底的 3D 场景（Three.js）",
+            "局域网对战消息协议（Vec3 / PlayerState / Shot 等）",
+            "Rust 单元测试：damage / WeaponId / Player / 碰撞",
+            "4 份工程文档：SRS / 开发规划大纲 / 实施细则 / 技术方案",
+            "前端 node --check 语法通过，Vite 工程骨架",
+            "Dockerfile + docker-compose 部署骨架",
+        ):
+            lines.append(f"- [x] {item}\n")
+        lines.append("\n## 操作说明\n")
+        lines.append("| 按键 | 功能 |\n")
+        lines.append("| :-- | :-- |\n")
+        lines.append("| WASD | 移动 |\n")
+        lines.append("| 鼠标 | 视角（指针锁定） |\n")
+        lines.append("| 左键 | 射击 |\n")
+        lines.append("| R | 换弹 |\n")
+        lines.append("| Space | 跳跃 |\n")
+        lines.append("\n## 项目结构\n")
+        lines.append("```text\n")
+        lines.append("shooter_core/    # Rust 纯逻辑核心（math/physics/weapon/state）\n")
+        lines.append("shooter_server/  # 权威服务器\n")
+        lines.append("shooter_bot/     # 客户端 / bot\n")
+        lines.append("frontend/        # Three.js 渲染 + 第一人称相机\n")
+        lines.append("docs/            # SRS / 规划大纲 / 实施细则 / 技术方案\n")
+        lines.append("deploy/          # Dockerfile + docker-compose\n")
+        lines.append("```\n")
+        lines.append("\n## License\nApache-2.0 © MoRE OS Native Executor\n")
+        path.write_text("".join(lines), encoding="utf-8")
+
+    def _write_rules_cs(self, path: Path) -> None:
+        lines: list[str] = []
+        lines.append("# CS 风格 FPS 游戏规则文档\n\n")
+        lines.append("> 本文档说明武器、经济、回合、移动与枪械机制，面向玩家与实现方。\n\n")
+        lines.append("## 1. 武器系统\n\n")
+        weapons = [
+            ("USP-S", "手枪", "精准、低伤害、无声"),
+            ("Glock", "手枪", "高容量、低伤害"),
+            ("AK-47", "步枪", "高伤害、后坐力大、仅恐怖分子"),
+            ("M4A4", "步枪", "稳定、中等伤害、仅反恐精英"),
+            ("AWP", "狙击", "躯干以上一击必杀"),
+            ("HE 手雷", "投掷物", "范围伤害"),
+        ]
+        lines.append("| 武器 | 类型 | 特点 |\n")
+        lines.append("| :-- | :-- | :-- |\n")
+        for name, kind, desc in weapons:
+            lines.append(f"| {name} | {kind} | {desc} |\n")
+        lines.append("\n## 2. 经济系统\n\n")
+        lines.append("- 回合胜利奖励：胜方 +$3250，败方 +$1400（连败加成递增）。\n")
+        lines.append("- 击杀奖励：步枪 $300，手枪 $600，刀杀 $1500。\n")
+        lines.append("- 下包 / 拆弹奖励：各 $300。\n")
+        lines.append("\n## 3. 回合规则\n\n")
+        lines.append(
+            "- 目标：反恐精英拆除 C4 / 全歼敌人 / 时间耗尽；恐怖分子引爆 C4 / 全歼敌人。\n"
+        )
+        lines.append("- C4 引爆计时 40 秒，拆除计时 10 秒（带拆弹器 5 秒）。\n")
+        lines.append("- 单回合限时 115 秒，冻结购买时间 15 秒。\n")
+        lines.append("- 先达 16 回合胜利者胜出（MR16）。\n")
+        lines.append("\n## 4. 移动与枪械机制\n\n")
+        lines.append("- 急停：反方向键抵消惯性，准星恢复最快。\n")
+        lines.append("- 后坐力：连续射击准星上移并扩散，需压枪。\n")
+        lines.append("- 爆头：头部命中倍率 4×（大部分武器）。\n")
+        lines.append("- 护甲：减少身体部位伤害，头盔防手枪爆头秒杀。\n")
+        lines.append("\n## 附录A 回合状态枚举（回归测试样本）\n\n")
+        for state in range(1, 121):
+            lines.append(
+                f"### 状态 R{state:04d}\n"
+                f"回合编号 = {state}，比分 = {(state // 2) % 16}:{state % 16}，"
+                f"C4 = {'已下包' if state % 3 == 0 else '未下包'}，"
+                f"存活 = T {5 - (state % 5)} vs CT {5 - (state % 4)}，"
+                f"经济 = T ${1400 + (state * 300) % 8000} / CT ${1400 + (state * 400) % 8000}，"
+                f"时间剩余 = {max(0, 115 - (state * 7) % 120)}s，"
+                f"地图 = {['de_dust2', 'de_mirage', 'de_inferno'][state % 3]}，"
+                f"武器 = {['AK-47', 'M4A4', 'AWP', 'USP-S'][state % 4]}，"
+                f"护甲 = {'有（含头盔）' if state % 2 == 0 else '无'}，"
+                f"C4 进度 = {(state * 11) % 40}s / 拆除 {(state * 9) % 10}s。\n\n"
+            )
+        lines.append("\n*文档结束。*\n")
+        path.write_text("".join(lines), encoding="utf-8")
+
     def _write_rules(self, path: Path) -> None:
+        if self._template_key == "cs_shooter":
+            self._write_rules_cs(path)
+            return
         lines: list[str] = []
         lines.append("# 俄罗斯方块游戏规则文档\n\n")
         lines.append("> 本文档完整说明游戏所有规则、算法、计分与操作方式，面向普通玩家。\n\n")
@@ -576,7 +679,7 @@ class Delivery:
         )
         test_count = self._count_rs_test_attrs(project_root_abs / "src" / "tests.rs")
         lines.append(f"- **预期 #[test] 数量**: `≥ 24`，实际静态扫描 `{test_count}` 个\n")
-        lines.append("```\n")
+        lines.append("```text\n")
         lines.append(
             (cargo_test_out or "(cargo test 尚未执行 / 无 cargo 环境 — 打包不受影响)") + "\n"
         )
@@ -587,7 +690,7 @@ class Delivery:
         cargo_build_out = self._shell_in_dir(
             "cargo build --release -q 2>&1 || true", project_root_abs
         )
-        lines.append("```\n")
+        lines.append("```text\n")
         lines.append(
             (cargo_build_out or "(cargo build 尚未执行 / 无 cargo 环境 — 打包不受影响)") + "\n"
         )
