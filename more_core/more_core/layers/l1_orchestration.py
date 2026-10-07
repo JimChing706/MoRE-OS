@@ -197,9 +197,7 @@ class OrchestrationLayer(Layer):
 
                 # 3. Model hint — when reasoning tasks need a chain-of-thought model
                 model_hint = (
-                    ModelHint.REASONING
-                    if is_reasoning and difficulty >= 6
-                    else ModelHint.STANDARD
+                    ModelHint.REASONING if is_reasoning and difficulty >= 6 else ModelHint.STANDARD
                 )
 
                 # 4. Token budget — derived from strategy + mode + code flag

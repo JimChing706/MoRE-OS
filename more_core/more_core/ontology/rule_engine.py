@@ -210,13 +210,13 @@ def _act_flag_dangerous(facts: list[Fact], ctx: dict[str, Any]) -> list[RuleActi
 # that gap with a deliberately narrow, high-precision pattern set (destructive
 # filesystem / disk / fork-bomb primitives) to keep false positives low.
 _DESTRUCTIVE_REQUEST_RE = re.compile(
-    r"(\brm\s+(?:-{1,2}[a-z-]+\s+)*-{1,2}[a-z]*r[a-z]*f[a-z]*"   # rm -rf / rm -rfv
-    r"|\brm\s+(?:-{1,2}[a-z-]+\s+)*-{1,2}[a-z]*f[a-z]*r[a-z]*"   # rm -fr / rm -rfv
-    r"|\brm\s+-[rf]\s+-[rf]\b"                                  # rm -r -f / rm -f -r
-    r"|\bmkfs(\.[a-z0-9]+)?\b"                                  # mkfs / mkfs.ext4
-    r"|\bdd\b[^\n]*\bof=/dev/"                                 # dd if=... of=/dev/sdX
-    r"|>\s*/dev/(sd|disk|nvme)"                                  # redirect over raw device
-    r"|:\s*\(\s*\)\s*\{.*\}\s*;\s*:)",                    # classic fork bomb
+    r"(\brm\s+(?:-{1,2}[a-z-]+\s+)*-{1,2}[a-z]*r[a-z]*f[a-z]*"  # rm -rf / rm -rfv
+    r"|\brm\s+(?:-{1,2}[a-z-]+\s+)*-{1,2}[a-z]*f[a-z]*r[a-z]*"  # rm -fr / rm -rfv
+    r"|\brm\s+-[rf]\s+-[rf]\b"  # rm -r -f / rm -f -r
+    r"|\bmkfs(\.[a-z0-9]+)?\b"  # mkfs / mkfs.ext4
+    r"|\bdd\b[^\n]*\bof=/dev/"  # dd if=... of=/dev/sdX
+    r"|>\s*/dev/(sd|disk|nvme)"  # redirect over raw device
+    r"|:\s*\(\s*\)\s*\{.*\}\s*;\s*:)",  # classic fork bomb
     re.IGNORECASE,
 )
 

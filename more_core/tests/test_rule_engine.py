@@ -1,6 +1,5 @@
 """Tests for the forward-chaining rule engine."""
 
-
 from more_core.ontology.rule_engine import (
     Fact,
     Rule,
@@ -40,9 +39,13 @@ def test_empty_engine():
 
 def test_single_rule_fires():
     engine = RuleEngine()
-    engine.add_rule(Rule(
-        name="r1", conditions=[_always_true], actions=[_annotate_action],
-    ))
+    engine.add_rule(
+        Rule(
+            name="r1",
+            conditions=[_always_true],
+            actions=[_annotate_action],
+        )
+    )
     result = engine.run([Fact(kind="test")])
     assert "r1" in result.fired_rules
     assert result.annotations.get("hit") is True
@@ -50,18 +53,26 @@ def test_single_rule_fires():
 
 def test_false_condition_no_fire():
     engine = RuleEngine()
-    engine.add_rule(Rule(
-        name="r1", conditions=[_always_false], actions=[_annotate_action],
-    ))
+    engine.add_rule(
+        Rule(
+            name="r1",
+            conditions=[_always_false],
+            actions=[_annotate_action],
+        )
+    )
     result = engine.run([Fact(kind="test")])
     assert result.fired_rules == []
 
 
 def test_violation_recorded():
     engine = RuleEngine()
-    engine.add_rule(Rule(
-        name="v1", conditions=[_always_true], actions=[_violation_action],
-    ))
+    engine.add_rule(
+        Rule(
+            name="v1",
+            conditions=[_always_true],
+            actions=[_violation_action],
+        )
+    )
     result = engine.run([Fact(kind="test")])
     assert not result.ok
     assert "test violation" in result.violations
@@ -69,14 +80,22 @@ def test_violation_recorded():
 
 def test_halt_stops_engine():
     engine = RuleEngine()
-    engine.add_rule(Rule(
-        name="halt_rule", conditions=[_always_true], actions=[_halt_action],
-        priority=RulePriority.CRITICAL,
-    ))
-    engine.add_rule(Rule(
-        name="never_reached", conditions=[_always_true], actions=[_annotate_action],
-        priority=RulePriority.LOW,
-    ))
+    engine.add_rule(
+        Rule(
+            name="halt_rule",
+            conditions=[_always_true],
+            actions=[_halt_action],
+            priority=RulePriority.CRITICAL,
+        )
+    )
+    engine.add_rule(
+        Rule(
+            name="never_reached",
+            conditions=[_always_true],
+            actions=[_annotate_action],
+            priority=RulePriority.LOW,
+        )
+    )
     result = engine.run([Fact(kind="test")])
     assert result.halted
     assert "halt_rule" in result.fired_rules
@@ -91,10 +110,15 @@ def test_priority_ordering():
         def action(facts, ctx):
             fired.append(name)
             return []
+
         return action
 
-    engine.add_rule(Rule(name="low", conditions=[_always_true], actions=[mk_action("low")], priority=25))
-    engine.add_rule(Rule(name="high", conditions=[_always_true], actions=[mk_action("high")], priority=75))
+    engine.add_rule(
+        Rule(name="low", conditions=[_always_true], actions=[mk_action("low")], priority=25)
+    )
+    engine.add_rule(
+        Rule(name="high", conditions=[_always_true], actions=[mk_action("high")], priority=75)
+    )
     engine.run([Fact(kind="test")])
     assert fired[0] == "high"
 
@@ -121,8 +145,15 @@ def test_ungated_evolution_violation():
     engine = RuleEngine()
     for r in default_governance_rules():
         engine.add_rule(r)
-    facts = [Fact(kind="request", data={
-        "query": "improve", "allow_self_improvement": True, "evolution_enabled": False,
-    })]
+    facts = [
+        Fact(
+            kind="request",
+            data={
+                "query": "improve",
+                "allow_self_improvement": True,
+                "evolution_enabled": False,
+            },
+        )
+    ]
     result = engine.run(facts)
     assert not result.ok

@@ -279,7 +279,8 @@ class UnifiedRBAC:
             if os.getenv("MORE_RBAC_STRICT", "0") == "1":
                 _log.warning(
                     "RBAC strict mode: denying %s for %s (no admin_users configured)",
-                    permission.value, user_id,
+                    permission.value,
+                    user_id,
                 )
                 return False
             return True

@@ -25,8 +25,10 @@ def test_verify_rejects_tampered_payload():
     s = _signer()
     signed = s.sign(b"payload")
     tampered = SignedRequest(
-        payload=b"tampered", signature=signed.signature,
-        timestamp=signed.timestamp, nonce=signed.nonce,
+        payload=b"tampered",
+        signature=signed.signature,
+        timestamp=signed.timestamp,
+        nonce=signed.nonce,
     )
     ok, err = s.verify(tampered)
     assert ok is False and err == "Invalid signature"
@@ -61,7 +63,8 @@ def test_sign_dict_roundtrip():
     sig, ts, nonce = s.sign_dict({"b": 2, "a": 1})
     payload = json.dumps({"b": 2, "a": 1}, sort_keys=True, separators=(",", ":")).encode()
     assert s.verify(SignedRequest(payload=payload, signature=sig, timestamp=ts, nonce=nonce)) == (
-        True, "",
+        True,
+        "",
     )
 
 

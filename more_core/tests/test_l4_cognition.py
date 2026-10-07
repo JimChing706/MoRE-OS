@@ -60,7 +60,6 @@ def _make_ctx(
 
 
 class TestDifficultyEstimation:
-
     @pytest.mark.asyncio
     async def test_base_difficulty_by_task_type(self):
         for task_type, expected_base in _DIFFICULTY_BASE.items():
@@ -86,9 +85,7 @@ class TestDifficultyEstimation:
         assert bonus >= 2
 
     def test_complexity_bonus_code_keywords(self):
-        bonus = _estimate_complexity_bonus(
-            "full-stack crud rest api with database auth deploy"
-        )
+        bonus = _estimate_complexity_bonus("full-stack crud rest api with database auth deploy")
         assert bonus >= 1  # at least one keyword matched, capped at 4
 
     def test_complexity_bonus_no_keywords(self):
@@ -114,7 +111,6 @@ class TestDifficultyEstimation:
 
 
 class TestCapabilityEstimation:
-
     @pytest.mark.asyncio
     async def test_no_providers_defaults_to_7(self):
         ctx = _make_ctx(providers=[])
@@ -141,7 +137,6 @@ class TestCapabilityEstimation:
 
 
 class TestDecompositionThreshold:
-
     @pytest.mark.asyncio
     async def test_low_difficulty_no_llm_decomposition(self):
         ctx = _make_ctx(task_type=TaskType.NLP_TASK, query="hi")
@@ -167,16 +162,13 @@ class TestDecompositionThreshold:
 
 
 class TestLLMDecomposition:
-
     @pytest.mark.asyncio
     async def test_fallback_on_exception(self):
         ctx = _make_ctx(
             task_type=TaskType.SELF_IMPROVEMENT,
             query="complex task",
         )
-        ctx.core.llm.generate = AsyncMock(
-            side_effect=RuntimeError("LLM unavailable")
-        )
+        ctx.core.llm.generate = AsyncMock(side_effect=RuntimeError("LLM unavailable"))
         await CognitionLayer().process(ctx)
         plan = ctx.scratch["plan"]
         assert plan["decomposed"] is False
@@ -189,9 +181,7 @@ class TestLLMDecomposition:
             query="complex task",
         )
         ctx.core.llm.generate = AsyncMock()
-        ctx.core.llm.generate.return_value = MagicMock(
-            content='<subtasks>["only one"]</subtasks>'
-        )
+        ctx.core.llm.generate.return_value = MagicMock(content='<subtasks>["only one"]</subtasks>')
         await CognitionLayer().process(ctx)
         plan = ctx.scratch["plan"]
         assert plan["decomposed"] is False
@@ -203,9 +193,7 @@ class TestLLMDecomposition:
             query="complex task",
         )
         ctx.core.llm.generate = AsyncMock()
-        ctx.core.llm.generate.return_value = MagicMock(
-            content="<subtasks>[]</subtasks>"
-        )
+        ctx.core.llm.generate.return_value = MagicMock(content="<subtasks>[]</subtasks>")
         await CognitionLayer().process(ctx)
         plan = ctx.scratch["plan"]
         assert plan["decomposed"] is False
@@ -228,9 +216,7 @@ class TestLLMDecomposition:
             query="complex task",
             has_output_filter=True,
         )
-        ctx.core.output_filter.filter = MagicMock(
-            side_effect=lambda s: f"safe:{s}"
-        )
+        ctx.core.output_filter.filter = MagicMock(side_effect=lambda s: f"safe:{s}")
         ctx.core.llm.generate = AsyncMock()
         ctx.core.llm.generate.return_value = MagicMock(
             content='<subtasks>["step 1", "step 2"]</subtasks>'
@@ -269,7 +255,6 @@ class TestLLMDecomposition:
 
 
 class TestConfidence:
-
     @pytest.mark.asyncio
     async def test_not_decomposed(self):
         ctx = _make_ctx(task_type=TaskType.NLP_TASK, query="simple")
@@ -291,7 +276,6 @@ class TestConfidence:
 
 
 class TestPlanIntegration:
-
     @pytest.mark.asyncio
     async def test_plan_created_when_decomposed(self):
         ctx = _make_ctx(
@@ -300,9 +284,7 @@ class TestPlanIntegration:
             has_planner=True,
         )
         ctx.core.llm.generate = AsyncMock()
-        ctx.core.llm.generate.return_value = MagicMock(
-            content='<subtasks>["s1", "s2"]</subtasks>'
-        )
+        ctx.core.llm.generate.return_value = MagicMock(content='<subtasks>["s1", "s2"]</subtasks>')
         await CognitionLayer().process(ctx)
         ctx.core.planner.create_plan.assert_called_once()
         ctx.core.planner.validate_plan.assert_called_once()
@@ -317,9 +299,7 @@ class TestPlanIntegration:
         ctx.core.planner.create_plan.return_value = MagicMock(id="plan-123")
         ctx.core.planner.validate_plan.return_value = ["issue"]
         ctx.core.llm.generate = AsyncMock()
-        ctx.core.llm.generate.return_value = MagicMock(
-            content='<subtasks>["s1", "s2"]</subtasks>'
-        )
+        ctx.core.llm.generate.return_value = MagicMock(content='<subtasks>["s1", "s2"]</subtasks>')
         result = await CognitionLayer().process(ctx)
         assert result.layer == LayerId.L4
 
@@ -331,15 +311,12 @@ class TestPlanIntegration:
             has_planner=False,
         )
         ctx.core.llm.generate = AsyncMock()
-        ctx.core.llm.generate.return_value = MagicMock(
-            content='<subtasks>["s1", "s2"]</subtasks>'
-        )
+        ctx.core.llm.generate.return_value = MagicMock(content='<subtasks>["s1", "s2"]</subtasks>')
         result = await CognitionLayer().process(ctx)
         assert result.layer == LayerId.L4
 
 
 class TestStructuredPlanIntegration:
-
     @pytest.mark.asyncio
     async def test_structured_plan_in_scratch(self):
         mock_structured = MagicMock()
@@ -364,20 +341,15 @@ class TestStructuredPlanIntegration:
 
 
 class TestParseSubtasks:
-
     def setup_method(self) -> None:
         self.layer = CognitionLayer()
 
     def test_xml_tags(self):
-        result = self.layer._parse_subtasks(
-            '<subtasks>["task 1", "task 2"]</subtasks>'
-        )
+        result = self.layer._parse_subtasks('<subtasks>["task 1", "task 2"]</subtasks>')
         assert result == ["task 1", "task 2"]
 
     def test_json_code_fence(self):
-        result = self.layer._parse_subtasks(
-            '```json\n["task 1", "task 2"]\n```'
-        )
+        result = self.layer._parse_subtasks('```json\n["task 1", "task 2"]\n```')
         assert result == ["task 1", "task 2"]
 
     def test_no_markers_returns_empty(self):
@@ -389,32 +361,23 @@ class TestParseSubtasks:
         assert result == []
 
     def test_invalid_json_returns_empty(self):
-        result = self.layer._parse_subtasks(
-            "<subtasks>[invalid json here]</subtasks>"
-        )
+        result = self.layer._parse_subtasks("<subtasks>[invalid json here]</subtasks>")
         assert result == []
 
     def test_not_a_list_returns_empty(self):
-        result = self.layer._parse_subtasks(
-            "<subtasks>\"just a string\"</subtasks>"
-        )
+        result = self.layer._parse_subtasks('<subtasks>"just a string"</subtasks>')
         assert result == []
 
     def test_list_with_non_strings_returns_empty(self):
-        result = self.layer._parse_subtasks(
-            "<subtasks>[1, 2, 3]</subtasks>"
-        )
+        result = self.layer._parse_subtasks("<subtasks>[1, 2, 3]</subtasks>")
         assert result == []
 
     def test_xml_with_newlines_and_spaces(self):
-        result = self.layer._parse_subtasks(
-            "<subtasks>\n  [\"a\", \"b\"]\n</subtasks>"
-        )
+        result = self.layer._parse_subtasks('<subtasks>\n  ["a", "b"]\n</subtasks>')
         assert result == ["a", "b"]
 
 
 class TestBuildDecomposePrompt:
-
     def setup_method(self) -> None:
         self.layer = CognitionLayer()
 
@@ -477,7 +440,6 @@ class TestBuildDecomposePrompt:
 
 
 class TestDescription:
-
     @pytest.mark.asyncio
     async def test_contains_difficulty_and_capability(self):
         ctx = _make_ctx(task_type=TaskType.CODE_GENERATION, query="build api")

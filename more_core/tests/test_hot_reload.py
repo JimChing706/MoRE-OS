@@ -103,7 +103,7 @@ async def test_reload_config_updates_settings(reloader, core):
     old_settings = core.settings
     event = await reloader.reload(ReloadScope.CONFIG)
     assert event.success is True
-    assert core.settings is not old_settings      # 已替换为新 Settings
+    assert core.settings is not old_settings  # 已替换为新 Settings
 
 
 @pytest.mark.asyncio

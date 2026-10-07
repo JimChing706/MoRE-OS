@@ -19,19 +19,18 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { MahjongTable } from './MahjongTable';
+import { AudioMixerProvider, SettingsPanel as AudioSettingsPanel } from './AudioMixer';
 import {
-  AudioMixerProvider,
-  SettingsPanel as AudioSettingsPanel,
-  resumeAudio,
-  playDraw,
-  playDiscard,
+  playCascade,
   playChow,
-  playPung,
-  playKong,
+  playDiscard,
+  playDraw,
   playDrawGame,
   playHu,
-  playCascade,
-} from './AudioMixer';
+  playKong,
+  playPung,
+  resumeAudio,
+} from './mahjongAudio';
 import { useMahjongSocket } from '@/hooks/useMahjongSocket';
 import type { GameState, Ruleset } from '@/types/morev3';
 
@@ -227,7 +226,7 @@ function MahjongGamePageInner({
       prevHuRef.current = key;
       setShowWinResult(true);
     },
-    onEventCascade: (level, _actionId) => {
+    onEventCascade: (level) => {
       resumeAudio();
       playCascade(level);
     },
@@ -669,6 +668,32 @@ interface MobileActionBarProps {
   onOrganize: () => void;
 }
 
+function Btn({
+  children,
+  onClick,
+  disabled,
+  variant = 'secondary',
+  compact,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  variant?: 'default' | 'secondary' | 'outline' | 'destructive' | 'ghost';
+  compact?: boolean;
+}) {
+  return (
+    <Button
+      size={compact ? 'sm' : 'default'}
+      variant={variant}
+      disabled={disabled}
+      onClick={onClick}
+      className={compact ? 'flex-1 text-xs' : 'flex-1'}
+    >
+      {children}
+    </Button>
+  );
+}
+
 function MobileActionBar(props: MobileActionBarProps) {
   const {
     canChow,
@@ -688,29 +713,6 @@ function MobileActionBar(props: MobileActionBarProps) {
     onDiscard,
     onOrganize,
   } = props;
-  const Btn = ({
-    children,
-    onClick,
-    disabled,
-    variant = 'secondary',
-    compact,
-  }: {
-    children: React.ReactNode;
-    onClick: () => void;
-    disabled?: boolean;
-    variant?: 'default' | 'secondary' | 'outline' | 'destructive' | 'ghost';
-    compact?: boolean;
-  }) => (
-    <Button
-      size={compact ? 'sm' : 'default'}
-      variant={variant}
-      disabled={disabled}
-      onClick={onClick}
-      className={compact ? 'flex-1 text-xs' : 'flex-1'}
-    >
-      {children}
-    </Button>
-  );
   return (
     <Card className="bg-slate-800/90 border-slate-700 sticky bottom-2">
       <CardContent className="p-2 space-y-2">

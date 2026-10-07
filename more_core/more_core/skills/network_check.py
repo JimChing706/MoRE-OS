@@ -74,8 +74,11 @@ async def check_skill_network(skill_manager: Any) -> dict[str, Any]:
         metas = skill_manager.list_skills()
     except Exception as exc:  # pragma: no cover - 防御
         return {
-            "ok": False, "required_egress": [], "targets": [],
-            "checked_at": time.time(), "warnings": [f"list_skills failed: {exc}"],
+            "ok": False,
+            "required_egress": [],
+            "targets": [],
+            "checked_at": time.time(),
+            "warnings": [f"list_skills failed: {exc}"],
         }
 
     seen: set[tuple[str, str]] = set()
@@ -93,25 +96,35 @@ async def check_skill_network(skill_manager: Any) -> dict[str, Any]:
             host, port = _split_target(str(target))
             dns_ok, dns_err = await _dns_ok(host)
             if not dns_ok:
-                targets.append({
-                    "skill_id": meta.id, "target": target, "dns_ok": False,
-                    "tcp_ok": False, "reachable": False,
-                    "error": dns_err, "latency_ms": 0.0,
-                })
+                targets.append(
+                    {
+                        "skill_id": meta.id,
+                        "target": target,
+                        "dns_ok": False,
+                        "tcp_ok": False,
+                        "reachable": False,
+                        "error": dns_err,
+                        "latency_ms": 0.0,
+                    }
+                )
                 continue
             tcp_ok, tcp_err, latency = await _tcp_ok(host, port)
-            targets.append({
-                "skill_id": meta.id, "target": target, "dns_ok": True,
-                "tcp_ok": tcp_ok, "reachable": tcp_ok,
-                "error": tcp_err, "latency_ms": round(latency, 1),
-            })
+            targets.append(
+                {
+                    "skill_id": meta.id,
+                    "target": target,
+                    "dns_ok": True,
+                    "tcp_ok": tcp_ok,
+                    "reachable": tcp_ok,
+                    "error": tcp_err,
+                    "latency_ms": round(latency, 1),
+                }
+            )
 
     reachable = [t for t in targets if t["reachable"]]
     ok = bool(targets) and len(reachable) == len(targets)
     if targets and not reachable:
-        warnings.append(
-            f"所有出网技能目标均不可达（{len(targets)} 个）——web/api 技能将不可用"
-        )
+        warnings.append(f"所有出网技能目标均不可达（{len(targets)} 个）——web/api 技能将不可用")
     elif reachable and len(reachable) < len(targets):
         unreachable = [t["target"] for t in targets if not t["reachable"]]
         warnings.append(f"部分出网目标不可达: {unreachable}")

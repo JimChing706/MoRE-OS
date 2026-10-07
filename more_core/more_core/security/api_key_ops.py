@@ -178,14 +178,11 @@ def validate_api_key_report(
 
     length = len(key)
     has_prefix = key.startswith(API_KEY_PREFIX)
-    body = key[len(API_KEY_PREFIX):] if has_prefix else key
+    body = key[len(API_KEY_PREFIX) :] if has_prefix else key
     if has_prefix:
         charset_ok = all(c in _B64URL_CHARS for c in body)
     else:
-        charset_ok = (
-            all(c in _B64URL_CHARS for c in key)
-            or all(c in _HEX_CHARS for c in key)
-        )
+        charset_ok = all(c in _B64URL_CHARS for c in key) or all(c in _HEX_CHARS for c in key)
     kind = _guess_kind(key)
     entropy = _entropy_bits(key)
 
@@ -235,7 +232,8 @@ def inject_api_key_into_env(
         # testers from "inject → restart server → 401 surprise" loops.
         rep = validate_api_key_report(new_key, require_prefix=strict)
         raise ValueError(
-            "refusing to inject invalid key: " + "; ".join(rep.errors)
+            "refusing to inject invalid key: "
+            + "; ".join(rep.errors)
             + ("; " + "; ".join(rep.warnings) if rep.warnings else "")
         )
 
@@ -255,7 +253,9 @@ def inject_api_key_into_env(
     if backup and (previous or env.exists()):
         ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = Path(str(env) + f".bak.{ts}")
-        shutil.copy2(env, backup_path) if env.exists() else backup_path.write_text(text, encoding="utf-8")
+        shutil.copy2(env, backup_path) if env.exists() else backup_path.write_text(
+            text, encoding="utf-8"
+        )
 
     new_line = f'MORE_API_KEY="{new_key}"'
     if previous:
@@ -313,7 +313,12 @@ def sign_rotation_proof(
     if not master_key:
         raise ValueError("master_key is required to sign rotation proofs")
     issued = int(issued_at_unix or _dt.datetime.now(_dt.timezone.utc).timestamp())
-    body = _ROTATION_SALT + new_key.encode("utf-8") + _int_bytes(issued) + _int_bytes(int(revoke_old_in_seconds))
+    body = (
+        _ROTATION_SALT
+        + new_key.encode("utf-8")
+        + _int_bytes(issued)
+        + _int_bytes(int(revoke_old_in_seconds))
+    )
     sig = hmac.new(master_key.encode("utf-8"), body, hashlib.sha256).digest()
     raw = _int_bytes(issued) + _int_bytes(int(revoke_old_in_seconds)) + sig
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
@@ -344,6 +349,11 @@ def verify_rotation_proof(
     now = int(now_unix or _dt.datetime.now(_dt.timezone.utc).timestamp())
     if now - issued > ttl_seconds or issued - now > 10:
         return False
-    body = _ROTATION_SALT + new_key.encode("utf-8") + _int_bytes(issued) + _int_bytes(int(revoke_old_in_seconds))
+    body = (
+        _ROTATION_SALT
+        + new_key.encode("utf-8")
+        + _int_bytes(issued)
+        + _int_bytes(int(revoke_old_in_seconds))
+    )
     expected = hmac.new(master_key.encode("utf-8"), body, hashlib.sha256).digest()
     return hmac.compare_digest(provided, expected)

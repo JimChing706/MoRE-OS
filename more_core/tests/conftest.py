@@ -4,7 +4,7 @@ import pytest
 import sys
 import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # 开发者本地 more_core/.env 里的 LLM 性能/路由调优不得泄漏进测试环境：
 # ``core.config._load_dotenv()`` 在 import 时把 .env 写进 os.environ，若不清掉，
@@ -42,7 +42,7 @@ def mock_llm_response():
     """Mock LLM response for testing."""
     return {
         "choices": [{"message": {"content": "Test response"}}],
-        "usage": {"prompt_tokens": 10, "completion_tokens": 20}
+        "usage": {"prompt_tokens": 10, "completion_tokens": 20},
     }
 
 
@@ -53,13 +53,14 @@ def sample_context():
         "user_id": "test_user",
         "session_id": "test_session",
         "message": "test message",
-        "timestamp": "2026-05-06T00:00:00"
+        "timestamp": "2026-05-06T00:00:00",
     }
 
 
 @pytest.fixture
 def mock_provider():
     """Mock LLM provider for testing."""
+
     class MockProvider:
         def __init__(self):
             self.name = "mock"
@@ -100,8 +101,10 @@ class _FakeLLMProvider:
             raise ConnectionError("Simulated LLM failure")
         if self._latency_ms > 0:
             import asyncio
+
             await asyncio.sleep(self._latency_ms / 1000)
         from more_core.llm.provider import LLMResponse
+
         return LLMResponse(
             content="fake-reply",
             provider="fake",
@@ -115,6 +118,7 @@ class _FakeLLMProvider:
             raise ConnectionError("Simulated stream failure")
         if self._latency_ms > 0:
             import asyncio
+
             await asyncio.sleep(self._latency_ms / 1000)
         yield "fake-reply"
 
@@ -127,7 +131,7 @@ def core():
     """Create a minimal MoRECore instance for testing."""
     from more_core.core.config import Settings
     from more_core.runtime.orchestrator import MoRECore
-    
+
     settings = Settings(
         plugin_dir="tests/plugins",
         log_dir="tests/logs",

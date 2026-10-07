@@ -7,9 +7,7 @@ from more_core.core.types import EngineStatus, ServiceMetadata
 
 def test_register_and_discover() -> None:
     reg = ServiceRegistry()
-    md = ServiceMetadata(
-        name="svc", version="1.0.0", provider="core", status=EngineStatus.RUNNING
-    )
+    md = ServiceMetadata(name="svc", version="1.0.0", provider="core", status=EngineStatus.RUNNING)
     reg.register(md)
     assert reg.get("svc") is md
     assert reg.list_by_provider("core") == [md]

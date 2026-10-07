@@ -13,7 +13,7 @@ from more_core.codegen.gates import (
 )
 from more_core.security.output_filter import OutputFilter, _DEFAULT_RULES
 
-GOOD_CODE = '''```python
+GOOD_CODE = """```python
 def merge_intervals(intervals):
     out = []
     for start, end in sorted(intervals, key=lambda x: x[0]):
@@ -22,15 +22,15 @@ def merge_intervals(intervals):
         else:
             out.append([start, end])
     return out
-```'''
+```"""
 
-BROKEN_CODE = '''```python
+BROKEN_CODE = """```python
 sorted_intervals = sorted(intervals, [ENV_SECRET_REDACTED] x: x[0])
-```'''
+```"""
 
-PLACEHOLDER = '''```rust
+PLACEHOLDER = """```rust
 fn main(){ println!("shooter server placeholder"); }
-```'''
+```"""
 
 
 # ---------------------------------------------------------------------------
@@ -143,12 +143,24 @@ def test_observability_store_is_reachable(obs):
 
 def test_llm_call_records_tokens_and_latency(obs):
     obs.record_llm_call(
-        request_id="r1", provider="lmstudio", model="m1", prompt_chars=100,
-        prompt_tokens=120, completion_tokens=80, latency_ms=250.0, success=True,
+        request_id="r1",
+        provider="lmstudio",
+        model="m1",
+        prompt_chars=100,
+        prompt_tokens=120,
+        completion_tokens=80,
+        latency_ms=250.0,
+        success=True,
     )
     obs.record_llm_call(
-        request_id="r2", provider="lmstudio", model="m1", prompt_chars=50,
-        prompt_tokens=30, completion_tokens=20, latency_ms=750.0, success=False,
+        request_id="r2",
+        provider="lmstudio",
+        model="m1",
+        prompt_chars=50,
+        prompt_tokens=30,
+        completion_tokens=20,
+        latency_ms=750.0,
+        success=False,
         error="timeout",
     )
     stats = obs.summary(3600)
@@ -160,8 +172,8 @@ def test_llm_call_records_tokens_and_latency(obs):
     assert stats["success_rate"] == 0.5
     # G2：延迟分位只统计"成功且非缓存"的调用；失败样本以 latency=0 落库，
     # 若计入会把 p50 拉到 0，掩盖真实延迟分布。
-    assert stats["measured_calls"] == 1      # 仅 r1 成功
-    assert stats["failed_calls"] == 1        # r2 失败
+    assert stats["measured_calls"] == 1  # 仅 r1 成功
+    assert stats["failed_calls"] == 1  # r2 失败
     assert stats["latency_ms"]["avg"] == 250.0
     assert stats["latency_ms"]["max"] == 250.0
     assert stats["providers"]["lmstudio:m1"]["calls"] == 2
@@ -175,8 +187,14 @@ def test_observability_summary_empty_window(obs):
 
 def test_recent_llm_query_roundtrip(obs):
     obs.record_llm_call(
-        request_id="r3", provider="ollama", model="qwen", prompt_chars=1,
-        prompt_tokens=2, completion_tokens=3, latency_ms=10.0, success=True,
+        request_id="r3",
+        provider="ollama",
+        model="qwen",
+        prompt_chars=1,
+        prompt_tokens=2,
+        completion_tokens=3,
+        latency_ms=10.0,
+        success=True,
     )
     rows = obs.query_recent_llm(limit=10)
     assert rows and rows[0]["provider"] == "ollama"
@@ -206,8 +224,14 @@ def test_delivery_ledger_versions_per_task(ledger):
 
 def test_delivery_ledger_tracks_artifact_hash_and_actor(ledger):
     rec = ledger.record(
-        task_id="t2", status="delivered", artifact="hello", actor="alice",
-        provider="lmstudio", model="m", verdict="pass", gates={"passed": True},
+        task_id="t2",
+        status="delivered",
+        artifact="hello",
+        actor="alice",
+        provider="lmstudio",
+        model="m",
+        verdict="pass",
+        gates={"passed": True},
         request_excerpt="写一个函数",
     )
     assert len(rec.artifact_sha256) == 64
@@ -218,8 +242,7 @@ def test_delivery_ledger_tracks_artifact_hash_and_actor(ledger):
 def test_delivery_success_rate_model(ledger):
     ledger.record(task_id="a", status="delivered", task_type="code_generation")
     ledger.record(task_id="b", status="delivered", task_type="code_generation")
-    ledger.record(task_id="c", status="blocked", task_type="code_generation",
-                  gates_passed=False)
+    ledger.record(task_id="c", status="blocked", task_type="code_generation", gates_passed=False)
     ledger.record(task_id="d", status="failed", task_type="code_debugging")
     stats = ledger.stats(86400)
     assert stats["total"] == 4
@@ -227,7 +250,9 @@ def test_delivery_success_rate_model(ledger):
     assert stats["blocked"] == 1
     assert stats["failed"] == 1
     assert stats["success_rate"] == 0.5
-    assert stats["by_task_type"]["code_generation"]["success_rate"] == pytest.approx(0.667, abs=0.001)
+    assert stats["by_task_type"]["code_generation"]["success_rate"] == pytest.approx(
+        0.667, abs=0.001
+    )
     assert stats["by_task_type"]["code_debugging"]["success_rate"] == 0.0
 
 

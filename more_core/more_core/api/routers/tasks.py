@@ -53,7 +53,9 @@ except Exception:
         _task_store = SQLiteTaskStore("/tmp/more_tasks.db")
 
 
-async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], core: MoRECore) -> None:
+async def _execute_task_background_v2(
+    task_id: str, task_info: dict[str, Any], core: MoRECore
+) -> None:
     """Background task executor v2.1 (hardened):
 
     PHASE TOPOLOGY:
@@ -70,11 +72,17 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
     from datetime import datetime, timezone as _tz
     from ...core.guardrails.provenance_audit import get_default_layer
     from ...core.native_executor import (
-        Planner, Writer, Validator, Delivery, TemplateDispatcher,
+        Planner,
+        Writer,
+        Validator,
+        Delivery,
+        TemplateDispatcher,
     )
     from ...core.native_executor.types import AggregatedValidationResult, ValidationBlockingLevel
 
-    ctx_dispatcher: dict[str, Any] | None = None  # (key, steps, payload_map, warnings) 从内部 Dispatcher
+    ctx_dispatcher: dict[str, Any] | None = (
+        None  # (key, steps, payload_map, warnings) 从内部 Dispatcher
+    )
     src_validation: Any = None
     arc_validation: Any = None
     agg_validation: AggregatedValidationResult | None = None
@@ -102,10 +110,10 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
         - 若任一上层抛异常（如 _auto_create_output 抛错），仍然写 final_status=failed
         """
         nonlocal final_prov_payload
-        vpass: bool | None = validation_pass if force_validation_pass is None else force_validation_pass
-        fstatus: str = force_final_status or (
-            "completed" if vpass is True else "failed"
+        vpass: bool | None = (
+            validation_pass if force_validation_pass is None else force_validation_pass
         )
+        fstatus: str = force_final_status or ("completed" if vpass is True else "failed")
         final_prov_payload = {
             "phase": "final",
             "validation_pass": bool(vpass) if vpass is not None else False,
@@ -151,12 +159,17 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
         safe_root = "/tmp/more_os_native_runs"
         _os.makedirs(safe_root, exist_ok=True)
         import secrets as _secrets
+
         suffix = _secrets.token_hex(6)
-        project_root = _os.path.join(safe_root, f"run_{task_id.replace('/', '_').replace(':', '_')}_{suffix}")
+        project_root = _os.path.join(
+            safe_root, f"run_{task_id.replace('/', '_').replace(':', '_')}_{suffix}"
+        )
         _os.makedirs(project_root, exist_ok=True)
         try:
             req_obj = TaskRequest(
-                type=TaskType(type_str) if type_str in TaskType._value2member_map_ else TaskType.NLP_TASK,
+                type=TaskType(type_str)
+                if type_str in TaskType._value2member_map_
+                else TaskType.NLP_TASK,
                 query=description,
                 context=task_info.get("context", {}),
                 timeout_s=600.0,
@@ -190,7 +203,9 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
                 approx_tokens += 1200
                 total_iterations += 1
             except Exception as e:
-                warnings.append(f"TemplateDispatcher failed, fallback Planner: {type(e).__name__}: {e}")
+                warnings.append(
+                    f"TemplateDispatcher failed, fallback Planner: {type(e).__name__}: {e}"
+                )
                 template_key = "generic"  # type: ignore[assignment]
                 try:
                     planner = Planner()
@@ -199,9 +214,13 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
                     warnings.append(f"Planner fallback to RULE_BASED_GENERIC: {e2}")
                     from ...core.native_executor.planner import RULE_BASED_GENERIC_SCAFFOLD_PLAN  # type: ignore[attr-defined]
                     import copy as _copy
+
                     steps = _copy.deepcopy(RULE_BASED_GENERIC_SCAFFOLD_PLAN)
                 payload_map = Writer().build_payload_map(
-                    req_obj, itd_doc, steps, template_key=template_key,
+                    req_obj,
+                    itd_doc,
+                    steps,
+                    template_key=template_key,
                 )
                 approx_tokens += 1000
                 total_iterations += 1
@@ -211,6 +230,7 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
             try:
                 if isinstance(itd_doc, str) and "max_iterations" in itd_doc[:4000]:
                     import re as _re
+
                     m = _re.search(r"(?im)^max_iterations\s*:\s*(\d+)", itd_doc)
                     if m:
                         self_iters_total = max(4, min(8, int(m.group(1))))
@@ -240,9 +260,11 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
 
             # ===== Self-Iteration Loop: Phase 2 (Writer) + 3A (Validator.source) N 轮 =====
             for self_iter_idx in range(1, self_iters_total + 1):
-                is_last_iter = (self_iter_idx == self_iters_total)
+                is_last_iter = self_iter_idx == self_iters_total
                 progress_writer = int(8 + (27 * self_iter_idx) / self_iters_total)  # 8→35
-                progress_validator_source = int(35 + (23 * self_iter_idx) / self_iters_total)  # 35→58
+                progress_validator_source = int(
+                    35 + (23 * self_iter_idx) / self_iters_total
+                )  # 35→58
 
                 # ===== Phase 2: Writer (template_key → manifest 白名单) =====
                 _task_store.update_task(
@@ -265,25 +287,29 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
                     for step in steps:
                         if step.action == "write_file" and not step.payload_when_write_file:
                             step.payload_when_write_file = {
-                                k: v for k, v in payload_map.items()
-                                if k in step.expected_outputs
+                                k: v for k, v in payload_map.items() if k in step.expected_outputs
                             }
                     written_map = writer.apply(
-                        project_root, steps, task_id=task_id, template_key=template_key,
+                        project_root,
+                        steps,
+                        task_id=task_id,
+                        template_key=template_key,
                     )
-                    approx_tokens += (1800 if self_iter_idx == 1 else 1200)
+                    approx_tokens += 1800 if self_iter_idx == 1 else 1200
                     total_iterations += 1
                 except Exception as e:
                     writer_error = f"{type(e).__name__}: {e}"
                     warnings.append(f"Writer.iter{self_iter_idx} error: {writer_error}")
-                artifacts.append({
-                    "phase": "writer",
-                    "iteration": self_iter_idx,
-                    "total_iterations": self_iters_total,
-                    "template_key": template_key,
-                    "files_written": list(written_map.keys()),
-                    "error": writer_error,
-                })
+                artifacts.append(
+                    {
+                        "phase": "writer",
+                        "iteration": self_iter_idx,
+                        "total_iterations": self_iters_total,
+                        "template_key": template_key,
+                        "files_written": list(written_map.keys()),
+                        "error": writer_error,
+                    }
+                )
                 provenance.mark(
                     task_id,
                     "native_planner_loop",
@@ -317,29 +343,33 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
                     src_pass_bool = bool(getattr(src_validation, "pass_", False))
                     total_commands_src = int(getattr(src_validation, "total_commands", 0))
                     passed_commands_src = int(getattr(src_validation, "passed_commands", 0))
-                    artifacts.append({
-                        "phase": "validator.source",
-                        "iteration": self_iter_idx,
-                        "total_iterations": self_iters_total,
-                        "pass": src_pass_bool,
-                        "total_commands": total_commands_src,
-                        "passed_commands": passed_commands_src,
-                    })
+                    artifacts.append(
+                        {
+                            "phase": "validator.source",
+                            "iteration": self_iter_idx,
+                            "total_iterations": self_iters_total,
+                            "pass": src_pass_bool,
+                            "total_commands": total_commands_src,
+                            "passed_commands": passed_commands_src,
+                        }
+                    )
                     if not src_pass_bool and total_commands_src > 0:
                         warnings.append(
                             f"Validator.source.iter{self_iter_idx} failed {passed_commands_src}/{total_commands_src}"
                         )
-                    approx_tokens += (500 if self_iter_idx == 1 else 300)
+                    approx_tokens += 500 if self_iter_idx == 1 else 300
                     total_iterations += 1
                 except Exception as e:
                     warnings.append(f"Validator.source.iter{self_iter_idx} skipped: {e}")
-                    artifacts.append({
-                        "phase": "validator.source",
-                        "iteration": self_iter_idx,
-                        "pass": False,
-                        "total_commands": 0,
-                        "passed_commands": 0,
-                    })
+                    artifacts.append(
+                        {
+                            "phase": "validator.source",
+                            "iteration": self_iter_idx,
+                            "pass": False,
+                            "total_commands": 0,
+                            "passed_commands": 0,
+                        }
+                    )
                 provenance.mark(
                     task_id,
                     "native_planner_loop",
@@ -357,7 +387,9 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
                 if not is_last_iter and not src_pass_bool:
                     try:
                         writer2 = Writer()
-                        payload_map = writer2.build_payload_map(req_obj, itd_doc, steps, template_key=template_key)
+                        payload_map = writer2.build_payload_map(
+                            req_obj, itd_doc, steps, template_key=template_key
+                        )
                     except Exception:
                         pass
 
@@ -422,12 +454,14 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
                 arc_pass_bool = bool(getattr(arc_validation, "pass_", False))
                 total_commands_arc = int(getattr(arc_validation, "total_commands", 0))
                 passed_commands_arc = int(getattr(arc_validation, "passed_commands", 0))
-                artifacts.append({
-                    "phase": "validator.archives",
-                    "pass": arc_pass_bool,
-                    "total_commands": total_commands_arc,
-                    "passed_commands": passed_commands_arc,
-                })
+                artifacts.append(
+                    {
+                        "phase": "validator.archives",
+                        "pass": arc_pass_bool,
+                        "total_commands": total_commands_arc,
+                        "passed_commands": passed_commands_arc,
+                    }
+                )
                 if not arc_pass_bool:
                     # 无归档命令是正常情况（command_results=0），不额外告警；仅在 ≥1 命令失败时告警
                     if total_commands_arc > 0:
@@ -437,40 +471,53 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
                 total_iterations += 1
             except Exception as e:
                 warnings.append(f"Validator.archives skipped: {e}")
-                artifacts.append({
-                    "phase": "validator.archives",
-                    "pass": False,
-                    "total_commands": 0,
-                    "passed_commands": 0,
-                })
+                artifacts.append(
+                    {
+                        "phase": "validator.archives",
+                        "pass": False,
+                        "total_commands": 0,
+                        "passed_commands": 0,
+                    }
+                )
 
             # ===== Aggregate → HARD_BLOCK =====
             try:
                 # 重新从 task_store 加载 context，允许运维层 SQL UPDATE 动态注入 validation_blocking_level（G-2-6 zero-src-change）
                 _refreshed = _task_store.get_task(task_id)
                 if isinstance(_refreshed, dict) and isinstance(_refreshed.get("context"), dict):
-                    ctx = {**ctx, **_refreshed["context"]} if isinstance(ctx, dict) else _refreshed["context"]
+                    ctx = (
+                        {**ctx, **_refreshed["context"]}
+                        if isinstance(ctx, dict)
+                        else _refreshed["context"]
+                    )
                 from ...core.native_executor.validator import aggregate_results
+
                 if src_validation is None:
                     from ...core.native_executor.validator import ValidationResult
+
                     src_validation = ValidationResult(pass_=False)
                 if arc_validation is None:
                     from ...core.native_executor.validator import ValidationResult
+
                     arc_validation = ValidationResult(pass_=True)
                 agg_validation = aggregate_results(
                     src_validation,  # type: ignore[arg-type]
                     arc_validation,  # type: ignore[arg-type]
-                    level=ctx.get("validation_blocking_level", ValidationBlockingLevel.HARD_BLOCK) if isinstance(ctx, dict) else ValidationBlockingLevel.HARD_BLOCK,
+                    level=ctx.get("validation_blocking_level", ValidationBlockingLevel.HARD_BLOCK)
+                    if isinstance(ctx, dict)
+                    else ValidationBlockingLevel.HARD_BLOCK,
                 )
                 validation_pass = bool(agg_validation.pass_)
-                artifacts.append({
-                    "phase": "aggregate",
-                    "pass": validation_pass,
-                    "blocking_level": agg_validation.blocking_level.value,
-                    "should_block_release": bool(agg_validation.should_block_release),
-                    "src_pass": bool(getattr(agg_validation.source, "pass_", False)),
-                    "archives_pass": bool(getattr(agg_validation.archives, "pass_", False)),
-                })
+                artifacts.append(
+                    {
+                        "phase": "aggregate",
+                        "pass": validation_pass,
+                        "blocking_level": agg_validation.blocking_level.value,
+                        "should_block_release": bool(agg_validation.should_block_release),
+                        "src_pass": bool(getattr(agg_validation.source, "pass_", False)),
+                        "archives_pass": bool(getattr(agg_validation.archives, "pass_", False)),
+                    }
+                )
                 if agg_validation.should_block_release:
                     warnings.append(
                         "Validator hard-blocked release: "
@@ -485,8 +532,14 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
                 validation_pass = False
 
             final_output = {
-                "phases": ["dispatcher", "writer", "validator.source",
-                           "delivery", "validator.archives", "aggregate"],
+                "phases": [
+                    "dispatcher",
+                    "writer",
+                    "validator.source",
+                    "delivery",
+                    "validator.archives",
+                    "aggregate",
+                ],
                 "iterations": total_iterations,
                 "files_written": len(written_map),
                 "template_key": template_key,
@@ -496,6 +549,7 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
             }
 
             from .outputs import _auto_create_output
+
             try:
                 _auto_create_output(
                     {
@@ -546,9 +600,7 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
                             break
                     # 需求里常写"存在 X.toml / 提供 Y 模块"，这类判定依据是
                     # **文件清单**而非文件内容，因此把交付路径一并纳入待检文本。
-                    _manifest = "\n".join(
-                        f"# delivered file: {_p}" for _p in written_map.keys()
-                    )
+                    _manifest = "\n".join(f"# delivered file: {_p}" for _p in written_map.keys())
                     _artifact_text = _manifest + "\n\n" + "\n\n".join(_artifact_parts)
 
                     for _child in _kids:
@@ -563,14 +615,10 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
                             req_id=_req_id,
                             title=str(_child.get("title") or ""),
                             description=str(_child.get("description") or ""),
-                            acceptance_criteria=list(
-                                _ctx.get("acceptance_criteria") or []
-                            ),
+                            acceptance_criteria=list(_ctx.get("acceptance_criteria") or []),
                             artifact_text=_artifact_text,
                         )
-                        _child_status = (
-                            "completed" if _verdict.ok else "failed"
-                        )
+                        _child_status = "completed" if _verdict.ok else "failed"
                         if not _verdict.ok:
                             children_failed += 1
                         _task_store.update_task(
@@ -602,13 +650,15 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
                         except Exception:
                             pass
                         children_summary.append(_verdict.to_dict())
-                    artifacts.append({
-                        "phase": "requirements",
-                        "total": len(_kids),
-                        "completed": len(_kids) - children_failed,
-                        "failed": children_failed,
-                        "detail": children_summary,
-                    })
+                    artifacts.append(
+                        {
+                            "phase": "requirements",
+                            "total": len(_kids),
+                            "completed": len(_kids) - children_failed,
+                            "failed": children_failed,
+                            "detail": children_summary,
+                        }
+                    )
                     if children_failed:
                         warnings.append(
                             f"{children_failed}/{len(_kids)} REQ 子任务未达标（见子任务结果）"
@@ -619,17 +669,23 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
             # ===== Final Provenance: 双写第 1 次（正常路径） =====
             _write_final_provenance()
 
-            verified_ok = validation_pass is True and not (
-                agg_validation.should_block_release
-                if agg_validation is not None else False
-            ) and children_failed == 0
+            verified_ok = (
+                validation_pass is True
+                and not (
+                    agg_validation.should_block_release if agg_validation is not None else False
+                )
+                and children_failed == 0
+            )
             # 当 validation_blocking_level == OFF 时，不阻断 final_status，允许 self-iteration 继续迭代补全代码
             if agg_validation is not None:
                 from ...core.native_executor.types import ValidationBlockingLevel as _VBL
+
                 if _VBL(agg_validation.blocking_level) is _VBL.OFF:
                     verified_ok = True
                     if validation_pass is not True:
-                        warnings.append("validation pass=False but blocking_level=OFF → allow iteration continue (proceeding)")
+                        warnings.append(
+                            "validation pass=False but blocking_level=OFF → allow iteration continue (proceeding)"
+                        )
             final_status = "completed" if verified_ok else "failed"
             final_progress = 100 if verified_ok else 90
             if not verified_ok:
@@ -638,7 +694,11 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
                     "deliverables NOT releasable"
                 )
             # 修正：若 validation_pass 被 _write_final_provenance 写成 True 但 should_block_release 为 True，强制 final_prov_payload.final_status=failed
-            if not verified_ok and final_prov_payload and final_prov_payload.get("final_status") == "completed":
+            if (
+                not verified_ok
+                and final_prov_payload
+                and final_prov_payload.get("final_status") == "completed"
+            ):
                 # Final Provenance：双写第 1.5 次 —— 修正 should_block_release 情形
                 _write_final_provenance(force_validation_pass=False, force_final_status="failed")
 
@@ -650,7 +710,9 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
                     "result": str(final_output),
                     "progress": final_progress,
                     "current_step": "done" if verified_ok else "validation_failed",
-                    "error": None if verified_ok else "deliverable blocked: HARD_BLOCK validation failure",
+                    "error": None
+                    if verified_ok
+                    else "deliverable blocked: HARD_BLOCK validation failure",
                     "artifacts": list(artifacts),
                     "warnings": list(warnings),
                 },
@@ -685,14 +747,20 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
                     + "\n\n".join(_artifact_parts)
                 )
                 _report = run_gates(_artifact, query=str(description or ""), require_logic=True)
-                _ledger_status = "delivered" if (verified_ok and _report.passed) else (
-                    "blocked" if not _report.passed else "failed"
+                _ledger_status = (
+                    "delivered"
+                    if (verified_ok and _report.passed)
+                    else ("blocked" if not _report.passed else "failed")
                 )
                 if not _report.passed and verified_ok:
                     warnings.append(f"delivery gates blocked: {_report.summary()[:200]}")
                     _task_store.update_task(
-                        task_id, {"status": "failed", "warnings": list(warnings),
-                                  "error": "delivery gates failed"}
+                        task_id,
+                        {
+                            "status": "failed",
+                            "warnings": list(warnings),
+                            "error": "delivery gates failed",
+                        },
                     )
                 get_default_ledger().record(
                     task_id=task_id,
@@ -760,7 +828,8 @@ async def _execute_task_background_v2(task_id: str, task_info: dict[str, Any], c
         if not _os.environ.get("MORE_KEEP_RUN_DIR"):
             try:
                 import shutil as _shutil2
-                if 'project_root' in locals() and _os.path.isdir(project_root):
+
+                if "project_root" in locals() and _os.path.isdir(project_root):
                     _shutil2.rmtree(project_root, ignore_errors=True)
             except Exception:
                 pass
@@ -800,7 +869,9 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         result = await core.execute(req)
 
         try:
-            task_id = getattr(result, "task_id", None) or result.model_dump().get("task_id", "task_auto")
+            task_id = getattr(result, "task_id", None) or result.model_dump().get(
+                "task_id", "task_auto"
+            )
             approx_tokens = max(500, len(payload.query) // 4)
             _get_prov().mark(
                 str(task_id),
@@ -855,22 +926,21 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
             "total": len(children),
             "completed": sum(1 for c in children if c.get("status") == "completed"),
             "failed": sum(1 for c in children if c.get("status") == "failed"),
-            "pending": sum(
-                1 for c in children if c.get("status") in ("pending", "in_progress")
-            ),
+            "pending": sum(1 for c in children if c.get("status") in ("pending", "in_progress")),
         }
 
         raw_status = task.get("status", "unknown")
         raw_progress = int(task.get("progress", 0) or 0)
         layer = get_default_layer()
         report, new_status, new_progress = layer.audit_with_status_override(
-            task_id, raw_status=raw_status, raw_progress=raw_progress,
+            task_id,
+            raw_status=raw_status,
+            raw_progress=raw_progress,
         )
         warnings_out = list(task.get("warnings", []))
         warnings_out.extend(report.warnings)
         error_out = task.get("error") or (
-            "deliverable blocked by provenance audit"
-            if report.deliverable_blocked else None
+            "deliverable blocked by provenance audit" if report.deliverable_blocked else None
         )
         return {
             "task_id": task_id,
@@ -902,6 +972,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
     @router.get("/tasks/{task_id}/audit")
     async def get_task_audit(task_id: str) -> dict[str, Any]:
         from ...core.guardrails.provenance_audit import get_default_layer
+
         task = _task_store.get_task(task_id)
         if task is None:
             return {"status": "not_found", "error": "Task not found", "task_id": task_id}
@@ -996,4 +1067,9 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
 
 
 # Re-export for other routers that need the task store
-__all__ = ["_task_store", "_execute_task_background", "_execute_task_background_v2", "create_router"]
+__all__ = [
+    "_task_store",
+    "_execute_task_background",
+    "_execute_task_background_v2",
+    "create_router",
+]

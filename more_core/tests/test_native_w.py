@@ -11,7 +11,6 @@ import json
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import hashlib
 import tempfile
 from pathlib import Path
 
@@ -37,12 +36,14 @@ def _make_tmp_project() -> Path:
 
 def _make_steps_with_payload(project_root, rel_to_content):
     """构造一个 write_file 动作 Step（带 payload）。"""
-    return [Step(
-        id="test_step",
-        title="单测写入步骤",
-        action="write_file",
-        payload_when_write_file=dict(rel_to_content),
-    )]
+    return [
+        Step(
+            id="test_step",
+            title="单测写入步骤",
+            action="write_file",
+            payload_when_write_file=dict(rel_to_content),
+        )
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -56,14 +57,20 @@ def test_provenance_violation_dotdot_path_writes_zero(tmp_path):
     bad = {"../../etc/pwn.txt": "evil"}
     steps = _make_steps_with_payload(str(project_root), bad)
     # 记录 pre-write 状态（project_root 下除了 audit，应 0 个内容文件）
-    files_before = set(p.name for p in project_root.rglob("*") if p.is_file())
+    files_before = {
+        str(p) for p in project_root.rglob("*") if p.is_file() and not str(p).endswith(".jsonl")
+    }
     with pytest.raises(ProvenanceViolation) as excinfo:
         writer.apply(str(project_root), steps, task_id="t_evil")
     # 无论由「.. 穿越」规则还是「/tmp/ 非白名单」规则触发都可，必须是 ProvenanceViolation
     assert isinstance(excinfo.value, ProvenanceViolation)
-    # 0 写盘断言：project_root 下不该产生任何内容文件（审计日志可能存在）
-    files_after = [p for p in project_root.rglob("*") if p.is_file()
-                   and not str(p).endswith(".jsonl")]
+    # 0 写盘断言：project_root 下不该产生任何内容文件（审计日志 .jsonl 除外）
+    files_after = {
+        str(p) for p in project_root.rglob("*") if p.is_file() and not str(p).endswith(".jsonl")
+    }
+    assert files_after == files_before, (
+        f"0 写盘被破坏：新增内容文件 {sorted(files_after - files_before)}"
+    )
     # 且 /tmp/more_os_native_runs/etc/pwn.txt 绝对不应存在
     assert not Path("/tmp/more_os_native_runs/etc/pwn.txt").exists()
     assert not (project_root / ".." / ".." / "etc" / "pwn.txt").exists()
@@ -74,8 +81,11 @@ def test_provenance_violation_tmp_non_whitelist_prefix():
     project_root = _make_tmp_project()
     writer = Writer(work_root=str(project_root))
     # 构造 Step 用绝对路径 payload（normpath 后直接指向 /tmp/evil.txt）
-    steps = [Step(id="x", title="x", action="write_file",
-                  payload_when_write_file={"/tmp/evil.txt": "bad"})]
+    steps = [
+        Step(
+            id="x", title="x", action="write_file", payload_when_write_file={"/tmp/evil.txt": "bad"}
+        )
+    ]
     with pytest.raises(ProvenanceViolation) as excinfo:
         writer.apply(str(project_root), steps, task_id="t_tmpbad")
     assert "/tmp/" in str(excinfo.value)
@@ -97,10 +107,14 @@ def test_apply_writes_all_tetris_files_and_audit_jsonl():
     project_root = _make_tmp_project()
     writer = Writer(work_root=str(project_root))
     payload = writer.build_tetris_payload_map()
-    assert set(payload.keys()) >= {"Cargo.toml", "src/lib.rs", "src/tests.rs",
-                                   "frontend/index.html", "js/tetris.js"}
-    steps = [Step(id="s_all", title="写全部", action="write_file",
-                  payload_when_write_file=payload)]
+    assert set(payload.keys()) >= {
+        "Cargo.toml",
+        "src/lib.rs",
+        "src/tests.rs",
+        "frontend/index.html",
+        "js/tetris.js",
+    }
+    steps = [Step(id="s_all", title="写全部", action="write_file", payload_when_write_file=payload)]
     written = writer.apply(str(project_root), steps, task_id="t_all_ok", template_key="tetris")
     # 5 个文件确实落盘
     for rel, abs_path in written.items():
@@ -144,6 +158,7 @@ def test_workdata_prefix_also_allowed():
     # 在真实 more_core 目录不存在时，使用 Writer._auto 机制不可靠，因此这里用 _assert_safe_path API 间接测
     # 注：白名单 2 的目录名在运行时拼接；我们直接构造一个满足 workdata_prefix 的 path 并 inject
     import tempfile as _tf
+
     tmp_work = Path(_tf.mkdtemp(prefix="work_", dir="/tmp/more_os_native_runs"))
     # 手动创建 workdata 目录
     wd = tmp_work / "more_core" / "data" / "native_runs"
@@ -155,7 +170,8 @@ def test_workdata_prefix_also_allowed():
     steps = _make_steps_with_payload(str(project_root), {"README.md": "ok"})
     audit_root = wd / "_audit"
     # 正常情况下不会抛异常（README.md 在 generic manifest 内）
-    written = writer.apply(str(project_root), steps, task_id="t_workdata",
-                           audit_root=str(audit_root))
+    written = writer.apply(
+        str(project_root), steps, task_id="t_workdata", audit_root=str(audit_root)
+    )
     assert "README.md" in written
     assert (project_root / "README.md").read_text() == "ok"

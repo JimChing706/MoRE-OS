@@ -46,15 +46,22 @@ class CodeExecutionSkill(Skill):
                 "type": "object",
                 "properties": {
                     "code": {
-                        "type": "string", "minLength": 1, "maxLength": 200000,
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200000,
                         "description": "待执行的源码",
                     },
                     "language": {
-                        "type": "string", "enum": self.SUPPORTED_LANGUAGES,
-                        "default": "python", "description": "源码语言",
+                        "type": "string",
+                        "enum": self.SUPPORTED_LANGUAGES,
+                        "default": "python",
+                        "description": "源码语言",
                     },
                     "timeout": {
-                        "type": "number", "minimum": 1, "maximum": 300, "default": 30,
+                        "type": "number",
+                        "minimum": 1,
+                        "maximum": 300,
+                        "default": 30,
                         "description": "执行超时秒数 (1-300)",
                     },
                 },
@@ -112,9 +119,7 @@ class CodeExecutionSkill(Skill):
         """按安全级别构建 OS 级沙箱（超时可覆盖）。"""
         from ..sandbox.secure_sandbox import create_secure_sandbox
 
-        return create_secure_sandbox(
-            security_level=self._security_level, timeout_s=int(timeout)
-        )
+        return create_secure_sandbox(security_level=self._security_level, timeout_s=int(timeout))
 
     def _sandbox_for(self, timeout: int | float) -> Any:
         if int(timeout) == int(self._timeout):
@@ -139,9 +144,7 @@ class CodeExecutionSkill(Skill):
         import os as _os
 
         return str(
-            self._config.get("container_image")
-            or _os.getenv("MORE_SKILL_CONTAINER_IMAGE")
-            or ""
+            self._config.get("container_image") or _os.getenv("MORE_SKILL_CONTAINER_IMAGE") or ""
         ).strip()
 
     @staticmethod
@@ -155,19 +158,29 @@ class CodeExecutionSkill(Skill):
             "bash": "bash",
         }.get(language, "")
         return [
-            "run", "--rm",
-            "--network", "none",          # 网络隔离
-            "--memory", "256m",           # 内存上限
-            "--cpus", "0.5",              # CPU 上限
-            "--pids-limit", "64",         # 进程数上限（防 fork 炸弹）
-            "--read-only",                # 根文件系统只读
-            "--tmpfs", "/tmp:rw,size=64m",  # 仅 /tmp 可写
-            "-e", "PYTHONDONTWRITEBYTECODE=1",
-            "-v", "<workdir>:/work:ro",   # 代码只读挂载（占位，运行前替换）
-            "-w", "/work",
+            "run",
+            "--rm",
+            "--network",
+            "none",  # 网络隔离
+            "--memory",
+            "256m",  # 内存上限
+            "--cpus",
+            "0.5",  # CPU 上限
+            "--pids-limit",
+            "64",  # 进程数上限（防 fork 炸弹）
+            "--read-only",  # 根文件系统只读
+            "--tmpfs",
+            "/tmp:rw,size=64m",  # 仅 /tmp 可写
+            "-e",
+            "PYTHONDONTWRITEBYTECODE=1",
+            "-v",
+            "<workdir>:/work:ro",  # 代码只读挂载（占位，运行前替换）
+            "-w",
+            "/work",
             # 必须显式覆盖 ENTRYPOINT：否则镜像自带 entrypoint 会把解释器
             # 当成它的参数（实测 try-omarchy-guest-builder 镜像即因此失败）。
-            "--entrypoint", interpreter,
+            "--entrypoint",
+            interpreter,
             image,
             f"/work/{script}",
         ]
@@ -189,8 +202,14 @@ class CodeExecutionSkill(Skill):
                     stderr=asyncio.subprocess.PIPE,
                 )
             except FileNotFoundError as exc:
-                return {"returncode": 1, "stdout": "", "stderr": f"container runtime missing: {exc}",
-                        "timed_out": False, "sandboxed": True, "sandbox_mode": "container"}
+                return {
+                    "returncode": 1,
+                    "stdout": "",
+                    "stderr": f"container runtime missing: {exc}",
+                    "timed_out": False,
+                    "sandboxed": True,
+                    "sandbox_mode": "container",
+                }
 
             try:
                 out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
@@ -198,9 +217,14 @@ class CodeExecutionSkill(Skill):
             except asyncio.TimeoutError:
                 proc.kill()
                 await proc.wait()
-                return {"returncode": -1, "stdout": "",
-                        "stderr": "container timeout", "timed_out": True,
-                        "sandboxed": True, "sandbox_mode": "container"}
+                return {
+                    "returncode": -1,
+                    "stdout": "",
+                    "stderr": "container timeout",
+                    "timed_out": True,
+                    "sandboxed": True,
+                    "sandbox_mode": "container",
+                }
             return {
                 "returncode": proc.returncode if proc.returncode is not None else -1,
                 "stdout": out.decode("utf-8", "replace"),
@@ -227,8 +251,14 @@ class CodeExecutionSkill(Skill):
         elif language == "bash":
             result = await self._run_script(sbx, code, ".sh", "bash")
         if result is None:
-            return {"returncode": 1, "stdout": "", "stderr": "Unsupported language",
-                    "timed_out": False, "sandboxed": True, "sandbox_mode": "secure_sandbox"}
+            return {
+                "returncode": 1,
+                "stdout": "",
+                "stderr": "Unsupported language",
+                "timed_out": False,
+                "sandboxed": True,
+                "sandbox_mode": "secure_sandbox",
+            }
         return {
             "returncode": result.exit_code,
             "stdout": result.stdout,
@@ -267,21 +297,28 @@ class DataAnalysisSkill(Skill):
                     "operation": {
                         "type": "string",
                         "enum": ["parse", "transform", "stats", "query"],
-                        "default": "parse", "description": "分析操作",
+                        "default": "parse",
+                        "description": "分析操作",
                     },
                     "data": {
-                        "type": "string", "minLength": 1, "maxLength": 1000000,
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1000000,
                         "description": "待分析的数据文本 (JSON/CSV)",
                     },
                     "format": {
-                        "type": "string", "enum": ["auto", "json", "csv"],
-                        "default": "auto", "description": "数据格式",
+                        "type": "string",
+                        "enum": ["auto", "json", "csv"],
+                        "default": "auto",
+                        "description": "数据格式",
                     },
                     "transform": {
-                        "type": "object", "description": "转换规则 (operation=transform 时使用)",
+                        "type": "object",
+                        "description": "转换规则 (operation=transform 时使用)",
                     },
                     "query": {
-                        "type": "string", "maxLength": 2000,
+                        "type": "string",
+                        "maxLength": 2000,
                         "description": (
                             "查询表达式 (operation=query): "
                             "field=value / field!=value / field~substr / "
@@ -409,8 +446,7 @@ class DataAnalysisSkill(Skill):
         text = str(query or "").strip()
         if not text:
             items = list(data) if isinstance(data, list) else [data]
-            return {"query": "", "matched": len(items),
-                    "returned": len(items), "results": items}
+            return {"query": "", "matched": len(items), "returned": len(items), "results": items}
 
         match = self._QUERY_RE.match(text)
         if match:
@@ -478,19 +514,26 @@ class APICallSkill(Skill):
                 "type": "object",
                 "properties": {
                     "url": {
-                        "type": "string", "format": "uri", "pattern": "^https?://",
-                        "minLength": 1, "maxLength": 2048,
+                        "type": "string",
+                        "format": "uri",
+                        "pattern": "^https?://",
+                        "minLength": 1,
+                        "maxLength": 2048,
                         "description": "目标 API URL (http/https)",
                     },
                     "method": {
                         "type": "string",
                         "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
-                        "default": "GET", "description": "HTTP 方法",
+                        "default": "GET",
+                        "description": "HTTP 方法",
                     },
                     "headers": {"type": "object", "description": "请求头"},
                     "body": {"description": "请求体（POST/PUT/PATCH 时发送）"},
                     "timeout": {
-                        "type": "number", "minimum": 1, "maximum": 300, "default": 30,
+                        "type": "number",
+                        "minimum": 1,
+                        "maximum": 300,
+                        "default": 30,
                         "description": "请求超时秒数 (1-300)",
                     },
                 },

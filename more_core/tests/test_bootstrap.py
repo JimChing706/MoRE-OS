@@ -59,10 +59,18 @@ class TestInitCapabilities:
 
         result = init_capabilities(_settings())
         assert set(result.keys()) == {
-            "llm", "task_model_router", "sandbox", "memory",
-            "ontology", "metacognition", "evolution_archive",
-            "evolution", "tools", "meta_orchestrator",
-            "dynamic_guardrails", "council_orchestrator",
+            "llm",
+            "task_model_router",
+            "sandbox",
+            "memory",
+            "ontology",
+            "metacognition",
+            "evolution_archive",
+            "evolution",
+            "tools",
+            "meta_orchestrator",
+            "dynamic_guardrails",
+            "council_orchestrator",
         }
 
     def test_honours_max_tokens_and_provider_env(self, monkeypatch) -> None:
@@ -153,8 +161,7 @@ class TestInitLayers:
         from more_core.core.types import LayerId
 
         result = init_layers(_settings())
-        expected_ids = {LayerId.L0, LayerId.L1, LayerId.L2,
-                        LayerId.L3, LayerId.L4, LayerId.L5}
+        expected_ids = {LayerId.L0, LayerId.L1, LayerId.L2, LayerId.L3, LayerId.L4, LayerId.L5}
         assert set(result["layers"].keys()) == expected_ids
 
 
@@ -205,15 +212,28 @@ class TestInitServices:
 
         result = init_services(_settings())
         assert set(result.keys()) == {
-            "channels", "cron", "skill_manager",
-            "hand_registry", "hands", "commands",
-            "plugins", "rbac", "taint_tracker",
-            "output_filter", "reconnect_manager",
-            "hand_persistence", "hand_cloner",
-            "planner", "token_predictor", "workflows",
-            "plan_bridge", "plan_monitor",
-            "deployment_manager", "session_manager",
-            "rate_limiter", "request_cache",
+            "channels",
+            "cron",
+            "skill_manager",
+            "hand_registry",
+            "hands",
+            "commands",
+            "plugins",
+            "rbac",
+            "taint_tracker",
+            "output_filter",
+            "reconnect_manager",
+            "hand_persistence",
+            "hand_cloner",
+            "planner",
+            "token_predictor",
+            "workflows",
+            "plan_bridge",
+            "plan_monitor",
+            "deployment_manager",
+            "session_manager",
+            "rate_limiter",
+            "request_cache",
             "llm_circuit_breaker",
         }
 

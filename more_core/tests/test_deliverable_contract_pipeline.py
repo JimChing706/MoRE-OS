@@ -82,12 +82,21 @@ class TestHandlerIntegration:
         # Build a minimal orchestrator with a fake execute() that reports
         # step_count > max_steps budget so contract gate must fire.
         from more_core.core.config import Settings
-        from more_core.core.types import LayerId, TaskStatus, TaskResult, PerformanceMetrics, TaskRequest, TaskType
+        from more_core.core.types import (
+            LayerId,
+            TaskStatus,
+            TaskResult,
+            PerformanceMetrics,
+            TaskRequest,
+            TaskType,
+        )
         from more_core.runtime.orchestrator import MoRECore
 
         settings = Settings(
-            providers=[], fallback_chain=[],
-            enable_evolution=False, enable_metacognition=False,
+            providers=[],
+            fallback_chain=[],
+            enable_evolution=False,
+            enable_metacognition=False,
             enable_bailongma=False,
         )
         core = MoRECore(settings)
@@ -113,7 +122,7 @@ class TestHandlerIntegration:
         # Install the default handler (same one the orchestrator uses for
         # A2AServer in core.start()) but drive it directly here.
         from more_core.a2a.client import A2ATask, A2ATaskState, A2AMessage
-        from more_core.core.types import TaskRequest, TaskType
+
         _ = A2ATask, A2AMessage, A2ATaskState, TaskRequest, TaskType  # keep linters happy
 
         # Replicate the _a2a_handler wiring the orchestrator installs.
@@ -124,13 +133,18 @@ class TestHandlerIntegration:
             for m in task.messages:
                 body = m.content if isinstance(m.content, dict) else {}
                 t = body.get("text", "") if isinstance(body, dict) else ""
-                if t: text = t
+                if t:
+                    text = t
                 if isinstance(body, dict) and task_type_hint is None and body.get("task_type"):
                     task_type_hint = str(body["task_type"])
                 if isinstance(body, dict) and isinstance(body.get("context"), dict) and not context:
                     context = dict(body["context"])
                 meta = m.metadata if isinstance(m.metadata, dict) else {}
-                if task_type_hint is None and meta.get("qnm_origin") == "delegate_v1" and meta.get("task_type"):
+                if (
+                    task_type_hint is None
+                    and meta.get("qnm_origin") == "delegate_v1"
+                    and meta.get("task_type")
+                ):
                     task_type_hint = str(meta["task_type"])
             if not text:
                 task.state = A2ATaskState.FAILED
@@ -147,12 +161,16 @@ class TestHandlerIntegration:
             async def _runner() -> None:
                 from more_core.a2a.client import A2AMessage as _A2AMsg
                 from more_core.core.deliverable import (
-                    DeliverableContract, DeliverableKind, check_deliverable_contract,
+                    DeliverableContract,
+                    check_deliverable_contract,
                 )
+
                 try:
                     result = await core.execute(req)
                     try:
-                        ctxc = req.context.get("contract") if isinstance(req.context, dict) else None
+                        ctxc = (
+                            req.context.get("contract") if isinstance(req.context, dict) else None
+                        )
                         if isinstance(ctxc, DeliverableContract):
                             contract = ctxc
                         else:
@@ -191,9 +209,14 @@ class TestHandlerIntegration:
                         _steps = _result_steps if _result_steps > 0 else _ctx_steps
                         _fatals = int(
                             req.context.get("_fatal_errors", 0)
-                            if isinstance(req.context, dict) else 0
+                            if isinstance(req.context, dict)
+                            else 0
                         )
-                        _srate = req.context.get("_success_rate") if isinstance(req.context, dict) else None
+                        _srate = (
+                            req.context.get("_success_rate")
+                            if isinstance(req.context, dict)
+                            else None
+                        )
                         _out = ""
                         if isinstance(getattr(result, "data", None), dict):
                             _out = str(result.data.get("output", ""))
@@ -203,8 +226,12 @@ class TestHandlerIntegration:
                         if not _out and hasattr(result, "output") and result.output:
                             _out = result.output
                         check_res = check_deliverable_contract(
-                            contract, output_text=_out, step_count=_steps,
-                            elapsed_s=elapsed, success_rate=_srate, fatal_errors=_fatals,
+                            contract,
+                            output_text=_out,
+                            step_count=_steps,
+                            elapsed_s=elapsed,
+                            success_rate=_srate,
+                            fatal_errors=_fatals,
                         )
                         if check_res.final_state == "FAILED":
                             final_state = A2ATaskState.FAILED
@@ -233,17 +260,22 @@ class TestHandlerIntegration:
                     if not output_text:
                         d = getattr(result, "data", None)
                         output_text = "" if d is None else str(d)
-                    task.messages.append(_A2AMsg(
-                        role="agent",
-                        content={"text": output_text},
-                        metadata={"task_status": result.status.value},
-                    ))
+                    task.messages.append(
+                        _A2AMsg(
+                            role="agent",
+                            content={"text": output_text},
+                            metadata={"task_status": result.status.value},
+                        )
+                    )
                 except Exception as exc:
                     task.state = A2ATaskState.FAILED
-                    task.messages.append(_A2AMsg(
-                        role="agent", content={"text": f"Internal error: {exc!r}"},
-                        metadata={"error": repr(exc)},
-                    ))
+                    task.messages.append(
+                        _A2AMsg(
+                            role="agent",
+                            content={"text": f"Internal error: {exc!r}"},
+                            metadata={"error": repr(exc)},
+                        )
+                    )
 
             runner_task = asyncio.create_task(_runner())
             await asyncio.wait_for(runner_task, timeout=3)
@@ -255,17 +287,19 @@ class TestHandlerIntegration:
         # transport); instead we emulate by passing an A2ATask directly to
         # the handler with context already carrying the budget.
         t = A2ATask(
-            messages=[A2AMessage(
-                role="user",
-                content={
-                    "text": "make a helper",
-                    "task_type": "code_generation",
-                    "context": {
-                        "contract_quality_gates": {"max_steps": 5},
+            messages=[
+                A2AMessage(
+                    role="user",
+                    content={
+                        "text": "make a helper",
+                        "task_type": "code_generation",
+                        "context": {
+                            "contract_quality_gates": {"max_steps": 5},
+                        },
                     },
-                },
-                metadata={},
-            )],
+                    metadata={},
+                )
+            ],
         )
         final = await _handler(t)
         # Task blew step budget (8 > 5) → contract FAILED gate overrides SUCCESS.
@@ -283,14 +317,21 @@ class TestHandlerIntegration:
     async def test_06_handler_passes_contract_through_when_safe(self):
         from more_core.core.config import Settings
         from more_core.core.types import (
-            LayerId, PerformanceMetrics, TaskRequest, TaskResult, TaskStatus, TaskType,
+            LayerId,
+            PerformanceMetrics,
+            TaskRequest,
+            TaskResult,
+            TaskStatus,
+            TaskType,
         )
         from more_core.runtime.orchestrator import MoRECore
         from more_core.a2a.client import A2ATask, A2ATaskState, A2AMessage
 
         settings = Settings(
-            providers=[], fallback_chain=[],
-            enable_evolution=False, enable_metacognition=False,
+            providers=[],
+            fallback_chain=[],
+            enable_evolution=False,
+            enable_metacognition=False,
             enable_bailongma=False,
         )
         core = MoRECore(settings)
@@ -315,13 +356,16 @@ class TestHandlerIntegration:
             )
 
         core.execute = _fake_execute  # type: ignore
+
         # Minimal handler identical to test_05.
         async def _handler(task: A2ATask) -> A2ATask:
-            text = ""; context: dict = {}
+            text = ""
+            context: dict = {}
             for m in task.messages:
                 body = m.content if isinstance(m.content, dict) else {}
                 t = body.get("text", "") if isinstance(body, dict) else ""
-                if t: text = t
+                if t:
+                    text = t
                 if isinstance(body, dict) and isinstance(body.get("context"), dict) and not context:
                     context = dict(body["context"])
             if not text:
@@ -331,25 +375,43 @@ class TestHandlerIntegration:
             task.state = A2ATaskState.WORKING
 
             async def _runner():
-                from more_core.core.deliverable import DeliverableContract, check_deliverable_contract
+                from more_core.core.deliverable import (
+                    DeliverableContract,
+                    check_deliverable_contract,
+                )
                 from more_core.a2a.client import A2AMessage as _M
+
                 result = await core.execute(req)
                 try:
                     contract = DeliverableContract.for_code_generation()
                     if isinstance(req.context, dict):
                         qg = req.context.get("contract_quality_gates")
-                        if isinstance(qg, dict): contract.quality_gates.update(qg)
+                        if isinstance(qg, dict):
+                            contract.quality_gates.update(qg)
                 except Exception:
                     contract = DeliverableContract()
                 try:
-                    _steps = int(getattr(result, "fix_iterations", 0)
-                                 or (req.context.get("fix_iterations", 0) if isinstance(req.context, dict) else 0))
-                    _fatals = int(req.context.get("_fatal_errors", 0) if isinstance(req.context, dict) else 0)
-                    _el = float(req.context.get("_elapsed_s", 0) if isinstance(req.context, dict) else 0)
+                    _steps = int(
+                        getattr(result, "fix_iterations", 0)
+                        or (
+                            req.context.get("fix_iterations", 0)
+                            if isinstance(req.context, dict)
+                            else 0
+                        )
+                    )
+                    _fatals = int(
+                        req.context.get("_fatal_errors", 0) if isinstance(req.context, dict) else 0
+                    )
+                    _el = float(
+                        req.context.get("_elapsed_s", 0) if isinstance(req.context, dict) else 0
+                    )
                     _out = result.output or ""
                     check_res = check_deliverable_contract(
-                        contract, output_text=_out, step_count=_steps,
-                        elapsed_s=_el, fatal_errors=_fatals,
+                        contract,
+                        output_text=_out,
+                        step_count=_steps,
+                        elapsed_s=_el,
+                        fatal_errors=_fatals,
                     )
                     if check_res.final_state == "FAILED":
                         final_state = A2ATaskState.FAILED
@@ -360,26 +422,43 @@ class TestHandlerIntegration:
                             else A2ATaskState.FAILED
                         )
                     try:
-                        if not isinstance(task.metadata, dict): task.metadata = {}
+                        if not isinstance(task.metadata, dict):
+                            task.metadata = {}
                         task.metadata["deliverable_check"] = check_res.to_metadata()
-                    except Exception: pass
+                    except Exception:
+                        pass
                 except Exception:
                     final_state = (
-                        A2ATaskState.COMPLETED if result.status == TaskStatus.SUCCESS
+                        A2ATaskState.COMPLETED
+                        if result.status == TaskStatus.SUCCESS
                         else A2ATaskState.FAILED
                     )
                 task.state = final_state
-                task.messages.append(_M(role="agent", content={"text": _out},
-                                       metadata={"task_status": result.status.value}))
+                task.messages.append(
+                    _M(
+                        role="agent",
+                        content={"text": _out},
+                        metadata={"task_status": result.status.value},
+                    )
+                )
+
             t2 = asyncio.create_task(_runner())
             await asyncio.wait_for(t2, timeout=3)
             return task
 
-        t = A2ATask(messages=[A2AMessage(role="user", content={
-            "text": "make an adder",
-            "task_type": "code_generation",
-            "context": {},
-        }, metadata={})])
+        t = A2ATask(
+            messages=[
+                A2AMessage(
+                    role="user",
+                    content={
+                        "text": "make an adder",
+                        "task_type": "code_generation",
+                        "context": {},
+                    },
+                    metadata={},
+                )
+            ]
+        )
         final = await _handler(t)
         # Contract gate passes → COMPLETED with metadata ok=True and final_state=COMPLETED
         assert final.state == A2ATaskState.COMPLETED
@@ -408,7 +487,12 @@ class TestHandlerIntegration:
 
         async def _handler(task: A2ATask) -> A2ATask:
             from more_core.a2a.client import A2AMessage as _M
-            text = (task.messages[0].content or {}).get("text", "") if isinstance(task.messages[0].content, dict) else ""
+
+            text = (
+                (task.messages[0].content or {}).get("text", "")
+                if isinstance(task.messages[0].content, dict)
+                else ""
+            )
             if not text:
                 task.state = A2ATaskState.FAILED
                 return task
@@ -417,19 +501,22 @@ class TestHandlerIntegration:
 
             async def _runner():
                 try:
-                    result = await core.execute(req)
+                    await core.execute(req)
                 except Exception as exc:
                     # Handler exception path: no deliverable contract check
                     # → no deliverable_check metadata should appear.  This is
                     # exactly what we test for.
                     task.state = A2ATaskState.FAILED
-                    task.messages.append(_M(
-                        role="agent",
-                        content={"text": f"Internal error: {exc!r}"},
-                        metadata={"error": repr(exc)},
-                    ))
+                    task.messages.append(
+                        _M(
+                            role="agent",
+                            content={"text": f"Internal error: {exc!r}"},
+                            metadata={"error": repr(exc)},
+                        )
+                    )
                     return
                 # Contract check only runs for *completed* executions.
+
             await asyncio.wait_for(asyncio.create_task(_runner()), timeout=3)
             return task
 
@@ -463,8 +550,12 @@ class TestNeverRaises:
         # raise), a string for success_rate, and negative elapsed_s.  The
         # function must still produce a DeliverableCheckResult.
         class _Bad:
-            def check_completeness(self, _): raise RuntimeError("x")
-            def should_kill(self, **kw): raise RuntimeError("y")
+            def check_completeness(self, _):
+                raise RuntimeError("x")
+
+            def should_kill(self, **kw):
+                raise RuntimeError("y")
+
         res = check_deliverable_contract(
             _Bad(),
             output_text="anything",

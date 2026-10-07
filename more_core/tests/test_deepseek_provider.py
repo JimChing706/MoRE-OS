@@ -13,7 +13,9 @@ from more_core.llm.providers.deepseek import DeepSeekProvider
 
 
 def _provider(handler) -> DeepSeekProvider:
-    p = DeepSeekProvider("deepseek", "sk-x", endpoint="http://ds.test", model="deepseek-chat", timeout=7)
+    p = DeepSeekProvider(
+        "deepseek", "sk-x", endpoint="http://ds.test", model="deepseek-chat", timeout=7
+    )
     p._client = httpx.AsyncClient(transport=httpx.MockTransport(handler), timeout=7)
     return p
 
@@ -22,8 +24,7 @@ def _ok_body(content="hi", reasoning=None):
     msg = {"content": content}
     if reasoning is not None:
         msg["reasoning_content"] = reasoning
-    return {"choices": [{"message": msg}],
-            "usage": {"prompt_tokens": 5, "completion_tokens": 6}}
+    return {"choices": [{"message": msg}], "usage": {"prompt_tokens": 5, "completion_tokens": 6}}
 
 
 def test_build_messages():
@@ -75,9 +76,7 @@ async def test_generate_enable_thinking_and_default_max_tokens():
         seen.update(json.loads(r.content))
         return httpx.Response(200, json=_ok_body())
 
-    await _provider(handler).generate(
-        LLMRequest(prompt="p", max_tokens=0, enable_thinking=True)
-    )
+    await _provider(handler).generate(LLMRequest(prompt="p", max_tokens=0, enable_thinking=True))
     assert seen["thinking"] == {"type": "enabled"}
     assert seen["max_tokens"] == 4096
     assert seen["stream"] is False

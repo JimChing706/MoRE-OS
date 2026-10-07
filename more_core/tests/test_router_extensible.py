@@ -12,8 +12,11 @@ from more_core.router.layer_router import DEFAULT_PIPELINES, LayerRouter
 
 def _settings(**overrides: object) -> Settings:
     base = dict(
-        providers=[], fallback_chain=[], enable_evolution=False,
-        enable_metacognition=False, enable_symbolic=True,
+        providers=[],
+        fallback_chain=[],
+        enable_evolution=False,
+        enable_metacognition=False,
+        enable_symbolic=True,
     )
     base.update(overrides)
     return Settings(**base)  # type: ignore[arg-type]
@@ -22,6 +25,7 @@ def _settings(**overrides: object) -> Settings:
 # ---------------------------------------------------------------------------
 # Settings-driven custom pipeline
 # ---------------------------------------------------------------------------
+
 
 def test_custom_pipeline_from_settings() -> None:
     """custom_pipelines in Settings should override the built-in default."""
@@ -35,6 +39,7 @@ def test_custom_pipeline_from_settings() -> None:
 # ---------------------------------------------------------------------------
 # Plugin extension API
 # ---------------------------------------------------------------------------
+
 
 def test_register_pipeline_overrides_type() -> None:
     router = LayerRouter(_settings())
@@ -76,6 +81,7 @@ def test_register_plugin_defined_type() -> None:
 # ---------------------------------------------------------------------------
 # Feature-gate interaction with custom pipelines
 # ---------------------------------------------------------------------------
+
 
 def test_custom_pipeline_respects_feature_gates() -> None:
     """Even if a custom pipeline includes L3, disabling symbolic should remove it."""

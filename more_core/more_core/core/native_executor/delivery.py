@@ -149,8 +149,7 @@ class Delivery:
         self._pack_zip(project_root_abs, project_prefix, zip_path)
 
         # ---- 4) 补充 manifest：追加两份压缩包 + manifest 自身的条目 ----
-        extra_files = [tar_gz_path, zip_path, manifest_path,
-                       readme_path, test_report_path]
+        extra_files = [tar_gz_path, zip_path, manifest_path, readme_path, test_report_path]
         extra_entries: list[ManifestEntry] = []
         for fp in extra_files:
             if fp.is_file() and fp != manifest_path:
@@ -179,13 +178,17 @@ class Delivery:
     def _write_readme(self, path: Path, project_prefix: str) -> None:
         lines: list[str] = []
         lines.append(f"# {project_prefix} — 工业级俄罗斯方块\n")
-        lines.append("> Rust 核心算法 + HTML5 Canvas 前端，SRS/7-Bag/Hold/Ghost/Lock Delay 全特性实现。\n")
+        lines.append(
+            "> Rust 核心算法 + HTML5 Canvas 前端，SRS/7-Bag/Hold/Ghost/Lock Delay 全特性实现。\n"
+        )
         lines.append("## 快速开始\n")
         lines.append("```bash\n")
         lines.append("# 1) 编译 Rust 核心\ncargo build --release\n")
         lines.append("# 2) 运行单元测试\ncargo test --release -q\n")
         lines.append("# 3) 启动前端（任选其一）\n")
-        lines.append("python3 -m http.server 8080 -d frontend  # 然后浏览器访问 http://localhost:8080\n")
+        lines.append(
+            "python3 -m http.server 8080 -d frontend  # 然后浏览器访问 http://localhost:8080\n"
+        )
         lines.append("```\n")
         lines.append("## 已实现功能清单 (AC)\n")
         assert len(self.README_AC_ITEMS) >= 10, "README_AC_ITEMS 必须 ≥ 10 条"
@@ -315,9 +318,9 @@ class Delivery:
         for state in range(1, 201):
             big_block_lines.append(
                 f"### 状态 S{state:04d}\n"
-                f"棋盘描述：等级 = {(state % 30) + 1}，当前方块 = {['I','O','T','S','Z','J','L'][state % 7]}，"
-                f"Hold = {'空' if state % 3 == 0 else ['I','O','T'][state % 3]}，"
-                f"Next 队列 = [{', '.join([['I','O','T','S','Z','J','L'][(state + k) % 7] for k in range(5)])}]，"
+                f"棋盘描述：等级 = {(state % 30) + 1}，当前方块 = {['I', 'O', 'T', 'S', 'Z', 'J', 'L'][state % 7]}，"
+                f"Hold = {'空' if state % 3 == 0 else ['I', 'O', 'T'][state % 3]}，"
+                f"Next 队列 = [{', '.join([['I', 'O', 'T', 'S', 'Z', 'J', 'L'][(state + k) % 7] for k in range(5)])}]，"
                 f"活动方块坐标 = ({state % 10}, {(state * 3) % 20})，朝向 = {(state % 4) * 90}°，"
                 f"Lock Delay 剩余 = {max(0, 500 - (state % 16) * 30)}ms，已重置次数 = {state % 15}，"
                 f"得分 = {state * 1742:,}，消行数 = {state * 2 % 200}，Combo = {state % 50}，"
@@ -328,7 +331,7 @@ class Delivery:
                 f"可触达左边界 = {state % 8 != 0}，可触达右边界 = {state % 9 != 0}，"
                 f"当前棋盘空洞数 = {(state * 5) % 50}，表面平整度评分 = {100 - (state * 13) % 90}/100，"
                 f"预估 Stack 高度 = {(state * 17) % 40} 格，攻击潜力评分（1~10） = {(state % 10) + 1}，"
-                f"防御风险等级（A~E） = {['A','B','C','D','E'][state % 5]}，"
+                f"防御风险等级（A~E） = {['A', 'B', 'C', 'D', 'E'][state % 5]}，"
                 f"下一步最佳策略 = {'四消建造' if state % 4 == 0 else '清理垃圾行' if state % 4 == 1 else 'B2B 保持' if state % 4 == 2 else '平整化堆叠'}，"
                 f"预测接下来 3 步平均期望得分 = {state * 891:,}。\n\n"
             )
@@ -345,42 +348,62 @@ class Delivery:
         lines.append(f"# Changelog — {project_prefix}\n\n")
         lines.append("> 按迭代轮次倒序排列的变更记录，严格遵循 SemVer 2.0.0。\n\n")
         versions = [
-            ("5.0.0", "第5轮迭代（打磨与交付）", [
-                "新增：游戏排行榜（localStorage 持久化 Top 10 得分 / 消行 / 时长）",
-                "新增：新手教程与操作提示浮层（首次启动自动展示，可关闭）",
-                "修复：前 4 轮累计发现的全部 Bug（详见内部 Issue 追踪清单）",
-                "文档：完善 README / RULES / TEST_REPORT，补全架构图与示例",
-                "性能：Canvas 渲染由逐格 fillRect 迁移至批量离屏缓冲区，P99 帧时下降 28%",
-            ]),
-            ("4.0.0", "第4轮迭代（性能与测试）", [
-                "新增：src/tests.rs Rust 单元测试 32 条，覆盖率 tarpaulin 报告 96.3%",
-                "新增：Game Over / Restart / Pause 完整流程，超时状态持久化",
-                "新增：移动端触控适配（滑动手势 + 自定义点击区域）",
-                "修复：Chrome 124+ WebAudio resume 竞争导致首帧无声的偶现问题",
-                "基准：L0 执行层平均单次 tick < 1.2µs，单帧渲染 P95 ≤ 12ms",
-            ]),
-            ("3.0.0", "第3轮迭代（音频与进阶）", [
-                "新增：WebAudio 合成 11 种 SFX（移动/旋转/锁定/消行/四消/T-Spin/硬降/Hold/升级/结束）",
-                "新增：Korobeiniki 主旋律 3 轨 BGM（主旋 + 贝斯 + 打击），等级联动 BPM 曲线",
-                "新增：设置界面双音量滑条 SFX / BGM 独立控制，localStorage 持久化",
-                "新增：T-Spin 检测（Mini / Normal 三档）与计分规则，Combo / B2B 判定",
-                "新增：键位自定义面板，DAS / ARR / 最大重置次数 3 个参数细调",
-            ]),
-            ("2.0.0", "第2轮迭代（核心机制）", [
-                "新增：完整 SRS 踢墙算法（JLSTZ 共用 5 偏移 + I 型专用 5 偏移 + O 型跳过）",
-                "新增：7-Bag 方块发生器，Fisher-Yates 洗牌 + 种子可复现回放",
-                "新增：Hold 保留机制（每方块生命周期 1 次，锁定延迟期可使用并重置计时器）",
-                "新增：Ghost 幽灵块半透明投影（透明度 30%，轮廓增强描边）",
-                "新增：Lock Delay 锁定延迟（默认 500ms，最大重置 15 次，硬降立即锁定）",
-                "新增：Next 预览队列 5 方块 + 基础分数/等级/消行/连击 UI 面板",
-            ]),
-            ("1.0.0", "第1轮迭代（基础骨架）", [
-                "新增：项目目录骨架与 Rust crate（Cargo.toml + src/lib.rs + src/tests.rs）",
-                "新增：TetrisGame 状态结构体 + Board 棋盘（10×40，行 0 为底）",
-                "新增：is_valid_position 碰撞检测、左右移动、软降、基础渲染、方块出生点",
-                "前端：HTML5 Canvas 2D 基础棋盘绘制 + 方块网格描边样式",
-                "文档：README 初稿（环境要求 / 安装 / 运行命令 / 目录结构）",
-            ]),
+            (
+                "5.0.0",
+                "第5轮迭代（打磨与交付）",
+                [
+                    "新增：游戏排行榜（localStorage 持久化 Top 10 得分 / 消行 / 时长）",
+                    "新增：新手教程与操作提示浮层（首次启动自动展示，可关闭）",
+                    "修复：前 4 轮累计发现的全部 Bug（详见内部 Issue 追踪清单）",
+                    "文档：完善 README / RULES / TEST_REPORT，补全架构图与示例",
+                    "性能：Canvas 渲染由逐格 fillRect 迁移至批量离屏缓冲区，P99 帧时下降 28%",
+                ],
+            ),
+            (
+                "4.0.0",
+                "第4轮迭代（性能与测试）",
+                [
+                    "新增：src/tests.rs Rust 单元测试 32 条，覆盖率 tarpaulin 报告 96.3%",
+                    "新增：Game Over / Restart / Pause 完整流程，超时状态持久化",
+                    "新增：移动端触控适配（滑动手势 + 自定义点击区域）",
+                    "修复：Chrome 124+ WebAudio resume 竞争导致首帧无声的偶现问题",
+                    "基准：L0 执行层平均单次 tick < 1.2µs，单帧渲染 P95 ≤ 12ms",
+                ],
+            ),
+            (
+                "3.0.0",
+                "第3轮迭代（音频与进阶）",
+                [
+                    "新增：WebAudio 合成 11 种 SFX（移动/旋转/锁定/消行/四消/T-Spin/硬降/Hold/升级/结束）",
+                    "新增：Korobeiniki 主旋律 3 轨 BGM（主旋 + 贝斯 + 打击），等级联动 BPM 曲线",
+                    "新增：设置界面双音量滑条 SFX / BGM 独立控制，localStorage 持久化",
+                    "新增：T-Spin 检测（Mini / Normal 三档）与计分规则，Combo / B2B 判定",
+                    "新增：键位自定义面板，DAS / ARR / 最大重置次数 3 个参数细调",
+                ],
+            ),
+            (
+                "2.0.0",
+                "第2轮迭代（核心机制）",
+                [
+                    "新增：完整 SRS 踢墙算法（JLSTZ 共用 5 偏移 + I 型专用 5 偏移 + O 型跳过）",
+                    "新增：7-Bag 方块发生器，Fisher-Yates 洗牌 + 种子可复现回放",
+                    "新增：Hold 保留机制（每方块生命周期 1 次，锁定延迟期可使用并重置计时器）",
+                    "新增：Ghost 幽灵块半透明投影（透明度 30%，轮廓增强描边）",
+                    "新增：Lock Delay 锁定延迟（默认 500ms，最大重置 15 次，硬降立即锁定）",
+                    "新增：Next 预览队列 5 方块 + 基础分数/等级/消行/连击 UI 面板",
+                ],
+            ),
+            (
+                "1.0.0",
+                "第1轮迭代（基础骨架）",
+                [
+                    "新增：项目目录骨架与 Rust crate（Cargo.toml + src/lib.rs + src/tests.rs）",
+                    "新增：TetrisGame 状态结构体 + Board 棋盘（10×40，行 0 为底）",
+                    "新增：is_valid_position 碰撞检测、左右移动、软降、基础渲染、方块出生点",
+                    "前端：HTML5 Canvas 2D 基础棋盘绘制 + 方块网格描边样式",
+                    "文档：README 初稿（环境要求 / 安装 / 运行命令 / 目录结构）",
+                ],
+            ),
         ]
         for ver, title, items in versions:
             lines.append(f"## [{ver}] — {datetime.now().strftime('%Y-%m-%d')}\n\n")
@@ -428,9 +451,23 @@ class Delivery:
         )
         tile_types = ["I", "O", "T", "S", "Z", "J", "L"]
         modes = ["国标 Classic", "极速 Sprint", "对战 Battle", "禅意 Zen", "教学 Tutorial"]
-        platforms = ["macOS 14", "Windows 11", "Ubuntu 24.04", "iOS 18", "Android 15", "WebAssembly"]
+        platforms = [
+            "macOS 14",
+            "Windows 11",
+            "Ubuntu 24.04",
+            "iOS 18",
+            "Android 15",
+            "WebAssembly",
+        ]
         browsers = ["Safari 18", "Chrome 128", "Firefox 130", "Edge 128", "Arc 1.70"]
-        difficulties = ["新手 EASY", "进阶 NORMAL", "高手 HARD", "专家 EXPERT", "大师 MASTER", "传说 LEGENDARY"]
+        difficulties = [
+            "新手 EASY",
+            "进阶 NORMAL",
+            "高手 HARD",
+            "专家 EXPERT",
+            "大师 MASTER",
+            "传说 LEGENDARY",
+        ]
         game_modes_short = ["40 LINES", "BLITZ 2min", "MARATHON 150", "ZEN ∞", "ULTRA 3min"]
 
         for scenario in range(1, 1501):
@@ -490,8 +527,12 @@ class Delivery:
         # ---- 章 1：执行环境 ----
         lines.append(f"## {self.TEST_REPORT_CHAPTERS[0]}\n\n")
         try:
-            lines.append(f"- **操作系统**: `{platform.system()} {platform.release()} ({platform.platform()})`\n")
-            lines.append(f"- **CPU**: `{platform.processor() or 'unknown'} ({os.cpu_count() or 0} cores)`\n")
+            lines.append(
+                f"- **操作系统**: `{platform.system()} {platform.release()} ({platform.platform()})`\n"
+            )
+            lines.append(
+                f"- **CPU**: `{platform.processor() or 'unknown'} ({os.cpu_count() or 0} cores)`\n"
+            )
             mem_total = "N/A"
             try:
                 import resource  # 仅 Unix
@@ -517,25 +558,39 @@ class Delivery:
         lines.append(f"## {self.TEST_REPORT_CHAPTERS[1]}\n\n")
         lines.append("| 类别 | 命令 / 检查项 | 说明 |\n")
         lines.append("| :-- | :-- | :-- |\n")
-        lines.append("| 构建 | `cargo build --release -q` | 检查 Rust 代码可编译（release 模式） |\n")
-        lines.append("| 单测 | `cargo test  --release -q` | 执行 src/tests.rs 全部 #[test] 标注 |\n")
+        lines.append(
+            "| 构建 | `cargo build --release -q` | 检查 Rust 代码可编译（release 模式） |\n"
+        )
+        lines.append(
+            "| 单测 | `cargo test  --release -q` | 执行 src/tests.rs 全部 #[test] 标注 |\n"
+        )
         lines.append("| 归档 | `tar tzf <pkg>.tar.gz` | 校验 gzip 压缩包可正常读取，条目数统计 |\n")
-        lines.append("| 归档 | `unzip -l <pkg>.zip`    | 校验 zip 压缩包 CRC + 条目清单可列出 |\n\n")
+        lines.append(
+            "| 归档 | `unzip -l <pkg>.zip`    | 校验 zip 压缩包 CRC + 条目清单可列出 |\n\n"
+        )
 
         # ---- 章 3：单元测试结果 ----
         lines.append(f"## {self.TEST_REPORT_CHAPTERS[2]}\n\n")
-        cargo_test_out = self._shell_in_dir("cargo test --release -q 2>&1 || true", project_root_abs)
+        cargo_test_out = self._shell_in_dir(
+            "cargo test --release -q 2>&1 || true", project_root_abs
+        )
         test_count = self._count_rs_test_attrs(project_root_abs / "src" / "tests.rs")
         lines.append(f"- **预期 #[test] 数量**: `≥ 24`，实际静态扫描 `{test_count}` 个\n")
         lines.append("```\n")
-        lines.append((cargo_test_out or "(cargo test 尚未执行 / 无 cargo 环境 — 打包不受影响)") + "\n")
+        lines.append(
+            (cargo_test_out or "(cargo test 尚未执行 / 无 cargo 环境 — 打包不受影响)") + "\n"
+        )
         lines.append("```\n\n")
 
         # ---- 章 4：构建验证 ----
         lines.append(f"## {self.TEST_REPORT_CHAPTERS[3]}\n\n")
-        cargo_build_out = self._shell_in_dir("cargo build --release -q 2>&1 || true", project_root_abs)
+        cargo_build_out = self._shell_in_dir(
+            "cargo build --release -q 2>&1 || true", project_root_abs
+        )
         lines.append("```\n")
-        lines.append((cargo_build_out or "(cargo build 尚未执行 / 无 cargo 环境 — 打包不受影响)") + "\n")
+        lines.append(
+            (cargo_build_out or "(cargo build 尚未执行 / 无 cargo 环境 — 打包不受影响)") + "\n"
+        )
         lines.append("```\n")
         target_release = project_root_abs / "target" / "release"
         if target_release.is_dir():
@@ -578,8 +633,8 @@ class Delivery:
         lines.append("| 文件 | size (bytes) | SHA256 完整值 |\n")
         lines.append("| :-- | --: | :-- |\n")
         files_to_hash = [
-            ("tar.gz",  tar_gz),
-            ("zip",     zip_f),
+            ("tar.gz", tar_gz),
+            ("zip", zip_f),
             ("README.md", project_root_abs / "README.md"),
             ("TEST_REPORT.md (即本文档，计算于上一稿快照)", path),
             ("manifest.json", project_root_abs / "manifest.json"),
@@ -664,9 +719,14 @@ class Delivery:
                     os.symlink(project_root_abs, tmp_link)
                     created_link = True
                 subprocess.run(
-                    [system_tar, "-czf", str(tar_gz_path),
-                     "-s", f"|^{tmp_link.name}/|{project_prefix}/|",
-                     tmp_link.name],
+                    [
+                        system_tar,
+                        "-czf",
+                        str(tar_gz_path),
+                        "-s",
+                        f"|^{tmp_link.name}/|{project_prefix}/|",
+                        tmp_link.name,
+                    ],
                     cwd=str(parent),
                     check=True,
                     capture_output=True,
@@ -716,8 +776,16 @@ class Delivery:
                     os.symlink(project_root_abs, tmp_link)
                     created_link = True
                 subprocess.run(
-                    [system_zip, "-rq", str(zip_path), tmp_link.name,
-                     "-x", "*/.git/*", "*/target/*", "*/node_modules/*"],
+                    [
+                        system_zip,
+                        "-rq",
+                        str(zip_path),
+                        tmp_link.name,
+                        "-x",
+                        "*/.git/*",
+                        "*/target/*",
+                        "*/node_modules/*",
+                    ],
                     cwd=str(parent),
                     check=True,
                     capture_output=True,
@@ -751,7 +819,9 @@ class Delivery:
     @staticmethod
     def _shell_one(cmd: str) -> Optional[str]:
         try:
-            r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10, check=False)
+            r = subprocess.run(
+                cmd, shell=True, capture_output=True, text=True, timeout=10, check=False
+            )
             return (r.stdout or r.stderr).strip()[:200]
         except Exception:  # noqa: BLE001
             return None
@@ -759,8 +829,15 @@ class Delivery:
     @staticmethod
     def _shell_in_dir(cmd: str, cwd: Path) -> Optional[str]:
         try:
-            r = subprocess.run(cmd, shell=True, cwd=str(cwd),
-                               capture_output=True, text=True, timeout=600, check=False)
+            r = subprocess.run(
+                cmd,
+                shell=True,
+                cwd=str(cwd),
+                capture_output=True,
+                text=True,
+                timeout=600,
+                check=False,
+            )
             out = (r.stdout or "") + (r.stderr or "")
             return out.strip()[:4000]
         except Exception as e:  # noqa: BLE001

@@ -28,9 +28,9 @@ class ProviderCheck:
     endpoint: str = ""
     configured_model: str = ""
     models_available: int = 0
-    model_present: bool | None = None   # None = 无法判定（provider 不支持列举）
+    model_present: bool | None = None  # None = 无法判定（provider 不支持列举）
     healthy: bool | None = None
-    inference_ok: bool | None = None    # None = 未探测（默认关闭推理探针）
+    inference_ok: bool | None = None  # None = 未探测（默认关闭推理探针）
     warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -106,9 +106,9 @@ async def _fetch_models(url: str) -> list[str] | None:
     except Exception:
         return None
     if isinstance(data, dict):
-        if isinstance(data.get("data"), list):          # OpenAI 兼容
+        if isinstance(data.get("data"), list):  # OpenAI 兼容
             return [str(m.get("id", "")) for m in data["data"]]
-        if isinstance(data.get("models"), list):        # Ollama
+        if isinstance(data.get("models"), list):  # Ollama
             return [str(m.get("name", "")) for m in data["models"]]
     return None
 
@@ -137,10 +137,14 @@ async def preflight_llm(
 
     for name in registered:
         provider = getattr(llm, "_providers", {}).get(name)
-        endpoint = str(getattr(provider, "_base", "") or getattr(provider, "_endpoint", "") or getattr(provider, "endpoint", "") or "")
+        endpoint = str(
+            getattr(provider, "_base", "")
+            or getattr(provider, "_endpoint", "")
+            or getattr(provider, "endpoint", "")
+            or ""
+        )
         model = str(getattr(provider, "model", "") or getattr(provider, "_model", "") or "")
-        check = ProviderCheck(name=name, registered=True, endpoint=endpoint,
-                              configured_model=model)
+        check = ProviderCheck(name=name, registered=True, endpoint=endpoint, configured_model=model)
         try:
             check.healthy = bool(await provider.health())
         except Exception:

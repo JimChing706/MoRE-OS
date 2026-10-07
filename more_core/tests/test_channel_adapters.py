@@ -149,21 +149,15 @@ async def test_webhook_send_to_user_sets_direct_metadata():
 @pytest.mark.asyncio
 async def test_webhook_health_check_paths():
     a = _webhook()
-    a._session = httpx.AsyncClient(
-        transport=httpx.MockTransport(lambda r: httpx.Response(200))
-    )
+    a._session = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200)))
     assert await a.health_check() is True
 
     bad = _webhook()
-    bad._session = httpx.AsyncClient(
-        transport=httpx.MockTransport(lambda r: httpx.Response(503))
-    )
+    bad._session = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(503)))
     assert await bad.health_check() is False
 
     nourl = WebhookAdapter({"channel_type": ChannelType.WEBHOOK})
-    nourl._session = httpx.AsyncClient(
-        transport=httpx.MockTransport(lambda r: httpx.Response(200))
-    )
+    nourl._session = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200)))
     assert await nourl.health_check() is False
 
 
@@ -183,7 +177,9 @@ def test_wechat_verify_signature():
     assert a.verify_signature(expected, ts, nonce) is True
     assert a.verify_signature("wrong", ts, nonce) is False
     # 无 token → 放行（不校验）
-    assert WeChatAdapter({"channel_type": ChannelType.WEBHOOK}).verify_signature("x", "1", "2") is True
+    assert (
+        WeChatAdapter({"channel_type": ChannelType.WEBHOOK}).verify_signature("x", "1", "2") is True
+    )
 
 
 @pytest.mark.asyncio

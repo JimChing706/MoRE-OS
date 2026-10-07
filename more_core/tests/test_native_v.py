@@ -13,7 +13,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import tempfile
 from pathlib import Path
 
-import pytest
 
 from more_core.core.native_executor.validator import (
     Validator,
@@ -35,6 +34,7 @@ def _fake_runner_factory(behavior_map):
         - dict(rc=int, stdout=str, stderr=str, dur_ms=int)
         - callable(cmd, cwd, attempt) -> CommandRun（含"前 N 次失败"等高级行为）
     """
+
     def _hook(cmd, cwd, attempt):
         key0 = cmd[0]
         # 从整条命令中推断更具体的 key
@@ -52,14 +52,25 @@ def _fake_runner_factory(behavior_map):
         if callable(spec):
             return spec(cmd, cwd, attempt)
         if isinstance(spec, dict):
-            return CommandRun(cmd=list(cmd), cwd=cwd, attempt=attempt,
-                              returncode=spec.get("rc", 0),
-                              stdout=spec.get("stdout", ""),
-                              stderr=spec.get("stderr", ""),
-                              duration_ms=spec.get("dur_ms", 1))
-        return CommandRun(cmd=list(cmd), cwd=cwd, attempt=attempt,
-                          returncode=int(spec),
-                          stdout="", stderr="", duration_ms=1)
+            return CommandRun(
+                cmd=list(cmd),
+                cwd=cwd,
+                attempt=attempt,
+                returncode=spec.get("rc", 0),
+                stdout=spec.get("stdout", ""),
+                stderr=spec.get("stderr", ""),
+                duration_ms=spec.get("dur_ms", 1),
+            )
+        return CommandRun(
+            cmd=list(cmd),
+            cwd=cwd,
+            attempt=attempt,
+            returncode=int(spec),
+            stdout="",
+            stderr="",
+            duration_ms=1,
+        )
+
     return _hook
 
 
@@ -75,8 +86,10 @@ def test_validate_4_commands_all_pass():
     hook = _fake_runner_factory({"build": 0, "test": 0, "tar": 0, "unzip": 0})
     v = Validator(_run_hook=hook)
     proj = _tmp_proj()
-    arts = {"tar_gz": "/tmp/more_os_native_runs/dummy.tar.gz",
-            "zip": "/tmp/more_os_native_runs/dummy.zip"}
+    arts = {
+        "tar_gz": "/tmp/more_os_native_runs/dummy.tar.gz",
+        "zip": "/tmp/more_os_native_runs/dummy.zip",
+    }
     result = v.validate(str(proj), arts)
     assert result.pass_ is True
     assert result.total_commands == 4
@@ -100,17 +113,31 @@ def test_validate_retries_3_times_on_continuous_failure():
 
     def always_fail(cmd, cwd, attempt):
         call_log.append((tuple(cmd), attempt))
-        return CommandRun(cmd=list(cmd), cwd=cwd, attempt=attempt,
-                          returncode=1, stdout="", stderr=f"fail at {attempt}",
-                          duration_ms=1)
+        return CommandRun(
+            cmd=list(cmd),
+            cwd=cwd,
+            attempt=attempt,
+            returncode=1,
+            stdout="",
+            stderr=f"fail at {attempt}",
+            duration_ms=1,
+        )
 
     def success_and_log(cmd, cwd, attempt):
         call_log.append((tuple(cmd), attempt))
-        return CommandRun(cmd=list(cmd), cwd=cwd, attempt=attempt,
-                          returncode=0, stdout="ok", stderr="", duration_ms=1)
+        return CommandRun(
+            cmd=list(cmd),
+            cwd=cwd,
+            attempt=attempt,
+            returncode=0,
+            stdout="ok",
+            stderr="",
+            duration_ms=1,
+        )
 
-    hook = _fake_runner_factory({"build": always_fail, "test": success_and_log,
-                                 "tar": 0, "unzip": 0})
+    hook = _fake_runner_factory(
+        {"build": always_fail, "test": success_and_log, "tar": 0, "unzip": 0}
+    )
     v = Validator(retries=3, initial_backoff_s=0.001, _run_hook=hook)
     proj = _tmp_proj()
     result = v.validate(str(proj), {})  # 没提供归档，只跑 cargo build+test=2 条
@@ -133,11 +160,17 @@ def test_validate_retry_succeeds_on_second_attempt():
     def fail_first(cmd, cwd, attempt):
         state["count"] += 1
         rc = 0 if state["count"] >= 2 else 1
-        return CommandRun(cmd=list(cmd), cwd=cwd, attempt=attempt,
-                          returncode=rc, stdout=f"a{attempt}", stderr="", duration_ms=1)
+        return CommandRun(
+            cmd=list(cmd),
+            cwd=cwd,
+            attempt=attempt,
+            returncode=rc,
+            stdout=f"a{attempt}",
+            stderr="",
+            duration_ms=1,
+        )
 
-    hook = _fake_runner_factory({"build": fail_first, "test": 0,
-                                 "tar": 0, "unzip": 0})
+    hook = _fake_runner_factory({"build": fail_first, "test": 0, "tar": 0, "unzip": 0})
     v = Validator(retries=3, initial_backoff_s=0.001, _run_hook=hook)
     proj = _tmp_proj()
     result = v.validate(str(proj), {"tar_gz": "x", "zip": "y"})
@@ -155,15 +188,21 @@ def test_validate_finds_artifacts_by_suffix_when_key_missing():
 
     def record(cmd, cwd, attempt):
         hook_log.append(tuple(cmd))
-        return CommandRun(cmd=list(cmd), cwd=cwd, attempt=attempt,
-                          returncode=0, stdout="", stderr="", duration_ms=1)
+        return CommandRun(
+            cmd=list(cmd),
+            cwd=cwd,
+            attempt=attempt,
+            returncode=0,
+            stdout="",
+            stderr="",
+            duration_ms=1,
+        )
 
     hook = _fake_runner_factory({"build": 0, "test": 0, "tar": record, "unzip": record})
     v = Validator(_run_hook=hook)
     proj = _tmp_proj()
     # 用非标准 key，但 value 带正确后缀
-    arts = {"pkg_a": "/tmp/more_os_native_runs/p.tar.gz",
-            "pkg_b": "/tmp/more_os_native_runs/q.zip"}
+    arts = {"pkg_a": "/tmp/more_os_native_runs/p.tar.gz", "pkg_b": "/tmp/more_os_native_runs/q.zip"}
     result = v.validate(str(proj), arts)
     assert result.pass_ is True
     assert result.total_commands == 4
@@ -178,14 +217,28 @@ def test_validate_finds_artifacts_by_suffix_when_key_missing():
 def test_validation_result_helper_methods():
     """ValidationResult.stdout_of / stderr_of / passed_commands / total_commands 边角行为。"""
     r = ValidationResult(pass_=False)
-    r.command_results.append(CommandRun(
-        cmd=["a"], cwd="/", attempt=1, returncode=1,
-        stdout="out-a", stderr="err-a", duration_ms=1,
-    ))
-    r.command_results.append(CommandRun(
-        cmd=["b"], cwd="/", attempt=1, returncode=0,
-        stdout="out-b", stderr="", duration_ms=1,
-    ))
+    r.command_results.append(
+        CommandRun(
+            cmd=["a"],
+            cwd="/",
+            attempt=1,
+            returncode=1,
+            stdout="out-a",
+            stderr="err-a",
+            duration_ms=1,
+        )
+    )
+    r.command_results.append(
+        CommandRun(
+            cmd=["b"],
+            cwd="/",
+            attempt=1,
+            returncode=0,
+            stdout="out-b",
+            stderr="",
+            duration_ms=1,
+        )
+    )
     assert r.total_commands == 2
     assert r.passed_commands == 1
     assert r.stdout_of(0) == "out-a"

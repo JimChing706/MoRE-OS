@@ -166,14 +166,18 @@ class ProvenanceLayer:
     def _resolve_task_blocking_level(task_id: str) -> str | None:
         try:
             import pathlib as _pl
+
             base = _pl.Path(__file__).resolve().parents[3] / "data" / "tasks.db"
             import os as _os
+
             env_path = _os.environ.get("MORE_TASKS_DB_PATH")
             p = _pl.Path(env_path) if env_path else _pl.Path(base)
             if not p.is_file():
                 return None
             with sqlite3.connect(str(p), timeout=3.0) as conn:
-                row = conn.execute("SELECT context FROM tasks WHERE task_id=?", (task_id,)).fetchone()
+                row = conn.execute(
+                    "SELECT context FROM tasks WHERE task_id=?", (task_id,)
+                ).fetchone()
                 if row is None:
                     return None
                 try:
@@ -228,7 +232,7 @@ class ProvenanceLayer:
                 bl_src = bl_src or latest_payload_local["payload"].get("validation_blocking_level")
         if bl_src is None:
             bl_src = self._resolve_task_blocking_level(task_id)
-        blocking_level = (str(bl_src).lower() if bl_src is not None else "hard_block")
+        blocking_level = str(bl_src).lower() if bl_src is not None else "hard_block"
         is_blocking_disabled = blocking_level in {"off", "warn"}
 
         blocked = False
@@ -251,18 +255,14 @@ class ProvenanceLayer:
                     vpass = nested.get("validation_pass")
             if vpass is False and not is_blocking_disabled:
                 blocked = True
-                warnings.append(
-                    "deliverable blocked: validation_pass=False on the final record"
-                )
+                warnings.append("deliverable blocked: validation_pass=False on the final record")
             elif vpass is False and is_blocking_disabled:
                 warnings.append(
                     f"validation_pass=False but blocking_level={blocking_level}; skip release-block"
                 )
             if latest_payload_local.get("final_status") == "failed" and not is_blocking_disabled:
                 blocked = True
-                warnings.append(
-                    "deliverable blocked: final_status=failed on the latest record"
-                )
+                warnings.append("deliverable blocked: final_status=failed on the latest record")
             elif latest_payload_local.get("final_status") == "failed" and is_blocking_disabled:
                 warnings.append(
                     f"final_status=failed but blocking_level={blocking_level}; skip release-block"
@@ -325,9 +325,7 @@ class ProvenanceLayer:
             if task_id is None:
                 self._conn.execute("DELETE FROM provenance_records")
             else:
-                self._conn.execute(
-                    "DELETE FROM provenance_records WHERE task_id = ?", (task_id,)
-                )
+                self._conn.execute("DELETE FROM provenance_records WHERE task_id = ?", (task_id,))
             self._conn.commit()
 
     def get_channel_counters(self) -> dict[str, int]:

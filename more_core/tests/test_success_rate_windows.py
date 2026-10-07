@@ -140,7 +140,11 @@ def test_overview_exposes_recent_dual_window(core):
         body = client.get("/api/v1/metrics/overview?window_s=3600").json()
     recent = body["recent"]
     for key in (
-        "delivery_1h_success_rate", "delivery_24h_success_rate", "delivery_trend",
-        "skills_1h_success_rate", "skills_24h_success_rate", "skills_trend",
+        "delivery_1h_success_rate",
+        "delivery_24h_success_rate",
+        "delivery_trend",
+        "skills_1h_success_rate",
+        "skills_24h_success_rate",
+        "skills_trend",
     ):
         assert key in recent, key

@@ -18,9 +18,7 @@ import ipaddress
 from urllib.parse import urlparse
 
 # RFC 1918 + loopback + link-local + unspecified + CGNAT blocks
-_PRIVATE_NETWORKS: tuple[
-    ipaddress.IPv4Network | ipaddress.IPv6Network, ...
-] = (
+_PRIVATE_NETWORKS: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = (
     ipaddress.ip_network("10.0.0.0/8"),
     ipaddress.ip_network("172.16.0.0/12"),
     ipaddress.ip_network("192.168.0.0/16"),

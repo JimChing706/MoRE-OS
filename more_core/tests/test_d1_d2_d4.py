@@ -17,14 +17,26 @@ from more_core.codegen.gates import derive_required_symbols
 @pytest.mark.parametrize(
     "checks,artifacts,expected",
     [
-        ({"sandbox": False}, {"last_error": "NameError: name 'x' is not defined"},
-         EscalationCause.CODE_ERROR),
-        ({"sandbox": False}, {"last_error": "sandbox timeout", "timed_out": True},
-         EscalationCause.SANDBOX_TIMEOUT),
-        ({"sandbox": False}, {"last_error": "unknown tool: python_exec"},
-         EscalationCause.SANDBOX_UNAVAILABLE),
-        ({"sandbox": True, "assertions": False, "stagnant": True},
-         {"last_error": "AssertionError: missing symbol"}, EscalationCause.ASSERTIONS_FAILED),
+        (
+            {"sandbox": False},
+            {"last_error": "NameError: name 'x' is not defined"},
+            EscalationCause.CODE_ERROR,
+        ),
+        (
+            {"sandbox": False},
+            {"last_error": "sandbox timeout", "timed_out": True},
+            EscalationCause.SANDBOX_TIMEOUT,
+        ),
+        (
+            {"sandbox": False},
+            {"last_error": "unknown tool: python_exec"},
+            EscalationCause.SANDBOX_UNAVAILABLE,
+        ),
+        (
+            {"sandbox": True, "assertions": False, "stagnant": True},
+            {"last_error": "AssertionError: missing symbol"},
+            EscalationCause.ASSERTIONS_FAILED,
+        ),
         ({"sandbox": True, "review": "rejected"}, {}, EscalationCause.REVIEW_REJECTED),
         ({"blocked": True}, {"violations": ["os.system"]}, EscalationCause.SAFETY_BLOCKED),
     ],
@@ -36,10 +48,12 @@ def test_escalation_cause_classification(checks, artifacts, expected):
 
 
 def test_timeout_and_unavailable_are_infra_causes():
-    t = classify_escalation(decision="escalated", checks={"sandbox": False},
-                            artifacts={"last_error": "timed out"})
-    u = classify_escalation(decision="escalated", checks={"sandbox": False},
-                            artifacts={"last_error": "unknown tool: x"})
+    t = classify_escalation(
+        decision="escalated", checks={"sandbox": False}, artifacts={"last_error": "timed out"}
+    )
+    u = classify_escalation(
+        decision="escalated", checks={"sandbox": False}, artifacts={"last_error": "unknown tool: x"}
+    )
     assert t.is_infra and u.is_infra
 
 
@@ -79,11 +93,20 @@ def test_controller_records_cause_in_artifacts():
     from more_core.tools.registry import ToolResult
 
     verdict = adjudicate_codegen(
-        {"sandbox_result": ToolResult(tool="python_exec", success=False, output="",
-                                      error="NameError: name 'x' is not defined"),
-         "code_fix_iterations": 3},
-        scope="code", sbx_success=False, max_rounds=3,
-        assertions_required=False, run_ctx=None,
+        {
+            "sandbox_result": ToolResult(
+                tool="python_exec",
+                success=False,
+                output="",
+                error="NameError: name 'x' is not defined",
+            ),
+            "code_fix_iterations": 3,
+        },
+        scope="code",
+        sbx_success=False,
+        max_rounds=3,
+        assertions_required=False,
+        run_ctx=None,
     )
     assert verdict.artifacts["cause"] == "code_error"
     assert "NameError" in verdict.artifacts["cause_detail"]
@@ -101,8 +124,8 @@ def test_controller_records_cause_in_artifacts():
         ("实现函数 merge_intervals(intervals) 合并区间", ["merge_intervals"]),
         ("写一个 `LRUCache` 类", ["LRUCache"]),
         ("实现 def transfer(a, b) 转账", ["transfer"]),
-        ("写一段优雅的代码，注意可读性", []),          # 无代码式符号 → 不派生
-        ("调用 print(x) 输出", []),                   # 排除内置函数
+        ("写一段优雅的代码，注意可读性", []),  # 无代码式符号 → 不派生
+        ("调用 print(x) 输出", []),  # 排除内置函数
     ],
 )
 def test_derive_required_symbols_is_conservative(query, expected):
@@ -119,10 +142,10 @@ def test_assertions_default_on_when_symbols_derivable():
 def test_assertions_explicit_wins_and_can_be_disabled():
     from more_core.layers.l0_execution import ExecutionLayer
 
-    assert ExecutionLayer._resolve_assertions(
-        {"assertions": ["assert f() == 1"]}, "f()") == ["assert f() == 1"]
-    assert ExecutionLayer._resolve_assertions(
-        {"require_assertions": False}, "f()") is None
+    assert ExecutionLayer._resolve_assertions({"assertions": ["assert f() == 1"]}, "f()") == [
+        "assert f() == 1"
+    ]
+    assert ExecutionLayer._resolve_assertions({"require_assertions": False}, "f()") is None
 
 
 def test_assertions_none_when_nothing_derivable():
@@ -140,8 +163,12 @@ def test_ledger_stores_stage_timings(tmp_path):
     from more_core.codegen.delivery_ledger import DeliveryLedger
 
     led = DeliveryLedger(tmp_path / "l.db")
-    led.record(task_id="t1", status="delivered", task_type="code_generation",
-               stage_timings={"L4": 120.5, "L1": 30.0, "L0": 800.0})
+    led.record(
+        task_id="t1",
+        status="delivered",
+        task_type="code_generation",
+        stage_timings={"L4": 120.5, "L1": 30.0, "L0": 800.0},
+    )
     rec = led.latest("t1")
     assert rec.stage_timings["L0"] == 800.0
     led.close()
@@ -152,8 +179,7 @@ def test_ledger_aggregates_stage_percentiles(tmp_path):
 
     led = DeliveryLedger(tmp_path / "l.db")
     for i, l0 in enumerate([100.0, 300.0, 200.0]):
-        led.record(task_id=f"t{i}", status="delivered",
-                   stage_timings={"L0": l0, "L4": 50.0})
+        led.record(task_id=f"t{i}", status="delivered", stage_timings={"L0": l0, "L4": 50.0})
     stats = led.stats(86400)
     assert stats["stage_ms_p50"]["L0"] == 200.0
     assert stats["stage_ms_p50"]["L4"] == 50.0
@@ -166,8 +192,13 @@ def test_stats_exposes_blocked_by_cause_and_infra(tmp_path):
     led = DeliveryLedger(tmp_path / "l.db")
     led.record(task_id="ok", status="delivered")
     led.record(task_id="b1", status="blocked", gates_passed=True, cause="code_error")
-    led.record(task_id="b2", status="blocked", gates_passed=True,
-               cause="sandbox_unavailable", is_infra=True)
+    led.record(
+        task_id="b2",
+        status="blocked",
+        gates_passed=True,
+        cause="sandbox_unavailable",
+        is_infra=True,
+    )
     stats = led.stats(86400)
     assert stats["blocked_by_cause"] == {"code_error": 1, "sandbox_unavailable": 1}
     assert stats["infra_blocked"] == 1
@@ -193,8 +224,11 @@ async def test_gate_block_records_cause_end_to_end(tmp_path, monkeypatch):
         async def generate(self, req, **kw):  # noqa: ANN001
             return LLMResponse(
                 content="```python\nsorted(xs, [REDACTED] k: k)\n```",
-                provider="fake", model="m",
-                prompt_tokens=100, completion_tokens=200, latency_ms=5.0,
+                provider="fake",
+                model="m",
+                prompt_tokens=100,
+                completion_tokens=200,
+                latency_ms=5.0,
             )
 
         async def health(self):
@@ -211,9 +245,13 @@ async def test_gate_block_records_cause_end_to_end(tmp_path, monkeypatch):
     monkeypatch.setenv("MORE_DELIVERY_LEDGER_DB", str(tmp_path / "ledger.db"))
 
     settings = Settings(
-        providers=[], fallback_chain=[], enable_evolution=False,
-        enable_metacognition=False, enable_symbolic=True,
-        codegen_candidates=1, codegen_review=False,
+        providers=[],
+        fallback_chain=[],
+        enable_evolution=False,
+        enable_metacognition=False,
+        enable_symbolic=True,
+        codegen_candidates=1,
+        codegen_review=False,
     )
     core = MoRECore(settings)
     core.llm = _BrokenLLM()
@@ -246,9 +284,9 @@ async def test_gate_block_records_cause_end_to_end(tmp_path, monkeypatch):
 @pytest.mark.parametrize(
     "assertions",
     [
-        ["callable(globals().get('f'))"],          # 表达式
-        ["assert f() == 1"],                        # 完整语句
-        ["assert f() == 1, 'msg'"],                 # 带消息的完整语句
+        ["callable(globals().get('f'))"],  # 表达式
+        ["assert f() == 1"],  # 完整语句
+        ["assert f() == 1, 'msg'"],  # 带消息的完整语句
     ],
 )
 def test_verification_program_is_always_parsable(assertions):
@@ -257,7 +295,7 @@ def test_verification_program_is_always_parsable(assertions):
     from more_core.layers.l0_execution import ExecutionLayer
 
     program = ExecutionLayer._build_verification_program("def f():\n    return 1", assertions)
-    ast.parse(program)          # 语法非法会直接抛 SyntaxError
+    ast.parse(program)  # 语法非法会直接抛 SyntaxError
 
 
 def test_assertion_expression_not_double_wrapped():

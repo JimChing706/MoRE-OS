@@ -125,7 +125,9 @@ class CronParser:
                     start_str, end_str = base.split("-")
                     values.extend(range(int(start_str), int(end_str) + 1, step))
                 else:
-                    values.extend(range(cls._parse_single(base, min_val, max_val), max_val + 1, step))
+                    values.extend(
+                        range(cls._parse_single(base, min_val, max_val), max_val + 1, step)
+                    )
             elif "-" in part:
                 start_str, end_str = part.split("-")
                 start = int(start_str)
@@ -145,8 +147,13 @@ class CronParser:
         Supports 0-6 (0 = Sunday) and 7 (also Sunday), plus names SUN-SAT.
         """
         names = {
-            "sun": 0, "mon": 1, "tue": 2, "wed": 3,
-            "thu": 4, "fri": 5, "sat": 6,
+            "sun": 0,
+            "mon": 1,
+            "tue": 2,
+            "wed": 3,
+            "thu": 4,
+            "fri": 5,
+            "sat": 6,
         }
         values: list[int] = []
         for part in field.split(","):

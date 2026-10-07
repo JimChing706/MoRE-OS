@@ -4,21 +4,30 @@ import asyncio
 import pytest
 
 from more_core.workflows.engine import (
-    WorkflowEngine, WorkflowDefinition, WorkflowStep,
-    WorkflowRun, WorkflowStatus, StepStatus, StepType,
+    WorkflowEngine,
+    WorkflowDefinition,
+    WorkflowStep,
+    WorkflowRun,
+    WorkflowStatus,
+    StepStatus,
+    StepType,
 )
 from more_core.deploy.manager import (
-    DeploymentManager, DeploymentStatus, DeploymentType,
+    DeploymentManager,
+    DeploymentStatus,
+    DeploymentType,
 )
 from more_core.runtime.sessions import SessionManager
 
 
 # -- Workflow Engine -------------------------------------------------------
 
+
 def test_workflow_registration():
     engine = WorkflowEngine()
     defn = WorkflowDefinition(
-        id="wf1", name="Test Workflow",
+        id="wf1",
+        name="Test Workflow",
         steps=[WorkflowStep(id="s1", name="step1", type=StepType.TASK)],
     )
     engine.register_workflow(defn)
@@ -37,13 +46,16 @@ def test_workflow_unregister():
 @pytest.mark.asyncio
 async def test_workflow_run_simple():
     engine = WorkflowEngine()
+
     # Register a simple executor for TASK type
     async def task_executor(step, ctx):
         return f"done_{step.id}"
+
     engine.register_executor(StepType.TASK, task_executor)
 
     defn = WorkflowDefinition(
-        id="wf_test", name="Simple",
+        id="wf_test",
+        name="Simple",
         steps=[
             WorkflowStep(id="s1", name="step1", type=StepType.TASK),
             WorkflowStep(id="s2", name="step2", type=StepType.TASK, depends_on=["s1"]),
@@ -65,10 +77,12 @@ async def test_workflow_run_parallel_steps():
     async def task_executor(step, ctx):
         results.append(step.id)
         return step.id
+
     engine.register_executor(StepType.TASK, task_executor)
 
     defn = WorkflowDefinition(
-        id="wf_par", name="Parallel",
+        id="wf_par",
+        name="Parallel",
         steps=[
             WorkflowStep(id="a", name="A", type=StepType.TASK),
             WorkflowStep(id="b", name="B", type=StepType.TASK),
@@ -90,10 +104,12 @@ async def test_workflow_run_with_failure():
 
     async def fail_executor(step, ctx):
         raise RuntimeError("intentional failure")
+
     engine.register_executor(StepType.TASK, fail_executor)
 
     defn = WorkflowDefinition(
-        id="wf_fail", name="Failing",
+        id="wf_fail",
+        name="Failing",
         steps=[WorkflowStep(id="s1", name="failing_step", type=StepType.TASK)],
     )
     engine.register_workflow(defn)
@@ -106,7 +122,8 @@ async def test_workflow_run_with_failure():
 async def test_workflow_delay_step():
     engine = WorkflowEngine()
     defn = WorkflowDefinition(
-        id="wf_delay", name="Delay Test",
+        id="wf_delay",
+        name="Delay Test",
         steps=[WorkflowStep(id="d1", name="wait", type=StepType.DELAY, config={"seconds": 0.1})],
     )
     engine.register_workflow(defn)
@@ -121,10 +138,12 @@ async def test_workflow_cancel():
 
     async def slow_executor(step, ctx):
         await asyncio.sleep(10)
+
     engine.register_executor(StepType.TASK, slow_executor)
 
     defn = WorkflowDefinition(
-        id="wf_cancel", name="Cancellable",
+        id="wf_cancel",
+        name="Cancellable",
         steps=[WorkflowStep(id="s1", name="slow", type=StepType.TASK)],
     )
     engine.register_workflow(defn)
@@ -142,13 +161,17 @@ async def test_workflow_conditional_skip():
 
     async def task_executor(step, ctx):
         return "ok"
+
     engine.register_executor(StepType.TASK, task_executor)
 
     defn = WorkflowDefinition(
-        id="wf_cond", name="Conditional",
+        id="wf_cond",
+        name="Conditional",
         steps=[
             WorkflowStep(id="s1", name="always", type=StepType.TASK),
-            WorkflowStep(id="s2", name="skipped", type=StepType.TASK, condition="ctx.get('run_s2', False)"),
+            WorkflowStep(
+                id="s2", name="skipped", type=StepType.TASK, condition="ctx.get('run_s2', False)"
+            ),
         ],
     )
     engine.register_workflow(defn)
@@ -168,7 +191,9 @@ def test_workflow_stats():
 
 def test_workflow_run_summary():
     run = WorkflowRun(
-        run_id="r1", workflow_id="w1", workflow_name="Test",
+        run_id="r1",
+        workflow_id="w1",
+        workflow_name="Test",
         steps=[
             WorkflowStep(id="s1", name="a", type=StepType.TASK, status=StepStatus.SUCCESS),
             WorkflowStep(id="s2", name="b", type=StepType.TASK, status=StepStatus.RUNNING),
@@ -180,6 +205,7 @@ def test_workflow_run_summary():
 
 
 # -- Deployment Manager ----------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_deploy_and_list():
@@ -246,6 +272,7 @@ async def test_deploy_filter_by_type():
 
 # -- Session Manager -------------------------------------------------------
 
+
 def test_session_create():
     mgr = SessionManager()
     session = mgr.create_session("user1", user_name="Alice", role="operator")
@@ -306,6 +333,7 @@ def test_session_expired():
     mgr = SessionManager(session_timeout_s=0.01)
     s = mgr.create_session("u1")
     import time
+
     time.sleep(0.02)
     assert mgr.get_session(s.session_id) is None
 
@@ -315,6 +343,7 @@ def test_session_cleanup():
     mgr.create_session("u1")
     mgr.create_session("u2")
     import time
+
     time.sleep(0.02)
     removed = mgr.cleanup_expired()
     assert removed == 2

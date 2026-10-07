@@ -65,12 +65,9 @@ def _make_ctx(
 
 
 class TestGuardGate:
-
     @pytest.mark.asyncio
     async def test_evolution_disabled_returns_early(self):
-        with patch(
-            "more_core.layers.l2_evolution.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l2_evolution.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
 
             ctx = _make_ctx(
@@ -85,9 +82,7 @@ class TestGuardGate:
 
     @pytest.mark.asyncio
     async def test_disabled_when_settings_off(self):
-        with patch(
-            "more_core.layers.l2_evolution.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l2_evolution.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
 
             ctx = _make_ctx(
@@ -99,9 +94,7 @@ class TestGuardGate:
 
     @pytest.mark.asyncio
     async def test_disabled_when_request_disallows(self):
-        with patch(
-            "more_core.layers.l2_evolution.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l2_evolution.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
 
             ctx = _make_ctx(
@@ -113,12 +106,9 @@ class TestGuardGate:
 
 
 class TestEvolutionEnabled:
-
     @pytest.mark.asyncio
     async def test_snapshot_propose_evaluate_cycle(self):
-        with patch(
-            "more_core.layers.l2_evolution.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l2_evolution.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
 
             ctx = _make_ctx(
@@ -133,9 +123,7 @@ class TestEvolutionEnabled:
 
     @pytest.mark.asyncio
     async def test_variant_id_in_output(self):
-        with patch(
-            "more_core.layers.l2_evolution.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l2_evolution.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
 
             ctx = _make_ctx(
@@ -147,12 +135,9 @@ class TestEvolutionEnabled:
 
 
 class TestVariantState:
-
     @pytest.mark.asyncio
     async def test_verified_variant_high_confidence(self):
-        with patch(
-            "more_core.layers.l2_evolution.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l2_evolution.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
 
             ctx = _make_ctx(
@@ -167,9 +152,7 @@ class TestVariantState:
 
     @pytest.mark.asyncio
     async def test_unverified_variant_quarantined(self):
-        with patch(
-            "more_core.layers.l2_evolution.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l2_evolution.get_incident_manager") as mock_get_incident:
             mgr = MagicMock()
             mgr.handle_dgm_variant_rejected = AsyncMock()
             mock_get_incident.return_value = mgr
@@ -187,12 +170,9 @@ class TestVariantState:
 
 
 class TestReport:
-
     @pytest.mark.asyncio
     async def test_report_included_when_present(self):
-        with patch(
-            "more_core.layers.l2_evolution.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l2_evolution.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
 
             ctx = _make_ctx(
@@ -210,9 +190,7 @@ class TestReport:
 
     @pytest.mark.asyncio
     async def test_report_absent_when_none(self):
-        with patch(
-            "more_core.layers.l2_evolution.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l2_evolution.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
 
             ctx = _make_ctx(
@@ -226,12 +204,9 @@ class TestReport:
 
 
 class TestLLMVariants:
-
     @pytest.mark.asyncio
     async def test_llm_variant_path_when_enabled(self):
-        with patch(
-            "more_core.layers.l2_evolution.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l2_evolution.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
 
             ctx = _make_ctx(
@@ -246,9 +221,7 @@ class TestLLMVariants:
 
     @pytest.mark.asyncio
     async def test_standard_variant_path_when_llm_disabled(self):
-        with patch(
-            "more_core.layers.l2_evolution.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l2_evolution.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
 
             ctx = _make_ctx(
@@ -263,12 +236,9 @@ class TestLLMVariants:
 
 
 class TestIncidentResponse:
-
     @pytest.mark.asyncio
     async def test_unverified_triggers_incident_with_reason(self):
-        with patch(
-            "more_core.layers.l2_evolution.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l2_evolution.get_incident_manager") as mock_get_incident:
             mgr = MagicMock()
             mgr.handle_dgm_variant_rejected = AsyncMock()
             mock_get_incident.return_value = mgr
@@ -290,9 +260,7 @@ class TestIncidentResponse:
 
     @pytest.mark.asyncio
     async def test_unverified_without_report_uses_default_reason(self):
-        with patch(
-            "more_core.layers.l2_evolution.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l2_evolution.get_incident_manager") as mock_get_incident:
             mgr = MagicMock()
             mgr.handle_dgm_variant_rejected = AsyncMock()
             mock_get_incident.return_value = mgr
@@ -312,16 +280,13 @@ class TestIncidentResponse:
 
 
 class TestEdgeCases:
-
     @pytest.mark.asyncio
     async def test_layer_id(self):
         assert EvolutionLayer().layer_id == LayerId.L2
 
     @pytest.mark.asyncio
     async def test_description_contains_variant_id(self):
-        with patch(
-            "more_core.layers.l2_evolution.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l2_evolution.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
 
             ctx = _make_ctx(
@@ -333,9 +298,7 @@ class TestEdgeCases:
 
     @pytest.mark.asyncio
     async def test_scratch_contains_variant_and_report(self):
-        with patch(
-            "more_core.layers.l2_evolution.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l2_evolution.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
 
             ctx = _make_ctx(

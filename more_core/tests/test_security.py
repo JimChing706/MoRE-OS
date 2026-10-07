@@ -1,13 +1,20 @@
 """Tests for the security module (RBAC, taint tracking, output filter)."""
 
 from more_core.security.rbac import (
-    RBACManager, UnifiedRBAC, Permission, Role, require_permission, requires_permission, set_rbac_instance,
+    RBACManager,
+    UnifiedRBAC,
+    Permission,
+    Role,
+    require_permission,
+    requires_permission,
+    set_rbac_instance,
 )
 from more_core.security.taint import TaintTracker, TaintLabel, TaintedValue
 from more_core.security.output_filter import OutputFilter, FilterRule
 
 
 # -- RBAC ------------------------------------------------------------------
+
 
 def test_rbac_disabled_allows_all():
     mgr = RBACManager()
@@ -67,6 +74,7 @@ def test_rbac_get_user_permissions():
 
 # -- UnifiedRBAC (new API) ------------------------------------------------
 
+
 def test_unified_rbac_dev_mode_allows_all():
     """Without admin users configured, check() always returns True."""
     rbac = UnifiedRBAC()
@@ -93,6 +101,7 @@ def test_unified_rbac_check_raise():
     rbac = UnifiedRBAC(admin_users=["alice"])
     rbac.check_raise("alice", Permission.SYS_ADMIN)  # no error
     import pytest as _pytest
+
     with _pytest.raises(PermissionError, match="bob lacks permission"):
         rbac.check_raise("bob", Permission.TOOL_SHELL)
 
@@ -124,6 +133,7 @@ def test_unified_rbac_list_roles():
 
 # -- require_permission / requires_permission helpers ----------------------
 
+
 async def test_require_permission_dependency_allows_when_no_rbac():
     """When no global RBAC is set, the dependency is a no-op."""
     set_rbac_instance(None)
@@ -136,6 +146,7 @@ async def test_require_permission_dependency_blocks_unauthorized():
     set_rbac_instance(rbac)
     dep = require_permission(Permission.TOOL_SHELL)
     import pytest as _pytest
+
     with _pytest.raises(PermissionError):
         await dep("bob")
     set_rbac_instance(None)  # cleanup
@@ -155,6 +166,7 @@ async def test_requires_permission_decorator_pops_user_id():
     assert result["path"] == "/tmp"
 
     import pytest as _pytest
+
     with _pytest.raises(PermissionError):
         await fake_handler({"_user_id": "bob", "path": "/tmp"})
 
@@ -162,6 +174,7 @@ async def test_requires_permission_decorator_pops_user_id():
 
 
 # -- Backward compat -------------------------------------------------------
+
 
 def test_legacy_rbac_manager_still_works():
     """Deprecated RBACManager should preserve its original behavior."""
@@ -177,6 +190,7 @@ def test_legacy_rbac_manager_still_works():
 
 
 # -- Taint Tracking --------------------------------------------------------
+
 
 def test_taint_clean_value_is_trusted():
     tv = TaintedValue(value="hello", labels=TaintLabel.CLEAN)
@@ -216,6 +230,7 @@ def test_taint_tracker_untracked_is_ok():
 
 
 # -- Output Filter ---------------------------------------------------------
+
 
 def test_output_filter_redacts_api_key():
     f = OutputFilter()
@@ -283,7 +298,11 @@ def test_output_filter_stats():
 
 def test_output_filter_custom_rule():
     f = OutputFilter(rules=[])
-    f.add_rule(FilterRule(name="ssn", pattern=__import__("re").compile(r"\d{3}-\d{2}-\d{4}"), replacement="[SSN]"))
+    f.add_rule(
+        FilterRule(
+            name="ssn", pattern=__import__("re").compile(r"\d{3}-\d{2}-\d{4}"), replacement="[SSN]"
+        )
+    )
     result = f.filter("SSN is 123-45-6789")
     assert "123-45-6789" not in result
     assert "[SSN]" in result

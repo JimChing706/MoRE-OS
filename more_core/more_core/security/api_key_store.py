@@ -276,9 +276,7 @@ class APIKeyStore:
 
     def _migrate(self) -> None:
         """为既有部署补齐新增列（幂等）。"""
-        existing = {
-            str(r["name"]) for r in self._conn.execute("PRAGMA table_info(api_keys)")
-        }
+        existing = {str(r["name"]) for r in self._conn.execute("PRAGMA table_info(api_keys)")}
         additions = {
             "owner": "TEXT NOT NULL DEFAULT ''",
             "consumer": "TEXT NOT NULL DEFAULT ''",
@@ -407,9 +405,16 @@ class APIKeyStore:
         else:
             raw = generator()
         return raw, self.issue(
-            raw_key=raw, label=label, scopes=scopes, ttl_seconds=ttl_seconds,
-            owner=owner, consumer=consumer, purpose=purpose,
-            issued_by=issued_by, channel=channel, quota_per_min=quota_per_min,
+            raw_key=raw,
+            label=label,
+            scopes=scopes,
+            ttl_seconds=ttl_seconds,
+            owner=owner,
+            consumer=consumer,
+            purpose=purpose,
+            issued_by=issued_by,
+            channel=channel,
+            quota_per_min=quota_per_min,
         )
 
     def verify(self, raw_key: str | None, *, touch: bool = True) -> APIKeyRecord | None:
@@ -463,8 +468,15 @@ class APIKeyStore:
                     """INSERT INTO api_key_usage (key_id, ts, endpoint, status,
                                                  latency_ms, tokens, ip)
                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (key_id, now_ts, endpoint[:200], int(status),
-                     float(latency_ms), int(tokens), ip[:64]),
+                    (
+                        key_id,
+                        now_ts,
+                        endpoint[:200],
+                        int(status),
+                        float(latency_ms),
+                        int(tokens),
+                        ip[:64],
+                    ),
                 )
                 self._conn.execute(
                     """UPDATE api_keys
@@ -475,8 +487,14 @@ class APIKeyStore:
                            first_used_at = COALESCE(first_used_at, ?),
                            denied_count = denied_count + ?
                        WHERE key_id = ?""",
-                    (int(tokens), now_iso, ip[:64], now_iso,
-                     0 if 200 <= int(status) < 400 else 1, key_id),
+                    (
+                        int(tokens),
+                        now_iso,
+                        ip[:64],
+                        now_iso,
+                        0 if 200 <= int(status) < 400 else 1,
+                        key_id,
+                    ),
                 )
                 self._conn.commit()
         except Exception:  # pragma: no cover - 用量写入不得影响主链路
@@ -554,12 +572,18 @@ class APIKeyStore:
             "failures": calls - ok,
             "success_rate": round(ok / calls, 3) if calls else 0.0,
             "tokens": sum(int(r["tokens"] or 0) for r in rows),
-            "latency_ms": {"avg": round(sum(lat) / len(lat), 1) if lat else 0.0,
-                           "p50": _pct(0.5), "p95": _pct(0.95), "max": round(lat[-1], 1) if lat else 0.0},
+            "latency_ms": {
+                "avg": round(sum(lat) / len(lat), 1) if lat else 0.0,
+                "p50": _pct(0.5),
+                "p95": _pct(0.95),
+                "max": round(lat[-1], 1) if lat else 0.0,
+            },
             "by_endpoint": dict(sorted(by_endpoint.items(), key=lambda kv: -kv[1])[:10]),
             "by_hour": dict(sorted(by_hour.items())),
-            "quota": {"limit_per_min": record.quota_per_min if record else None,
-                      "used_last_min": self.quota_check(key_id)[1]},
+            "quota": {
+                "limit_per_min": record.quota_per_min if record else None,
+                "used_last_min": self.quota_check(key_id)[1],
+            },
         }
 
     def usage_overview(self, *, window_s: int = 86400, top: int = 20) -> dict[str, Any]:
@@ -582,18 +606,23 @@ class APIKeyStore:
         out = []
         for r in rows:
             rec = self.get(str(r["key_id"]))
-            out.append({
-                "key_id": r["key_id"],
-                "owner": rec.owner if rec else "",
-                "consumer": rec.consumer if rec else "",
-                "label": rec.label if rec else "",
-                "calls": int(r["calls"] or 0),
-                "success": int(r["ok"] or 0),
-                "tokens": int(r["tokens"] or 0),
-                "avg_latency_ms": round(float(r["avg_latency"] or 0.0), 1),
-                "last_used_at": _iso(_dt.datetime.fromtimestamp(float(r["last_ts"]), _dt.timezone.utc))
-                if r["last_ts"] else None,
-            })
+            out.append(
+                {
+                    "key_id": r["key_id"],
+                    "owner": rec.owner if rec else "",
+                    "consumer": rec.consumer if rec else "",
+                    "label": rec.label if rec else "",
+                    "calls": int(r["calls"] or 0),
+                    "success": int(r["ok"] or 0),
+                    "tokens": int(r["tokens"] or 0),
+                    "avg_latency_ms": round(float(r["avg_latency"] or 0.0), 1),
+                    "last_used_at": _iso(
+                        _dt.datetime.fromtimestamp(float(r["last_ts"]), _dt.timezone.utc)
+                    )
+                    if r["last_ts"]
+                    else None,
+                }
+            )
         return {"window_s": int(window_s), "keys": out, "total_calls": sum(x["calls"] for x in out)}
 
     def attention(self, *, expiry_days: int = 14, stale_days: int = 30) -> dict[str, Any]:
@@ -619,8 +648,11 @@ class APIKeyStore:
             "expiring_soon": [r.as_dict() for r in expiring],
             "never_used": [r.as_dict() for r in unused],
             "expired_pending_purge": [r.as_dict() for r in expired],
-            "counts": {"expiring_soon": len(expiring), "never_used": len(unused),
-                       "expired_pending_purge": len(expired)},
+            "counts": {
+                "expiring_soon": len(expiring),
+                "never_used": len(unused),
+                "expired_pending_purge": len(expired),
+            },
         }
 
     def dispatch_batch(
@@ -735,9 +767,7 @@ class APIKeyStore:
 
     def list_keys(self, *, include_inactive: bool = True) -> list[APIKeyRecord]:
         with self._lock:
-            rows = self._conn.execute(
-                "SELECT * FROM api_keys ORDER BY created_at DESC"
-            ).fetchall()
+            rows = self._conn.execute("SELECT * FROM api_keys ORDER BY created_at DESC").fetchall()
         records = [_row_to_record(row) for row in rows]
         if include_inactive:
             return records

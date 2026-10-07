@@ -29,6 +29,7 @@ from more_core.router.layer_router import RoutingDecision
 # Helpers — mini bootstrap from test_orchestrator.py
 # ---------------------------------------------------------------------------
 
+
 def _make_core(**attrs: Any) -> Any:
     from more_core.runtime.orchestrator import MoRECore
 
@@ -130,6 +131,7 @@ def _execute_core() -> Any:
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def sample_itd_document() -> ImportTaskDocument:

@@ -53,7 +53,7 @@ class _FakeClient:
 @pytest.fixture()
 def client_and_fake(core):
     fake = _FakeClient()
-    core._mcp_client = fake       # mcp_client 是只读 property，需设私有字段
+    core._mcp_client = fake  # mcp_client 是只读 property，需设私有字段
     with TestClient(create_app(core)) as c:
         yield c, fake
 
@@ -118,9 +118,7 @@ def test_list_server_tools_not_connected(client_and_fake):
 def test_list_server_tools_ok(client_and_fake):
     c, fake = client_and_fake
     session = MagicMock()
-    session.list_tools = AsyncMock(
-        return_value=[Tool(name="read", description="read file")]
-    )
+    session.list_tools = AsyncMock(return_value=[Tool(name="read", description="read file")])
     fake._session_map["fs"] = session
     body = c.get("/api/v1/mcp/tools/fs").json()
     assert body["count"] == 1

@@ -25,9 +25,11 @@ def dgm(archive):
 
 @pytest.mark.asyncio
 async def test_simple_benchmark_pass():
-    bm = SimpleBenchmark([
-        BenchmarkCase(id="c1", input="hello", expected="hello"),
-    ])
+    bm = SimpleBenchmark(
+        [
+            BenchmarkCase(id="c1", input="hello", expected="hello"),
+        ]
+    )
     result = await bm.evaluate(bm.cases()[0], "hello world")
     assert result.passed
     assert result.score == 1.0
@@ -35,9 +37,11 @@ async def test_simple_benchmark_pass():
 
 @pytest.mark.asyncio
 async def test_simple_benchmark_fail():
-    bm = SimpleBenchmark([
-        BenchmarkCase(id="c1", input="hello", expected="xyz"),
-    ])
+    bm = SimpleBenchmark(
+        [
+            BenchmarkCase(id="c1", input="hello", expected="xyz"),
+        ]
+    )
     result = await bm.evaluate(bm.cases()[0], "hello world")
     assert not result.passed
     assert result.score == 0.0
@@ -69,14 +73,20 @@ async def test_dgm_evaluate_without_runner(dgm):
 
 @pytest.mark.asyncio
 async def test_benchmark_runner(core):
-    bm = SimpleBenchmark([
-        BenchmarkCase(id="c1", input="hello", expected="fake-reply"),
-    ])
+    bm = SimpleBenchmark(
+        [
+            BenchmarkCase(id="c1", input="hello", expected="fake-reply"),
+        ]
+    )
     runner = BenchmarkRunner(core)
     runner.register(bm)
     seed = EvolvedAgent(
-        id="test_agent", parent_id=None, generation=0,
-        branch="test", code="", performance=0.0,
+        id="test_agent",
+        parent_id=None,
+        generation=0,
+        branch="test",
+        code="",
+        performance=0.0,
     )
     report = await runner.run(seed, "simple")
     assert report.total == 1

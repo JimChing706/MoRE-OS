@@ -151,6 +151,7 @@ async def test_l0_uses_decomposed_subtasks(core):
     try:
         req = TaskRequest(type=TaskType.NLP_TASK, query="hello")
         from more_core.layers.base import LayerContext
+
         ctx = LayerContext(core=core, request=req)
         # Simulate L4 decomposition
         ctx.scratch["plan"] = {
@@ -160,6 +161,7 @@ async def test_l0_uses_decomposed_subtasks(core):
         }
 
         from more_core.layers.l0_execution import ExecutionLayer
+
         layer = ExecutionLayer()
         result = await layer.process(ctx)
         # Output should be "fake-reply" from the mock LLM
@@ -228,7 +230,12 @@ def test_complexity_bonus_capped():
 
 
 def test_request_context_lifecycle():
-    from more_core.core.request_context import RequestContext, set_context, get_context, clear_context
+    from more_core.core.request_context import (
+        RequestContext,
+        set_context,
+        get_context,
+        clear_context,
+    )
 
     assert get_context() is None
     ctx = RequestContext(task_id="t-123", actor="test_user")

@@ -93,14 +93,12 @@ def test_import_creates_tasks(client, monkeypatch):
     assert body["document_title"] == "需求文档"
     assert body["total_requirements"] == 2
     assert set(store.created) == {"REQ-001", "REQ-002"}
-    assert store.updated == []          # auto_start=false → 不启动
+    assert store.updated == []  # auto_start=false → 不启动
 
 
 def test_import_rejects_non_string_auto_start(client):
     """契约记录：body 类型为 dict[str,str]，非字符串字段会被 422 拒绝。"""
-    resp = client.post(
-        "/api/v1/requirements/import", json={"content": _DOC, "auto_start": False}
-    )
+    resp = client.post("/api/v1/requirements/import", json={"content": _DOC, "auto_start": False})
     assert resp.status_code == 422
 
 
@@ -126,9 +124,7 @@ def test_validate_requires_content(client):
 
 
 def test_validate_flags_missing_items_and_title(client):
-    body = client.post(
-        "/api/v1/requirements/validate", json={"content": "没有任何列表项"}
-    ).json()
+    body = client.post("/api/v1/requirements/validate", json={"content": "没有任何列表项"}).json()
     assert body["status"] == "success"
     assert body["valid"] is False
     fields = {i["field"] for i in body["issues"]}
@@ -140,7 +136,7 @@ def test_validate_ok_document(client):
     body = client.post("/api/v1/requirements/validate", json={"content": _DOC}).json()
     assert body["valid"] is True
     assert body["summary"]["total_items"] == 2
-    assert body["summary"]["info"] >= 1      # 未设置预计时间 → info
+    assert body["summary"]["info"] >= 1  # 未设置预计时间 → info
 
 
 # ---------------------------------------------------------------------------

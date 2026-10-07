@@ -135,7 +135,7 @@ async def test_health_ok_and_failure():
 @pytest.mark.asyncio
 async def test_get_client_creates_and_reuses():
     p = OllamaProvider("ollama", "http://x/", "m")
-    assert p._base == "http://x"          # endpoint 尾斜杠被规范化
+    assert p._base == "http://x"  # endpoint 尾斜杠被规范化
     first = p._get_client()
     assert p._get_client() is first
     await p.close()
@@ -145,7 +145,7 @@ async def test_get_client_creates_and_reuses():
 @pytest.mark.asyncio
 async def test_close_is_idempotent():
     p = OllamaProvider("ollama", "http://x", "m")
-    await p.close()                       # 未创建 client → 不应报错
+    await p.close()  # 未创建 client → 不应报错
     p._get_client()
     await p.close()
     await p.close()

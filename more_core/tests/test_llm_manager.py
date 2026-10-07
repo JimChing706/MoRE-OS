@@ -3,7 +3,7 @@
 import sys
 import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from more_core.llm.state_manager import LLMStateManager, LLMCallState, LLMUsageStats
 from more_core.llm.providers.ollama import OllamaProvider
@@ -55,14 +55,10 @@ class TestOllamaProvider:
 
     def test_ollama_provider(self):
         """Test Ollama provider configuration."""
-        provider = OllamaProvider(
-            name="ollama",
-            endpoint="http://localhost:11434",
-            model="llama2"
-        )
+        provider = OllamaProvider(name="ollama", endpoint="http://localhost:11434", model="llama2")
         assert provider.name == "ollama"
         # Check attributes exist
-        assert hasattr(provider, 'model')
+        assert hasattr(provider, "model")
 
 
 class TestLMStudioProvider:
@@ -71,9 +67,7 @@ class TestLMStudioProvider:
     def test_lmstudio_provider(self):
         """Test LM Studio provider configuration."""
         provider = LMStudioProvider(
-            name="lmstudio",
-            endpoint="http://localhost:1234",
-            model="local-model"
+            name="lmstudio", endpoint="http://localhost:1234", model="local-model"
         )
         assert provider.name == "lmstudio"
 
@@ -87,7 +81,7 @@ class TestDeepSeekProvider:
             name="deepseek",
             endpoint="https://api.deepseek.com",
             model="deepseek-chat",
-            api_key="test_key"
+            api_key="test_key",
         )
         assert provider.name == "deepseek"
 

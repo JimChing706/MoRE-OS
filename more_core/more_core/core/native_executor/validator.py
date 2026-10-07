@@ -19,7 +19,7 @@ import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Optional, Union
 
 from .types import AggregatedValidationResult, ValidationBlockingLevel
 
@@ -30,7 +30,7 @@ class CommandRun:
 
     cmd: list[str]
     cwd: str
-    attempt: int               # 第几次尝试（从 1 开始）
+    attempt: int  # 第几次尝试（从 1 开始）
     returncode: int
     stdout: str
     stderr: str
@@ -260,7 +260,11 @@ class Validator:
             stderr = completed.stderr or ""
         except subprocess.TimeoutExpired as e:
             rc = 124
-            stdout = (e.stdout or b"").decode("utf-8", errors="replace") if isinstance(e.stdout, (bytes, bytearray)) else (e.stdout or "")
+            stdout = (
+                (e.stdout or b"").decode("utf-8", errors="replace")
+                if isinstance(e.stdout, (bytes, bytearray))
+                else (e.stdout or "")
+            )
             stderr = f"TIMEOUT after {self.timeout_s}s: {e}"
         except FileNotFoundError as e:
             rc = 127

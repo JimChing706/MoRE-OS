@@ -98,11 +98,10 @@ class TestPing:
                 if not self._endpoint:
                     return BridgeStatus(False, 0.0, "", "endpoint not configured")
                 import time
+
                 t0 = time.perf_counter()
                 try:
-                    async with httpx.AsyncClient(
-                        transport=transport, timeout=5.0
-                    ) as h:
+                    async with httpx.AsyncClient(transport=transport, timeout=5.0) as h:
                         r = await h.get(self._endpoint.rstrip("/") + "/health")
                     latency = (time.perf_counter() - t0) * 1000
                     if 200 <= r.status_code < 300:
@@ -130,6 +129,7 @@ class TestPing:
         class _PingBridge(BaiLongmaBridge):
             async def ping(self) -> BridgeStatus:
                 import time
+
                 t0 = time.perf_counter()
                 try:
                     async with httpx.AsyncClient(transport=transport, timeout=5.0) as h:
@@ -168,17 +168,20 @@ class TestEcho:
             assert msg["role"] == "user"
             assert msg["parts"][0] == {"type": "text", "text": "ping-123"}
             assert msg["metadata"]["mode"] == "echo"
-            return httpx.Response(200, json={
-                "jsonrpc": "2.0",
-                "id": payload["id"],
-                "result": {
-                    "taskId": "t-echo",
-                    "status": {"state": "completed"},
-                    "messages": [
-                        {"role": "agent", "parts": [{"type": "text", "text": "ping-123"}]}
-                    ],
+            return httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": payload["id"],
+                    "result": {
+                        "taskId": "t-echo",
+                        "status": {"state": "completed"},
+                        "messages": [
+                            {"role": "agent", "parts": [{"type": "text", "text": "ping-123"}]}
+                        ],
+                    },
                 },
-            })
+            )
 
         b = _bridge_with_handler(handler)
         result = await b.echo("ping-123")
@@ -213,14 +216,17 @@ class TestDelegate:
             # *before* serialisation but _a2a_serialize only writes
             # parts/text. So the test verifies the bridge side didn't forget
             # task metadata via task-level metadata object.
-            return httpx.Response(200, json={
-                "jsonrpc": "2.0",
-                "id": payload["id"],
-                "result": {
-                    "taskId": "t-delegated-42",
-                    "status": {"state": "working"},
+            return httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": payload["id"],
+                    "result": {
+                        "taskId": "t-delegated-42",
+                        "status": {"state": "working"},
+                    },
                 },
-            })
+            )
 
         b = _bridge_with_handler(handler)
         task = await b.delegate_task(
@@ -238,6 +244,7 @@ class TestDelegate:
     @pytest.mark.anyio
     async def test_06_delegate_transport_error_returns_none(self):
         """HTTP 401 Unauthorized → bridge must return None, not raise."""
+
         def handler(request):
             return httpx.Response(401, content=b"unauthorized")
 
@@ -250,13 +257,17 @@ class TestDelegate:
     @pytest.mark.anyio
     async def test_07_delegate_jsonrpc_error_returns_none(self):
         """A2A returns {error} block → bridge must not raise; returns None."""
+
         def handler(request):
             payload = json.loads(request.content)
-            return httpx.Response(200, json={
-                "jsonrpc": "2.0",
-                "id": payload["id"],
-                "error": {"code": -32001, "message": "chassis overloaded"},
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": payload["id"],
+                    "error": {"code": -32001, "message": "chassis overloaded"},
+                },
+            )
 
         b = _bridge_with_handler(handler)
         task = await b.delegate_task(task_type="x", query="y")
@@ -273,20 +284,29 @@ class TestPollAndCancel:
             captured["payload"] = payload
             assert payload["method"] == "tasks/get"
             assert payload["params"]["taskId"] == "t-99"
-            return httpx.Response(200, json={
-                "jsonrpc": "2.0",
-                "id": payload["id"],
-                "result": {
-                    "taskId": "t-99",
-                    "status": {"state": "completed"},
-                    "messages": [
-                        {"messageId": "m-1", "role": "agent",
-                         "parts": [{"type": "text", "text": "def f(): return 42\n"}]},
-                        {"messageId": "m-2", "role": "user",
-                         "parts": [{"type": "text", "text": "please review"}]},
-                    ],
+            return httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": payload["id"],
+                    "result": {
+                        "taskId": "t-99",
+                        "status": {"state": "completed"},
+                        "messages": [
+                            {
+                                "messageId": "m-1",
+                                "role": "agent",
+                                "parts": [{"type": "text", "text": "def f(): return 42\n"}],
+                            },
+                            {
+                                "messageId": "m-2",
+                                "role": "user",
+                                "parts": [{"type": "text", "text": "please review"}],
+                            },
+                        ],
+                    },
                 },
-            })
+            )
 
         b = _bridge_with_handler(handler)
         task = await b.poll_task("t-99")
@@ -318,11 +338,14 @@ class TestPollAndCancel:
             call_log.append(payload)
             # First call → success; second call → HTTP 500 error
             if len(call_log) == 1:
-                return httpx.Response(200, json={
-                    "jsonrpc": "2.0",
-                    "id": payload["id"],
-                    "result": {"taskId": payload["params"]["taskId"], "cancelled": True},
-                })
+                return httpx.Response(
+                    200,
+                    json={
+                        "jsonrpc": "2.0",
+                        "id": payload["id"],
+                        "result": {"taskId": payload["params"]["taskId"], "cancelled": True},
+                    },
+                )
             return httpx.Response(500, content=b"boom")
 
         b = _bridge_with_handler(handler)

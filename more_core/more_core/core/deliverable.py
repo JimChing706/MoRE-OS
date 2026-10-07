@@ -21,6 +21,7 @@ from typing import Any
 
 # ── Deliverable check summary object ──────────────────────────────────────
 
+
 @dataclass
 class DeliverableCheckResult:
     """Result bundle returned by :func:`check_deliverable_contract`.
@@ -97,11 +98,12 @@ def check_deliverable_contract(
             complete, miss_list = True, []
         if miss_list:
             missing.extend(str(m) for m in miss_list)
+        if not complete and not missing:
+            # 契约自报"不完整"却未给出缺失明细：仍然拦截，避免静默放行。
+            missing.append("unspecified")
         if missing:
             result.ok = False
-            result.violations.extend(
-                f"missing_dimension:{m}" for m in dict.fromkeys(missing)
-            )
+            result.violations.extend(f"missing_dimension:{m}" for m in dict.fromkeys(missing))
         # 2) Kill-switch evaluation
         try:
             severity = contract.should_kill(

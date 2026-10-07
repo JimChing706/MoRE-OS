@@ -93,10 +93,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         from ...codegen.evolution_signal import compute_evolution_summary
 
         try:
-            project_root = (
-                getattr(getattr(core, "settings", None), "project_root", None)
-                or None
-            )
+            project_root = getattr(getattr(core, "settings", None), "project_root", None) or None
         except Exception:
             project_root = None
         summary = compute_evolution_summary(

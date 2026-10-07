@@ -1,6 +1,11 @@
 """Tests for the Slash Command Registry."""
 
-from more_core.commands.registry import CommandRegistry, Command, CommandSurface, register_builtin_commands
+from more_core.commands.registry import (
+    CommandRegistry,
+    Command,
+    CommandSurface,
+    register_builtin_commands,
+)
 
 
 def test_register_and_get():

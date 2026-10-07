@@ -457,10 +457,12 @@ def record_governance_event(
 
 # 判定"破坏性请求拦截"的规则集合：无论被最前线护栏(ZEN-19)还是 L3 深度
 # 规则(destructive_request_detection)拦下，都计入同一指标。
-_DESTRUCTIVE_RULES: frozenset[str] = frozenset({
-    "destructive_request_detection",
-    "zen_19_absolute_prohibition",
-})
+_DESTRUCTIVE_RULES: frozenset[str] = frozenset(
+    {
+        "destructive_request_detection",
+        "zen_19_absolute_prohibition",
+    }
+)
 
 
 def _load_json_list(raw: Any) -> list[str]:
@@ -484,10 +486,17 @@ def query_governance_stats(window_s: int = 3600) -> dict[str, Any]:
         destructive_blocks / by_rule / by_layer
     """
     empty: dict[str, Any] = {
-        "evaluations": 0, "requests": 0, "blocked": 0, "blocked_requests": 0,
-        "violations": 0, "passed": 0,
-        "blocked_rate": 0.0, "violation_rate": 0.0,
-        "destructive_blocks": 0, "by_rule": {}, "by_layer": {},
+        "evaluations": 0,
+        "requests": 0,
+        "blocked": 0,
+        "blocked_requests": 0,
+        "violations": 0,
+        "passed": 0,
+        "blocked_rate": 0.0,
+        "violation_rate": 0.0,
+        "destructive_blocks": 0,
+        "by_rule": {},
+        "by_layer": {},
         "window_s": int(window_s),
     }
     try:
@@ -552,7 +561,7 @@ def query_governance_stats(window_s: int = 3600) -> dict[str, Any]:
 
 # 治理告警阈值（可用 evaluate_governance_alerts 的 overrides 覆盖）
 _GOV_ALERT_DEFAULTS: dict[str, float] = {
-    "min_samples": 10,          # 样本太少不判"率"，避免噪声
+    "min_samples": 10,  # 样本太少不判"率"，避免噪声
     "blocked_rate_warn": 0.30,
     "blocked_rate_crit": 0.60,
     "destructive_blocks_warn": 1,
@@ -560,9 +569,7 @@ _GOV_ALERT_DEFAULTS: dict[str, float] = {
 }
 
 
-def evaluate_governance_alerts(
-    stats: dict[str, Any], **overrides: float
-) -> list[dict[str, Any]]:
+def evaluate_governance_alerts(stats: dict[str, Any], **overrides: float) -> list[dict[str, Any]]:
     """Pure threshold evaluation over :func:`query_governance_stats` output.
 
     Returns ``[{level, code, value, threshold, message}, ...]`` (empty = ok).
@@ -576,30 +583,46 @@ def evaluate_governance_alerts(
 
     if n >= int(cfg["min_samples"]):
         if rate >= float(cfg["blocked_rate_crit"]):
-            alerts.append({
-                "level": "critical", "code": "governance_blocked_rate",
-                "value": rate, "threshold": float(cfg["blocked_rate_crit"]),
-                "message": f"治理拦截率 {rate:.0%} ≥ 临界阈值 {cfg['blocked_rate_crit']:.0%}（样本 {n}）",
-            })
+            alerts.append(
+                {
+                    "level": "critical",
+                    "code": "governance_blocked_rate",
+                    "value": rate,
+                    "threshold": float(cfg["blocked_rate_crit"]),
+                    "message": f"治理拦截率 {rate:.0%} ≥ 临界阈值 {cfg['blocked_rate_crit']:.0%}（样本 {n}）",
+                }
+            )
         elif rate >= float(cfg["blocked_rate_warn"]):
-            alerts.append({
-                "level": "warning", "code": "governance_blocked_rate",
-                "value": rate, "threshold": float(cfg["blocked_rate_warn"]),
-                "message": f"治理拦截率 {rate:.0%} ≥ 告警阈值 {cfg['blocked_rate_warn']:.0%}（样本 {n}）",
-            })
+            alerts.append(
+                {
+                    "level": "warning",
+                    "code": "governance_blocked_rate",
+                    "value": rate,
+                    "threshold": float(cfg["blocked_rate_warn"]),
+                    "message": f"治理拦截率 {rate:.0%} ≥ 告警阈值 {cfg['blocked_rate_warn']:.0%}（样本 {n}）",
+                }
+            )
 
     if destructive >= int(cfg["destructive_blocks_crit"]):
-        alerts.append({
-            "level": "critical", "code": "destructive_request_blocks",
-            "value": destructive, "threshold": int(cfg["destructive_blocks_crit"]),
-            "message": f"破坏性请求拦截 {destructive} 次 ≥ 临界阈值 {int(cfg['destructive_blocks_crit'])}",
-        })
+        alerts.append(
+            {
+                "level": "critical",
+                "code": "destructive_request_blocks",
+                "value": destructive,
+                "threshold": int(cfg["destructive_blocks_crit"]),
+                "message": f"破坏性请求拦截 {destructive} 次 ≥ 临界阈值 {int(cfg['destructive_blocks_crit'])}",
+            }
+        )
     elif destructive >= int(cfg["destructive_blocks_warn"]):
-        alerts.append({
-            "level": "warning", "code": "destructive_request_blocks",
-            "value": destructive, "threshold": int(cfg["destructive_blocks_warn"]),
-            "message": f"破坏性请求拦截 {destructive} 次 ≥ 告警阈值 {int(cfg['destructive_blocks_warn'])}",
-        })
+        alerts.append(
+            {
+                "level": "warning",
+                "code": "destructive_request_blocks",
+                "value": destructive,
+                "threshold": int(cfg["destructive_blocks_warn"]),
+                "message": f"破坏性请求拦截 {destructive} 次 ≥ 告警阈值 {int(cfg['destructive_blocks_warn'])}",
+            }
+        )
     return alerts
 
 
@@ -645,10 +668,16 @@ def record_council_review(
 def query_council_stats(window_s: int = 3600) -> dict[str, Any]:
     """Aggregate L5 Council reviews: 下修率 / 共识分布 / 平均调整量。"""
     empty: dict[str, Any] = {
-        "reviews": 0, "downgraded": 0, "downgrade_rate": 0.0,
-        "divided": 0, "weak": 0, "high_risk_reviews": 0,
-        "avg_adjustment": 0.0, "min_adjustment": 0.0,
-        "by_consensus": {}, "window_s": int(window_s),
+        "reviews": 0,
+        "downgraded": 0,
+        "downgrade_rate": 0.0,
+        "divided": 0,
+        "weak": 0,
+        "high_risk_reviews": 0,
+        "avg_adjustment": 0.0,
+        "min_adjustment": 0.0,
+        "by_consensus": {},
+        "window_s": int(window_s),
     }
     try:
         conn = _get_conn()
@@ -741,12 +770,24 @@ def query_provider_health(window_s: int = 3600) -> dict[str, Any]:
     the server's model list — the silent failure that breaks the whole LLM chain.
     """
     empty: dict[str, Any] = {
-        "checked_at": 0.0, "ok": None, "degraded": None,
-        "providers": [], "chain_declared": [], "chain_registered": [],
-        "state_provider": "", "state_model": "", "state_model_present": None,
-        "warnings": [], "n_providers": 0, "n_unhealthy": 0,
-        "n_invalid_model": 0, "n_inference_failed": 0,
-        "snapshots": 0, "age_s": 0.0, "stale": False, "window_s": int(window_s),
+        "checked_at": 0.0,
+        "ok": None,
+        "degraded": None,
+        "providers": [],
+        "chain_declared": [],
+        "chain_registered": [],
+        "state_provider": "",
+        "state_model": "",
+        "state_model_present": None,
+        "warnings": [],
+        "n_providers": 0,
+        "n_unhealthy": 0,
+        "n_invalid_model": 0,
+        "n_inference_failed": 0,
+        "snapshots": 0,
+        "age_s": 0.0,
+        "stale": False,
+        "window_s": int(window_s),
     }
     try:
         conn = _get_conn()
@@ -768,14 +809,13 @@ def query_provider_health(window_s: int = 3600) -> dict[str, Any]:
         ).fetchone()["n"]
 
         import json
+
         try:
             report = json.loads(latest["report"] or "{}")
         except Exception:
             report = {}
         providers = report.get("providers") or []
-        n_inference_failed = sum(
-            1 for pr in providers if pr.get("inference_ok") is False
-        )
+        n_inference_failed = sum(1 for pr in providers if pr.get("inference_ok") is False)
         return {
             "checked_at": float(latest["ts"]),
             "ok": bool(latest["ok"]),
@@ -807,69 +847,96 @@ def evaluate_provider_alerts(health: dict[str, Any]) -> list[dict[str, Any]]:
     invalid model identifier, unhealthy provider, degenerate fallback chain.
     """
     if not health.get("providers") and not health.get("checked_at"):
-        return [{
-            "level": "warning", "code": "provider_preflight_missing",
-            "message": "尚未执行 LLM provider 预检（无健康快照）",
-        }]
+        return [
+            {
+                "level": "warning",
+                "code": "provider_preflight_missing",
+                "message": "尚未执行 LLM provider 预检（无健康快照）",
+            }
+        ]
 
     alerts: list[dict[str, Any]] = []
     # P0/A-1：快照过期只是"信息新鲜度"问题，不是健康故障——用 info 级，
     # 不参与 overall 的 degraded/critical 裁决（避免健康时误报降级）。
     if health.get("stale"):
-        alerts.append({
-            "level": "info", "code": "provider_preflight_stale",
-            "message": (
-                f"provider 预检快照已过期（{health.get('age_s')}s 前，窗口 "
-                f"{health.get('window_s')}s）——数据仍可用但非最新"
-            ),
-        })
+        alerts.append(
+            {
+                "level": "info",
+                "code": "provider_preflight_stale",
+                "message": (
+                    f"provider 预检快照已过期（{health.get('age_s')}s 前，窗口 "
+                    f"{health.get('window_s')}s）——数据仍可用但非最新"
+                ),
+            }
+        )
     for p in health.get("providers") or []:
         name = p.get("name") or "?"
         if p.get("model_present") is False:
-            alerts.append({
-                "level": "critical", "code": "provider_invalid_model", "provider": name,
-                "message": (
-                    f"provider {name} 配置的模型 {p.get('configured_model')!r} 不在服务端模型"
-                    f"列表中（可用 {p.get('models_available', 0)} 个）——请求将全部失败"
-                ),
-            })
+            alerts.append(
+                {
+                    "level": "critical",
+                    "code": "provider_invalid_model",
+                    "provider": name,
+                    "message": (
+                        f"provider {name} 配置的模型 {p.get('configured_model')!r} 不在服务端模型"
+                        f"列表中（可用 {p.get('models_available', 0)} 个）——请求将全部失败"
+                    ),
+                }
+            )
         if p.get("healthy") is False:
-            alerts.append({
-                "level": "critical", "code": "provider_unhealthy", "provider": name,
-                "message": f"provider {name} 健康检查失败",
-            })
+            alerts.append(
+                {
+                    "level": "critical",
+                    "code": "provider_unhealthy",
+                    "provider": name,
+                    "message": f"provider {name} 健康检查失败",
+                }
+            )
         if p.get("inference_ok") is False:
-            alerts.append({
-                "level": "critical", "code": "provider_inference_failed", "provider": name,
-                "message": (
-                    f"provider {name} 推理探针失败（/models 可达但补全失败）——请求会失败"
-                ),
-            })
+            alerts.append(
+                {
+                    "level": "critical",
+                    "code": "provider_inference_failed",
+                    "provider": name,
+                    "message": (
+                        f"provider {name} 推理探针失败（/models 可达但补全失败）——请求会失败"
+                    ),
+                }
+            )
 
     if health.get("state_model_present") is False:
-        alerts.append({
-            "level": "critical", "code": "state_invalid_model",
-            "provider": health.get("state_provider") or "?",
-            "message": (
-                f"生效模型 {health.get('state_model')!r}"
-                f"（provider {health.get('state_provider')!r}）不在服务端模型列表中"
-                f"——每次请求都会失败（provider 自身配置可能正确，属配置漂移）"
-            ),
-        })
+        alerts.append(
+            {
+                "level": "critical",
+                "code": "state_invalid_model",
+                "provider": health.get("state_provider") or "?",
+                "message": (
+                    f"生效模型 {health.get('state_model')!r}"
+                    f"（provider {health.get('state_provider')!r}）不在服务端模型列表中"
+                    f"——每次请求都会失败（provider 自身配置可能正确，属配置漂移）"
+                ),
+            }
+        )
 
     if int(health.get("n_providers") or 0) == 0 and health.get("checked_at"):
-        alerts.append({
-            "level": "critical", "code": "no_provider_registered",
-            "message": "没有任何 LLM provider 注册",
-        })
+        alerts.append(
+            {
+                "level": "critical",
+                "code": "no_provider_registered",
+                "message": "没有任何 LLM provider 注册",
+            }
+        )
     if health.get("degraded"):
-        alerts.append({
-            "level": "warning", "code": "fallback_chain_degraded",
-            "message": (
-                f"兜底链降级：已注册 {health.get('chain_registered')} "
-                f"（声明 {health.get('chain_declared')}）"
-            ),
-        })
+        alerts.append(
+            {
+                "level": "warning",
+                "code": "fallback_chain_degraded",
+                "message": (
+                    f"兜底链降级：已注册 {health.get('chain_registered')} "
+                    f"（声明 {health.get('chain_declared')}）"
+                ),
+            }
+        )
     return alerts
 
 
@@ -909,9 +976,14 @@ def query_skill_stats(window_s: int = 3600) -> dict[str, Any]:
     Returns per-skill calls/success rate/avg duration plus a category rollup.
     """
     empty: dict[str, Any] = {
-        "runs": 0, "failed": 0, "success_rate": 0.0,
-        "avg_duration_ms": 0.0, "p95_duration_ms": 0.0,
-        "by_skill": {}, "by_category": {}, "window_s": int(window_s),
+        "runs": 0,
+        "failed": 0,
+        "success_rate": 0.0,
+        "avg_duration_ms": 0.0,
+        "p95_duration_ms": 0.0,
+        "by_skill": {},
+        "by_category": {},
+        "window_s": int(window_s),
     }
     try:
         conn = _get_conn()
@@ -934,8 +1006,10 @@ def query_skill_stats(window_s: int = 3600) -> dict[str, Any]:
         for r in rows:
             ok += 1 if int(r["success"]) else 0
             durations.append(float(r["duration_ms"] or 0.0))
-            for bucket, key in ((by_skill, r["skill_id"] or "unknown"),
-                                (by_category, r["category"] or "unknown")):
+            for bucket, key in (
+                (by_skill, r["skill_id"] or "unknown"),
+                (by_category, r["category"] or "unknown"),
+            ):
                 slot = bucket.setdefault(key, {"calls": 0, "success": 0, "duration_ms": 0.0})
                 slot["calls"] += 1
                 slot["success"] += 1 if int(r["success"]) else 0
@@ -996,9 +1070,17 @@ def record_skill_network(report: dict[str, Any]) -> None:
 def query_skill_network_health(window_s: int = 3600) -> dict[str, Any]:
     """Return the most recent skill-egress snapshot."""
     empty: dict[str, Any] = {
-        "checked_at": 0.0, "ok": None, "targets": [], "required_egress": [],
-        "warnings": [], "n_targets": 0, "n_reachable": 0,
-        "snapshots": 0, "age_s": 0.0, "stale": False, "window_s": int(window_s),
+        "checked_at": 0.0,
+        "ok": None,
+        "targets": [],
+        "required_egress": [],
+        "warnings": [],
+        "n_targets": 0,
+        "n_reachable": 0,
+        "snapshots": 0,
+        "age_s": 0.0,
+        "stale": False,
+        "window_s": int(window_s),
     }
     try:
         conn = _get_conn()
@@ -1043,37 +1125,49 @@ def query_skill_network_health(window_s: int = 3600) -> dict[str, Any]:
 def evaluate_skill_network_alerts(health: dict[str, Any]) -> list[dict[str, Any]]:
     """Pure threshold evaluation over :func:`query_skill_network_health`."""
     if not health.get("targets") and not health.get("checked_at"):
-        return [{
-            "level": "warning", "code": "skill_network_preflight_missing",
-            "message": "尚未执行技能出网可达性自检（无快照）",
-        }]
+        return [
+            {
+                "level": "warning",
+                "code": "skill_network_preflight_missing",
+                "message": "尚未执行技能出网可达性自检（无快照）",
+            }
+        ]
 
     if health.get("stale"):
-        return [{
-            "level": "info", "code": "skill_network_preflight_stale",
-            "message": (
-                f"技能出网自检快照已过期（{health.get('age_s')}s 前，窗口 "
-                f"{health.get('window_s')}s）——数据仍可用但非最新"
-            ),
-        }]
+        return [
+            {
+                "level": "info",
+                "code": "skill_network_preflight_stale",
+                "message": (
+                    f"技能出网自检快照已过期（{health.get('age_s')}s 前，窗口 "
+                    f"{health.get('window_s')}s）——数据仍可用但非最新"
+                ),
+            }
+        ]
     n_targets = int(health.get("n_targets") or 0)
     n_reachable = int(health.get("n_reachable") or 0)
     alerts: list[dict[str, Any]] = []
     if n_targets == 0:
         return alerts
     if n_reachable == 0:
-        alerts.append({
-            "level": "critical", "code": "skill_network_unreachable",
-            "message": (
-                f"全部 {n_targets} 个出网目标不可达——"
-                f"{health.get('required_egress')} 依赖技能将不可用"
-            ),
-        })
+        alerts.append(
+            {
+                "level": "critical",
+                "code": "skill_network_unreachable",
+                "message": (
+                    f"全部 {n_targets} 个出网目标不可达——"
+                    f"{health.get('required_egress')} 依赖技能将不可用"
+                ),
+            }
+        )
     elif n_reachable < n_targets:
-        alerts.append({
-            "level": "warning", "code": "skill_network_partial",
-            "message": f"部分出网目标不可达：{n_reachable}/{n_targets} 可达",
-        })
+        alerts.append(
+            {
+                "level": "warning",
+                "code": "skill_network_partial",
+                "message": f"部分出网目标不可达：{n_reachable}/{n_targets} 可达",
+            }
+        )
     return alerts
 
 
@@ -1129,8 +1223,11 @@ def summary(window_s: int = 3600) -> dict[str, Any]:
     try:
         conn = _get_conn()
         if conn is None:
-            return {"samples": 0, "window_s": int(window_s),
-                    "error": "observability store unavailable"}
+            return {
+                "samples": 0,
+                "window_s": int(window_s),
+                "error": "observability store unavailable",
+            }
         conn.row_factory = sqlite3.Row
         since = time.time() - max(0, int(window_s))
         rows = conn.execute(
@@ -1141,7 +1238,9 @@ def summary(window_s: int = 3600) -> dict[str, Any]:
         ).fetchall()
         if not rows:
             return {
-                "samples": 0, "window_s": int(window_s), "success_rate": 0.0,
+                "samples": 0,
+                "window_s": int(window_s),
+                "success_rate": 0.0,
                 "tokens": {"prompt": 0, "completion": 0, "total": 0},
                 "latency_ms": {"avg": 0.0, "p50": 0.0, "p95": 0.0, "max": 0.0},
                 "providers": {},
@@ -1152,14 +1251,10 @@ def summary(window_s: int = 3600) -> dict[str, Any]:
         #   * 失败/取消调用（含超时兜底）也以 latency_ms=0 落库。
         # 这两类都会把 p50 拉到 0，掩盖真实延迟分布。
         latencies = sorted(
-            float(r["latency_ms"] or 0.0)
-            for r in rows
-            if not r["cached"] and int(r["success"])
+            float(r["latency_ms"] or 0.0) for r in rows if not r["cached"] and int(r["success"])
         )
         if not latencies:
-            latencies = sorted(
-                float(r["latency_ms"] or 0.0) for r in rows if not r["cached"]
-            )
+            latencies = sorted(float(r["latency_ms"] or 0.0) for r in rows if not r["cached"])
         prompt_tok = sum(int(r["prompt_tokens"] or 0) for r in rows)
         completion_tok = sum(int(r["completion_tokens"] or 0) for r in rows)
         ok = sum(1 for r in rows if r["success"])
@@ -1181,22 +1276,28 @@ def summary(window_s: int = 3600) -> dict[str, Any]:
             slot["prompt_tokens"] += int(r["prompt_tokens"] or 0)
             slot["completion_tokens"] += int(r["completion_tokens"] or 0)
         for slot in providers.values():
-            slot["success_rate"] = round(slot["success"] / slot["calls"], 3) if slot["calls"] else 0.0
+            slot["success_rate"] = (
+                round(slot["success"] / slot["calls"], 3) if slot["calls"] else 0.0
+            )
 
         return {
             "samples": len(rows),
             "window_s": int(window_s),
             "success_rate": round(ok / len(rows), 3),
             "cached_calls": sum(1 for r in rows if r["cached"]),
-            "measured_calls": sum(
-                1 for r in rows if not r["cached"] and int(r["success"])
-            ),
+            "measured_calls": sum(1 for r in rows if not r["cached"] and int(r["success"])),
             "failed_calls": sum(1 for r in rows if not int(r["success"])),
-            "tokens": {"prompt": prompt_tok, "completion": completion_tok,
-                       "total": prompt_tok + completion_tok},
-            "latency_ms": {"avg": round(sum(latencies) / len(latencies), 1),
-                           "p50": _pct(latencies, 0.50), "p95": _pct(latencies, 0.95),
-                           "max": round(latencies[-1], 1)},
+            "tokens": {
+                "prompt": prompt_tok,
+                "completion": completion_tok,
+                "total": prompt_tok + completion_tok,
+            },
+            "latency_ms": {
+                "avg": round(sum(latencies) / len(latencies), 1),
+                "p50": _pct(latencies, 0.50),
+                "p95": _pct(latencies, 0.95),
+                "max": round(latencies[-1], 1),
+            },
             "providers": providers,
         }
     except Exception as exc:  # pragma: no cover - defensive

@@ -1,10 +1,13 @@
 """T0~T6 native_executor hardening tests (types/planner/writer/dispatcher/validator/provenance/status)."""
 
+
 def test_types_import_and_blocking_level_hard_block_default():
     from more_core.core.native_executor.types import (
-        TaskTemplateKey, ValidationBlockingLevel,
-        AggregatedValidationResult, TemplateDispatchResult,
+        ValidationBlockingLevel,
+        AggregatedValidationResult,
+        TemplateDispatchResult,
     )
+
     assert ValidationBlockingLevel.HARD_BLOCK.value == "hard_block"
     assert AggregatedValidationResult.__dataclass_fields__
     assert issubclass(TemplateDispatchResult, object)
@@ -13,8 +16,11 @@ def test_types_import_and_blocking_level_hard_block_default():
 
 def test_dispatch_cs_shooter_key_match():
     from more_core.core.native_executor.planner import TaskTemplateSelector
-    doc = ("---\ntitle: CS 射击游戏 Rust+前端\ntype: code_generation\ntags: [shooter, cs]\n---\n"
-           "# Executive Summary \n## REQ-001 axum WebGL\n")
+
+    doc = (
+        "---\ntitle: CS 射击游戏 Rust+前端\ntype: code_generation\ntags: [shooter, cs]\n---\n"
+        "# Executive Summary \n## REQ-001 axum WebGL\n"
+    )
     selector = TaskTemplateSelector()
     key = selector.key_for(task_request=None, doc=doc)
     assert key == "cs_shooter"
@@ -22,7 +28,8 @@ def test_dispatch_cs_shooter_key_match():
 
 def test_dispatch_tetris_key_match_when_title_has_tetris():
     from more_core.core.native_executor.planner import TaskTemplateSelector
-    doc = ("---\ntitle: 俄罗斯方块 Rust+前端\ntype: code_generation\n---\n## REQ-001 俄罗斯方块 7 Bag\n")
+
+    doc = "---\ntitle: 俄罗斯方块 Rust+前端\ntype: code_generation\n---\n## REQ-001 俄罗斯方块 7 Bag\n"
     selector = TaskTemplateSelector()
     key = selector.key_for(task_request=None, doc=doc)
     assert key == "tetris"
@@ -30,7 +37,8 @@ def test_dispatch_tetris_key_match_when_title_has_tetris():
 
 def test_dispatch_generic_when_no_match():
     from more_core.core.native_executor.planner import TaskTemplateSelector
-    doc = ("---\ntitle: 区块链浏览器 API Server\ntype: code_generation\ntags: [backend]\n---\n")
+
+    doc = "---\ntitle: 区块链浏览器 API Server\ntype: code_generation\ntags: [backend]\n---\n"
     selector = TaskTemplateSelector()
     key = selector.key_for(task_request=None, doc=doc)
     assert key == "generic"
@@ -38,6 +46,7 @@ def test_dispatch_generic_when_no_match():
 
 def test_cs_shooter_payload_has_no_tetris():
     from more_core.core.native_executor.payload_mixins import CSShooterWriterMixin
+
     mixin = CSShooterWriterMixin()
     payload = mixin.build_payload_map(task_request=None, doc=None, steps=[])
     for path in payload.keys():
@@ -50,16 +59,26 @@ def test_cs_shooter_payload_has_no_tetris():
 
 def test_tetris_payload_backward_compatible_exact_13_paths():
     from more_core.core.native_executor.payload_mixins import TetrisWriterMixin
+
     mixin = TetrisWriterMixin()
     payload = mixin.build_payload_map(task_request=None, doc=None, steps=[])
     expected = {
-        "Cargo.toml", "Makefile", ".gitignore", "rust-toolchain.toml", "justfile",
-        "src/lib.rs", "src/tests.rs",
-        "frontend/index.html", "frontend/style.css", "frontend/settings.html",
-        "js/tetris.js", "docs/USAGE.md", "docs/ARCHITECTURE.md",
+        "Cargo.toml",
+        "Makefile",
+        ".gitignore",
+        "rust-toolchain.toml",
+        "justfile",
+        "src/lib.rs",
+        "src/tests.rs",
+        "frontend/index.html",
+        "frontend/style.css",
+        "frontend/settings.html",
+        "js/tetris.js",
+        "docs/USAGE.md",
+        "docs/ARCHITECTURE.md",
     }
     assert set(payload.keys()) == expected, (
-        f"差集 extra={set(payload)-expected} miss={expected-set(payload)}"
+        f"差集 extra={set(payload) - expected} miss={expected - set(payload)}"
     )
 
 
@@ -99,12 +118,23 @@ def test_aggregated_validator_blocking_truth_table():
 
 def test_provenance_blocked_when_final_status_failed_on_last_channel():
     from more_core.core.guardrails.provenance_audit import ProvenanceLayer
+
     layer = ProvenanceLayer(":memory:")
     layer.enroll("t_fake")
-    layer.mark("t_fake", "native_planner_loop", iterations=4, files_written=13,
-               payload={"phase": "done", "iterations": 4})
-    layer.mark("t_fake", "native_planner_loop", iterations=4, files_written=13,
-               payload={"phase": "final", "final_status": "failed"})
+    layer.mark(
+        "t_fake",
+        "native_planner_loop",
+        iterations=4,
+        files_written=13,
+        payload={"phase": "done", "iterations": 4},
+    )
+    layer.mark(
+        "t_fake",
+        "native_planner_loop",
+        iterations=4,
+        files_written=13,
+        payload={"phase": "final", "final_status": "failed"},
+    )
     report = layer.audit("t_fake")
     assert report.deliverable_blocked is True
     assert any("final_status=failed" in w for w in report.warnings)
@@ -112,12 +142,20 @@ def test_provenance_blocked_when_final_status_failed_on_last_channel():
 
 def test_status_override_when_audit_blocked():
     from more_core.core.guardrails.provenance_audit import ProvenanceLayer
+
     layer = ProvenanceLayer(":memory:")
     layer.enroll("t_bad")
-    layer.mark("t_bad", "native_planner_loop", iterations=4, files_written=13,
-               payload={"phase": "final", "validation_pass": False, "final_status": "failed"})
+    layer.mark(
+        "t_bad",
+        "native_planner_loop",
+        iterations=4,
+        files_written=13,
+        payload={"phase": "final", "validation_pass": False, "final_status": "failed"},
+    )
     report, status, progress = layer.audit_with_status_override(
-        "t_bad", raw_status="completed", raw_progress=100,
+        "t_bad",
+        raw_status="completed",
+        raw_progress=100,
     )
     assert report.deliverable_blocked is True
     assert status == "failed"

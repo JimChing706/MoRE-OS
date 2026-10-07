@@ -270,14 +270,16 @@ See docs/API_KEY.md for key format, rotation, and troubleshooting.
     # `Access-Control-Allow-Origin` → 浏览器直接 "Failed to fetch"。
     # 现在改为"默认值 + 环境变量追加"，显式配置只能扩充、不会收窄开发来源。
     _default_cors_origins = [
-        "http://localhost:3000", "http://127.0.0.1:3000",
-        "http://localhost:3002", "http://127.0.0.1:3002",
-        "http://localhost:3003", "http://127.0.0.1:3003",
-        "http://localhost:3004", "http://127.0.0.1:3004",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
+        "http://localhost:3003",
+        "http://127.0.0.1:3003",
+        "http://localhost:3004",
+        "http://127.0.0.1:3004",
     ]
-    _extra_origins = [
-        o.strip() for o in os.getenv("MORE_CORS_ORIGINS", "").split(",") if o.strip()
-    ]
+    _extra_origins = [o.strip() for o in os.getenv("MORE_CORS_ORIGINS", "").split(",") if o.strip()]
     _allowed_origins = list(dict.fromkeys(_default_cors_origins + _extra_origins))
     app.add_middleware(
         CORSMiddleware,
@@ -319,6 +321,7 @@ See docs/API_KEY.md for key format, rotation, and troubleshooting.
         from fastapi.responses import RedirectResponse
 
         return RedirectResponse(url="/api/v1/health", status_code=307)
+
     app.include_router(create_tasks_router(core, _require_api_key))
     app.include_router(create_llm_router(core, _require_api_key))
     app.include_router(create_zen_router(core, _require_api_key))

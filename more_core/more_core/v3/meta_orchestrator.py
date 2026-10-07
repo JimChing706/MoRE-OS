@@ -45,7 +45,12 @@ _RIVER_PIPELINE: list[LayerId] = [LayerId.L4, LayerId.L3, LayerId.L1, LayerId.L0
 # 门控关闭时只返回 evolved=False 的 no-op 步骤，因此纳入管道是安全的；
 # 此前谱管道完全不含 L2，导致"MORE_ENABLE_EVOLUTION + SELF_IMPROVEMENT→L2"契约失效。
 _RIVER_DEEP_PIPELINE: list[LayerId] = [
-    LayerId.L5, LayerId.L2, LayerId.L4, LayerId.L3, LayerId.L1, LayerId.L0,
+    LayerId.L5,
+    LayerId.L2,
+    LayerId.L4,
+    LayerId.L3,
+    LayerId.L1,
+    LayerId.L0,
 ]
 
 

@@ -19,6 +19,7 @@ from more_core.llm.provider import LLMRequest, LLMResponse
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 class _GoodProvider:
     def __init__(self, name: str = "good") -> None:
         self.name = name
@@ -62,6 +63,7 @@ def _manager_with_providers(providers, fallback=None) -> LLMManager:
 # Fallback chain tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_single_provider_success() -> None:
     good = _GoodProvider()
@@ -103,6 +105,7 @@ async def test_explicit_provider_selection() -> None:
 # ---------------------------------------------------------------------------
 # Cache tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_cache_hit_returns_cached_response() -> None:
@@ -158,6 +161,7 @@ def test_lru_evicts_oldest() -> None:
 
 class _FakeLLMManagerForRouting:
     """Minimal LLMManager stub for DynamicModelRouter tests."""
+
     def __init__(self, providers=None):
         self._providers = dict(providers or {})
 
@@ -248,6 +252,7 @@ def test_dynamic_router_custom_fallback_chain():
     mgr = _FakeLLMManagerForRouting()
     router = DynamicModelRouter(mgr)
     from more_core.llm.manager import ProviderModelPair
+
     binding = ProviderModelPair(provider="alpha", model="alpha-model")
     router.set_custom_fallback_chain("test_chain", [binding])
     router.set_binding(TaskType.CODE_GENERATION, binding)
@@ -281,18 +286,21 @@ def test_dynamic_router_get_routing_config():
 # 逐级降智 (tiered capability degradation) — difficulty-aware routing
 # ---------------------------------------------------------------------------
 
+
 def test_tier_index_maps_difficulty():
     from more_core.llm.task_router import tier_index_for_difficulty
-    assert tier_index_for_difficulty(None) == 1      # 默认主力
-    assert tier_index_for_difficulty(1) == 2         # 琐碎 → 9b
-    assert tier_index_for_difficulty(3) == 2         # 简单 → 9b
-    assert tier_index_for_difficulty(5) == 1         # 中等 → 35b
-    assert tier_index_for_difficulty(7) == 1         # 中等 → 35b
-    assert tier_index_for_difficulty(9) == 0         # 复杂 → 35b reasoning
+
+    assert tier_index_for_difficulty(None) == 1  # 默认主力
+    assert tier_index_for_difficulty(1) == 2  # 琐碎 → 9b
+    assert tier_index_for_difficulty(3) == 2  # 简单 → 9b
+    assert tier_index_for_difficulty(5) == 1  # 中等 → 35b
+    assert tier_index_for_difficulty(7) == 1  # 中等 → 35b
+    assert tier_index_for_difficulty(9) == 0  # 复杂 → 35b reasoning
 
 
 def test_tier_ladder_has_four_distinct_models():
     from more_core.llm.task_router import MODEL_TIER_LADDER, TIER_PROVIDERS
+
     assert len(MODEL_TIER_LADDER) == 4
     assert len(set(MODEL_TIER_LADDER)) == 4  # 每级真实模型互不相同 (T0 != T1)
     assert len(TIER_PROVIDERS) == 4
@@ -344,10 +352,7 @@ def test_select_model_uses_strong_tier_for_hard():
         == "qwen3.6-35b-a3b-claude-4.6-opus-reasoning-distilled"
     )
     # 非 reasoning 白名单任务 (CODE_GENERATION) 即使 diff=9 也 cap 到 T1 (R1-B 限流加固)
-    assert (
-        router.select_model(TaskType.CODE_GENERATION, difficulty=9)
-        == "ornith-1.5-35b-a3b"
-    )
+    assert router.select_model(TaskType.CODE_GENERATION, difficulty=9) == "ornith-1.5-35b-a3b"
 
 
 def test_fallback_chain_degrades_tier_by_tier():
@@ -386,6 +391,7 @@ def test_reasoning_alias_not_used_when_provider_unavailable():
 # ---------------------------------------------------------------------------
 # Health-check bounding / failure-count TTL / parallel-task hygiene
 # ---------------------------------------------------------------------------
+
 
 class _HangingHealthProvider:
     def __init__(self, name: str = "hanging") -> None:
@@ -593,9 +599,7 @@ async def test_slow_primary_does_not_starve_fallback(monkeypatch):
     # 2.0s 预算 → 慢 provider 分到 1.0s 切片，兜底仍有 ~1.0s（留足时序余量）
     monkeypatch.setattr(mgr_mod, "_FALLBACK_DEADLINE_S", 2.0)
     monkeypatch.setattr(mgr_mod, "_FALLBACK_CONTRACT_HEADROOM_S", 0.0)
-    mgr = _manager_with_providers(
-        [_SlowProvider(), _FastProvider()], fallback=["slow", "fast"]
-    )
+    mgr = _manager_with_providers([_SlowProvider(), _FastProvider()], fallback=["slow", "fast"])
 
     resp = await mgr.generate(LLMRequest(prompt="hi", max_tokens=8))
     assert resp.content == "fast!", "慢首选超时后，兜底 provider 必须被真正尝试"
@@ -662,14 +666,15 @@ async def test_fallback_resolves_model_per_provider():
         async def health(self) -> bool:
             return True
 
-    mgr = _manager_with_providers([_Rec("lmstudio"), _Rec("ollama")],
-                                  fallback=["lmstudio", "ollama"])
+    mgr = _manager_with_providers(
+        [_Rec("lmstudio"), _Rec("ollama")], fallback=["lmstudio", "ollama"]
+    )
     mgr._state_manager = _state("lmstudio", "ornith-1.5-35b-a3b")
 
     resp = await mgr.generate(LLMRequest(prompt="hi", max_tokens=4))
     assert resp.content == "ok"
     assert seen["lmstudio"] == ["ornith-1.5-35b-a3b"]  # 匹配 state.provider → 用 state.model
-    assert seen["ollama"] == [None]                    # 其它 provider 用自己的默认模型
+    assert seen["ollama"] == [None]  # 其它 provider 用自己的默认模型
 
 
 @pytest.mark.asyncio
@@ -701,8 +706,9 @@ async def test_state_provider_preference_orders_chain_without_dropping():
         async def health(self) -> bool:
             return True
 
-    mgr = _manager_with_providers([_Rec("lmstudio"), _Rec("ollama")],
-                                  fallback=["lmstudio", "ollama"])
+    mgr = _manager_with_providers(
+        [_Rec("lmstudio"), _Rec("ollama")], fallback=["lmstudio", "ollama"]
+    )
     mgr._state_manager = _state("ollama", "qwen2.5:7b")
 
     with pytest.raises(LLMError):
@@ -748,7 +754,6 @@ async def test_chain_and_parallel_cap_max_tokens():
 
     await mgr.generate_parallel(
         LLMRequest(prompt="hi", max_tokens=8192),
-        [ProviderModelPair(provider="a", model="m"),
-         ProviderModelPair(provider="b", model="b")],
+        [ProviderModelPair(provider="a", model="m"), ProviderModelPair(provider="b", model="b")],
     )
     assert all(mt == 512 for _, mt in seen), f"parallel 入口未封顶: {seen}"

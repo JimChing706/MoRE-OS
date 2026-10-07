@@ -34,8 +34,12 @@ class _SlowLLM:
             if self.fail:
                 raise RuntimeError("candidate generation failed")
             return LLMResponse(
-                content=CODE_BLOCK, provider="fake", model="fake-1",
-                prompt_tokens=10, completion_tokens=5, latency_ms=self.delay * 1000,
+                content=CODE_BLOCK,
+                provider="fake",
+                model="fake-1",
+                prompt_tokens=10,
+                completion_tokens=5,
+                latency_ms=self.delay * 1000,
             )
         finally:
             self.active -= 1
@@ -105,13 +109,15 @@ async def test_parallel_faster_than_serial():
     llm_p = _SlowLLM(delay=0.2)
     t0 = time.perf_counter()
     await layer._select_best_candidate(
-        _ctx(llm_p, _Tools(), parallel=True), _req(), None, None, assertions=None, k=2)
+        _ctx(llm_p, _Tools(), parallel=True), _req(), None, None, assertions=None, k=2
+    )
     parallel_s = time.perf_counter() - t0
 
     llm_s = _SlowLLM(delay=0.2)
     t0 = time.perf_counter()
     await layer._select_best_candidate(
-        _ctx(llm_s, _Tools(), parallel=False), _req(), None, None, assertions=None, k=2)
+        _ctx(llm_s, _Tools(), parallel=False), _req(), None, None, assertions=None, k=2
+    )
     serial_s = time.perf_counter() - t0
 
     assert parallel_s < serial_s * 0.8, f"parallel={parallel_s:.2f}s serial={serial_s:.2f}s"
@@ -122,9 +128,8 @@ async def test_default_is_serial_when_flag_absent():
     """默认必须串行：3+3 轮实测本地单实例后端并发无收益（中位 7.0s vs 7.0s）。"""
     llm = _SlowLLM(delay=0.12)
     ctx = _ctx(llm, _Tools())
-    ctx.request.context = {"candidates": 2}          # 不设置 candidates_parallel
-    await ExecutionLayer()._select_best_candidate(
-        ctx, _req(), None, None, assertions=None, k=2)
+    ctx.request.context = {"candidates": 2}  # 不设置 candidates_parallel
+    await ExecutionLayer()._select_best_candidate(ctx, _req(), None, None, assertions=None, k=2)
     assert llm.max_concurrent == 1, "默认应为串行"
 
 
@@ -132,8 +137,7 @@ async def test_default_is_serial_when_flag_absent():
 async def test_explicit_flag_enables_parallel():
     llm = _SlowLLM(delay=0.12)
     ctx = _ctx(llm, _Tools(), parallel=True)
-    await ExecutionLayer()._select_best_candidate(
-        ctx, _req(), None, None, assertions=None, k=2)
+    await ExecutionLayer()._select_best_candidate(ctx, _req(), None, None, assertions=None, k=2)
     assert llm.max_concurrent == 2, "显式开启后应并发"
 
 
@@ -166,8 +170,7 @@ async def test_each_candidate_gets_independent_request():
 async def test_k_equals_one_skips_parallel_helpers():
     llm = _SlowLLM(delay=0.05)
     ctx = _ctx(llm, _Tools(), parallel=True)
-    await ExecutionLayer()._select_best_candidate(
-        ctx, _req(), None, None, assertions=None, k=1)
+    await ExecutionLayer()._select_best_candidate(ctx, _req(), None, None, assertions=None, k=1)
     assert len(llm.requests) == 1
 
 
@@ -188,21 +191,21 @@ async def test_falls_back_to_serial_when_all_parallel_fail():
 
     async def _flaky(ctx_, req, provider, model):
         call_count["n"] += 1
-        if call_count["n"] <= 2:      # 前两次（并行路）失败
+        if call_count["n"] <= 2:  # 前两次（并行路）失败
             raise RuntimeError("boom")
         return await real_do_generate(ctx_, req, provider, model)
 
     layer._do_generate = _flaky  # type: ignore[assignment]
     # 串行回退时用不失败的 LLM
     ctx.core.llm = _SlowLLM(delay=0.02)
-    cand, _i, _o = await layer._select_best_candidate(
-        ctx, _req(), None, None, assertions=None, k=2)
+    cand, _i, _o = await layer._select_best_candidate(ctx, _req(), None, None, assertions=None, k=2)
     assert cand.sbx is not None and cand.sbx.success, "回退后仍未产出可用候选"
 
 
 @pytest.mark.asyncio
 async def test_differential_disagreement_still_detected_in_parallel():
     """并行不得改变选择语义：候选输出不一致时必须标记 differential。"""
+
     class _DivergentLLM(_SlowLLM):
         async def generate(self, req, provider=None, model_override=None, **kw):  # noqa: ANN001
             self.active += 1
@@ -212,8 +215,12 @@ async def test_differential_disagreement_still_detected_in_parallel():
                 await asyncio.sleep(self.delay)
                 n = len(self.requests)
                 return LLMResponse(
-                    content=f"```python\nprint({n})\n```", provider="fake", model="m",
-                    prompt_tokens=1, completion_tokens=1, latency_ms=1.0,
+                    content=f"```python\nprint({n})\n```",
+                    provider="fake",
+                    model="m",
+                    prompt_tokens=1,
+                    completion_tokens=1,
+                    latency_ms=1.0,
                 )
             finally:
                 self.active -= 1
@@ -227,6 +234,7 @@ async def test_differential_disagreement_still_detected_in_parallel():
 
     ctx = _ctx(_DivergentLLM(delay=0.05), _OutTools(), parallel=True)
     cand, _i, _o = await ExecutionLayer()._select_best_candidate(
-        ctx, _req(), None, None, assertions=None, k=3)
+        ctx, _req(), None, None, assertions=None, k=3
+    )
     assert cand.differential is True
     assert cand.ok is False

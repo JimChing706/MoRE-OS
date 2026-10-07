@@ -72,7 +72,9 @@ def resolve_delivery_decision(
 
     if not gates_passed:
         return DeliveryDecision(
-            "blocked", "delivery gates failed", cause="gates_failed",
+            "blocked",
+            "delivery gates failed",
+            cause="gates_failed",
             needs_attention=True,
         )
 

@@ -59,12 +59,18 @@ def test_governance_stats_self_contained_rate():
     for i in range(8):
         obs.record_governance_event(request_id=f"pass-{i}")
     obs.record_governance_event(
-        request_id="viol", blocked=False, strict=False,
-        rules=["query_length_limit"], violations=["too long"],
+        request_id="viol",
+        blocked=False,
+        strict=False,
+        rules=["query_length_limit"],
+        violations=["too long"],
     )
     obs.record_governance_event(
-        request_id="block", blocked=True, strict=True,
-        rules=["query_length_limit"], violations=["too long"],
+        request_id="block",
+        blocked=True,
+        strict=True,
+        rules=["query_length_limit"],
+        violations=["too long"],
     )
 
     st = obs.query_governance_stats(3600)
@@ -87,11 +93,20 @@ def test_governance_stats_empty_is_zero_not_error():
 
 
 def test_destructive_blocks_are_counted_separately():
-    obs.record_governance_event(request_id="d", blocked=True, strict=True,
-                                rules=["destructive_request_detection"],
-                                violations=["destructive"])
-    obs.record_governance_event(request_id="b", blocked=True, strict=True,
-                                rules=["query_length_limit"], violations=["too long"])
+    obs.record_governance_event(
+        request_id="d",
+        blocked=True,
+        strict=True,
+        rules=["destructive_request_detection"],
+        violations=["destructive"],
+    )
+    obs.record_governance_event(
+        request_id="b",
+        blocked=True,
+        strict=True,
+        rules=["query_length_limit"],
+        violations=["too long"],
+    )
     st = obs.query_governance_stats(3600)
     assert st["blocked"] == 2
     assert st["destructive_blocks"] == 1
@@ -104,8 +119,12 @@ def test_destructive_blocks_are_counted_separately():
 
 def _stats(evaluations=100, blocked=0, destructive=0):
     rate = round(blocked / evaluations, 3) if evaluations else 0.0
-    return {"evaluations": evaluations, "blocked": blocked,
-            "blocked_rate": rate, "destructive_blocks": destructive}
+    return {
+        "evaluations": evaluations,
+        "blocked": blocked,
+        "blocked_rate": rate,
+        "destructive_blocks": destructive,
+    }
 
 
 def test_alerts_empty_when_healthy():
@@ -220,8 +239,11 @@ def test_governance_metrics_endpoint_returns_stats_and_alerts(core):
 
     obs.record_governance_event(request_id="p1")
     obs.record_governance_event(
-        request_id="d1", blocked=True, strict=True,
-        rules=["destructive_request_detection"], violations=["destructive"],
+        request_id="d1",
+        blocked=True,
+        strict=True,
+        rules=["destructive_request_detection"],
+        violations=["destructive"],
     )
 
     with TestClient(create_app(core)) as client:
@@ -244,8 +266,11 @@ def test_governance_prometheus_endpoint_exports_metrics(core):
 
     obs.record_governance_event(request_id="p1")
     obs.record_governance_event(
-        request_id="d1", blocked=True, strict=True,
-        rules=["destructive_request_detection"], violations=["destructive"],
+        request_id="d1",
+        blocked=True,
+        strict=True,
+        rules=["destructive_request_detection"],
+        violations=["destructive"],
     )
 
     with TestClient(create_app(core)) as client:
@@ -266,11 +291,14 @@ def test_governance_prometheus_endpoint_exports_metrics(core):
 
 def _healthy_provider_snapshot():
     return {
-        "ok": True, "degraded": False,
-        "providers": [{"name": "a", "healthy": True, "model_present": True,
-                       "inference_ok": True}],
-        "fallback_chain": ["a"], "chain_registered": ["a"],
-        "state_provider": "a", "state_model": "m", "state_model_present": True,
+        "ok": True,
+        "degraded": False,
+        "providers": [{"name": "a", "healthy": True, "model_present": True, "inference_ok": True}],
+        "fallback_chain": ["a"],
+        "chain_registered": ["a"],
+        "state_provider": "a",
+        "state_model": "m",
+        "state_model_present": True,
         "warnings": [],
     }
 
@@ -284,9 +312,7 @@ def test_metrics_overview_healthy_when_no_alerts(core):
         obs.record_governance_event(request_id="p1")
         obs.record_provider_health(_healthy_provider_snapshot())
         # R-4：overview 现在还纳入技能出网告警，健康用例需同时播种可达快照
-        obs.record_skill_network(
-            {"ok": True, "required_egress": [], "targets": [], "warnings": []}
-        )
+        obs.record_skill_network({"ok": True, "required_egress": [], "targets": [], "warnings": []})
         resp = client.get("/api/v1/metrics/overview?window_s=3600")
     assert resp.status_code == 200
     body = resp.json()
@@ -314,4 +340,3 @@ def test_metrics_overview_critical_on_invalid_effective_model(core):
     assert body["alert_counts"]["critical"] >= 1
     assert any(a["code"] == "state_invalid_model" for a in body["alerts"])
     assert body["providers"]["n_invalid_model"] == 1
-

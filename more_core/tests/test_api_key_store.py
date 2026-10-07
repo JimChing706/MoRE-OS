@@ -89,7 +89,7 @@ def test_rotation_with_grace_keeps_old_key_alive(store):
     new_raw, new = store.rotate(old.key_id, grace_seconds=3600)
     assert new.key_id != old.key_id
     assert new.scopes == old.scopes
-    assert store.verify(old_raw) is not None      # still inside grace window
+    assert store.verify(old_raw) is not None  # still inside grace window
     assert store.verify(new_raw) is not None
     assert store.get(new.key_id).rotated_from == old.key_id
 
@@ -124,9 +124,7 @@ def test_stats_and_listing(store):
     assert stats["active"] == 1
     assert stats["revoked"] == 1
     actives = store.list_keys(include_inactive=False)
-    assert [r.key_id for r in actives] == [
-        r.key_id for r in store.list_keys() if r.active
-    ]
+    assert [r.key_id for r in actives] == [r.key_id for r in store.list_keys() if r.active]
 
 
 def test_wildcard_scope_matches_everything(store):
@@ -216,12 +214,12 @@ def test_http_rejects_revoked_and_expired_keys(store, monkeypatch):
     client = _client(store)
     store.revoke(revoked.key_id)
 
-    assert client.get(
-        "/open", headers={"Authorization": f"Bearer {revoked_raw}"}
-    ).status_code == 403
-    assert client.get(
-        "/open", headers={"Authorization": f"Bearer {expired_raw}"}
-    ).status_code == 403
+    assert (
+        client.get("/open", headers={"Authorization": f"Bearer {revoked_raw}"}).status_code == 403
+    )
+    assert (
+        client.get("/open", headers={"Authorization": f"Bearer {expired_raw}"}).status_code == 403
+    )
 
 
 def test_http_env_key_keeps_working_with_wildcard(store, monkeypatch):

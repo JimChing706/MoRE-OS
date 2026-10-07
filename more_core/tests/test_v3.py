@@ -7,12 +7,15 @@ from more_core.core.types import TaskType
 from more_core.v3.uncertainty import UncertaintyAssessor
 from more_core.v3.meta_orchestrator import MetaOrchestrator
 from more_core.v3.dynamic_guardrails import (
-    GuardrailConfig, SandboxLevel,
-    reset_dynamic_guardrails, get_dynamic_guardrails,
+    GuardrailConfig,
+    SandboxLevel,
+    reset_dynamic_guardrails,
+    get_dynamic_guardrails,
 )
 
 
 # ── UncertaintyAssessor tests ────────────────────────────────────────────
+
 
 class TestUncertaintyAssessor:
     def test_simple_task_low_uncertainty(self):
@@ -93,6 +96,7 @@ class TestUncertaintyAssessor:
 
 # ── MetaOrchestrator tests ───────────────────────────────────────────────
 
+
 class TestMetaOrchestrator:
     def test_simple_task_village_pipeline(self):
         meta = MetaOrchestrator()
@@ -163,6 +167,7 @@ class TestMetaOrchestrator:
 
 # ── DynamicGuardrails tests ──────────────────────────────────────────────
 
+
 class TestDynamicGuardrails:
     def setup_method(self):
         reset_dynamic_guardrails()
@@ -209,10 +214,14 @@ class TestDynamicGuardrails:
 
     def test_hints_override(self):
         dg = get_dynamic_guardrails()
-        config = dg.adjust(u=0.5, criticality=0.5, hints={
-            "token_budget": 9999,
-            "human_in_the_loop": True,
-        })
+        config = dg.adjust(
+            u=0.5,
+            criticality=0.5,
+            hints={
+                "token_budget": 9999,
+                "human_in_the_loop": True,
+            },
+        )
         assert config.token_budget == 9999
         assert config.human_in_the_loop
 
@@ -233,6 +242,7 @@ class TestDynamicGuardrails:
 
 
 # ── Integration: full Meta-Orchestrator → DynamicGuardrails flow ────────
+
 
 class TestV3Integration:
     def test_full_spectral_flow_village(self):

@@ -8,12 +8,7 @@ with localhost-only connectivity.
 
 from __future__ import annotations
 
-import asyncio
-import json
-import os
-import tempfile
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -160,9 +155,14 @@ class TestObservabilityTables:
         obs.close()
         # After close, configure was torn down; record shouldn't error.
         obs.record_llm_call(
-            request_id="x", provider="a", model="b",
-            prompt_chars=0, prompt_tokens=0, completion_tokens=0,
-            latency_ms=0.0, success=True,
+            request_id="x",
+            provider="a",
+            model="b",
+            prompt_chars=0,
+            prompt_tokens=0,
+            completion_tokens=0,
+            latency_ms=0.0,
+            success=True,
         )
         obs.record_injection(origin="o", injection_site="i", value_text="v")
         # Just need no exception.
@@ -180,7 +180,9 @@ class TestDeliverableContractKillCriteria:
         c = DeliverableContract(
             rollback_id="rb-1",
             kill_criteria=[
-                KillCriterion(condition="timeout", severity=KillSeverity.FATAL, trigger="elapsed>10")
+                KillCriterion(
+                    condition="timeout", severity=KillSeverity.FATAL, trigger="elapsed>10"
+                )
             ],
         )
         d = c.to_dict()

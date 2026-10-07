@@ -65,9 +65,7 @@ class SQLiteTaskStore:
         cols = {str(r["name"]) for r in self._conn.execute("PRAGMA table_info(tasks)")}
         if "parent_id" not in cols:
             self._conn.execute("ALTER TABLE tasks ADD COLUMN parent_id TEXT")
-        self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id)"
-        )
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id)")
         self._conn.commit()
 
     # ------------------------------------------------------------------
@@ -80,7 +78,9 @@ class SQLiteTaskStore:
         context_json = json.dumps(ctx)
         artifacts_json = json.dumps(info.get("artifacts", []))
         warnings_json = json.dumps(info.get("warnings", []))
-        parent_id = info.get("parent_id") or (ctx.get("parent_id") if isinstance(ctx, dict) else None)
+        parent_id = info.get("parent_id") or (
+            ctx.get("parent_id") if isinstance(ctx, dict) else None
+        )
         self._conn.execute(
             """INSERT OR REPLACE INTO tasks
                (task_id, type, plugin_type, query, context, title,

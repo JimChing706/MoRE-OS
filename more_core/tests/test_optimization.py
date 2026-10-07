@@ -4,7 +4,7 @@ import pytest
 import sys
 import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from more_core.optimization import (
     RequestCache,
@@ -12,7 +12,7 @@ from more_core.optimization import (
     CacheStrategy,
     RateLimiter,
     CircuitBreaker,
-    ConnectionPool
+    ConnectionPool,
 )
 
 
@@ -95,10 +95,10 @@ class TestCircuitBreaker:
     async def test_successful_call(self):
         """Test successful call through circuit breaker."""
         breaker = CircuitBreaker(failure_threshold=3)
-        
+
         async def success_func():
             return "success"
-        
+
         result = await breaker.call(success_func)
         assert result == "success"
         assert breaker.state == "CLOSED"
@@ -107,18 +107,18 @@ class TestCircuitBreaker:
     async def test_failed_call_opens_circuit(self):
         """Test failures open circuit after threshold."""
         breaker = CircuitBreaker(failure_threshold=2)
-        
+
         async def fail_func():
             raise Exception("test failure")
-        
+
         # First failure
         with pytest.raises(Exception):
             await breaker.call(fail_func)
-        
+
         # Second failure should open circuit
         with pytest.raises(Exception):
             await breaker.call(fail_func)
-        
+
         assert breaker.state == "OPEN"
 
 

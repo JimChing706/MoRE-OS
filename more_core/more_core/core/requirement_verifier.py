@@ -18,11 +18,44 @@ __all__ = ["RequirementVerdict", "verify_requirement", "extract_checkpoints"]
 
 # 太泛、不构成证据的词
 _STOP = {
-    "the", "and", "for", "with", "use", "using", "code", "only", "output",
-    "python", "rust", "typescript", "javascript", "make", "new", "all",
-    "req", "requirement", "ac", "todo",
-    "实现", "支持", "提供", "完成", "进行", "要求", "必须", "可以", "以及",
-    "代码", "功能", "系统", "模块", "文件", "任务", "验收", "标准", "描述",
+    "the",
+    "and",
+    "for",
+    "with",
+    "use",
+    "using",
+    "code",
+    "only",
+    "output",
+    "python",
+    "rust",
+    "typescript",
+    "javascript",
+    "make",
+    "new",
+    "all",
+    "req",
+    "requirement",
+    "ac",
+    "todo",
+    "实现",
+    "支持",
+    "提供",
+    "完成",
+    "进行",
+    "要求",
+    "必须",
+    "可以",
+    "以及",
+    "代码",
+    "功能",
+    "系统",
+    "模块",
+    "文件",
+    "任务",
+    "验收",
+    "标准",
+    "描述",
 }
 
 # 可校验符号：反引号名 / 函数类名 / 文件路径 / 带扩展名文件 / 大写缩写 / CJK 关键词
@@ -64,8 +97,8 @@ class RequirementVerdict:
 
     req_id: str
     title: str
-    status: str                      # completed | failed
-    coverage: float                  # 0.0 – 1.0
+    status: str  # completed | failed
+    coverage: float  # 0.0 – 1.0
     matched: list[str] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)
     evidence: list[str] = field(default_factory=list)
@@ -93,7 +126,7 @@ def _snippet(text: str, token: str, width: int = 60) -> str:
     if idx < 0:
         return ""
     start = max(0, idx - 20)
-    return text[start:start + width].replace("\n", " ⏎ ")
+    return text[start : start + width].replace("\n", " ⏎ ")
 
 
 def verify_requirement(
@@ -115,7 +148,10 @@ def verify_requirement(
     checkpoints = extract_checkpoints(title, description, *acs)
     if not checkpoints:
         return RequirementVerdict(
-            req_id=req_id, title=title, status="completed", coverage=1.0,
+            req_id=req_id,
+            title=title,
+            status="completed",
+            coverage=1.0,
             reason="需求未含可校验的关键点，按不阻塞处理",
         )
 
@@ -132,9 +168,8 @@ def verify_requirement(
 
     coverage = len(matched) / len(checkpoints)
     ok = coverage >= threshold
-    reason = (
-        f"覆盖 {len(matched)}/{len(checkpoints)} 个关键点（{coverage:.0%}）"
-        + ("" if ok else f"，低于阈值 {threshold:.0%}")
+    reason = f"覆盖 {len(matched)}/{len(checkpoints)} 个关键点（{coverage:.0%}）" + (
+        "" if ok else f"，低于阈值 {threshold:.0%}"
     )
     return RequirementVerdict(
         req_id=req_id,

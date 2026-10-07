@@ -37,8 +37,9 @@ def test_layer_contract_id_matches_registry(core, lid):
 async def test_layer_run_returns_layer_result(core, lid):
     """L-C3/L-C4: run() 返回 LayerResult 并追加 ReasoningStep。"""
     layer = core.get_layer(lid)
-    ctx = LayerContext(core=core, request=TaskRequest(type=TaskType.NLP_TASK, query="hello"),
-                       user_id="tester")
+    ctx = LayerContext(
+        core=core, request=TaskRequest(type=TaskType.NLP_TASK, query="hello"), user_id="tester"
+    )
     before = len(ctx.accumulated_steps)
     result = await layer.run(ctx)
 
@@ -160,8 +161,12 @@ async def test_l0_i1_stage_timings_recorded(core):
 
 
 def _omac(**over):
-    base = {"mode": "autonomous", "strategy": "balanced",
-            "model_hint": "standard", "token_budget": 4096}
+    base = {
+        "mode": "autonomous",
+        "strategy": "balanced",
+        "model_hint": "standard",
+        "token_budget": 4096,
+    }
     base.update(over)
     return base
 
@@ -215,7 +220,9 @@ def test_l1_c6_non_dict_rejected(core):
 async def test_l1_h1_produces_strategy_for_downstream(core):
     """L1-H1/I1: 正常任务产出策略参数供 L0 消费。"""
     layer = core.get_layer(LayerId.L1)
-    ctx = LayerContext(core=core, request=TaskRequest(type=TaskType.CODE_GENERATION, query="写代码"))
+    ctx = LayerContext(
+        core=core, request=TaskRequest(type=TaskType.CODE_GENERATION, query="写代码")
+    )
     result = await layer.run(ctx)
     assert result.output is not None
     assert isinstance(ctx.scratch.get("temperature", 0.0), (int, float))
@@ -468,8 +475,9 @@ async def test_l3_b1_overlong_query_is_flagged(core):
 async def test_l4_h1_writes_difficulty_and_capability(core):
     """L4-H1: 写入 difficulty / capability（0–10 整数）。"""
     layer = core.get_layer(LayerId.L4)
-    ctx = LayerContext(core=core,
-                       request=TaskRequest(type=TaskType.CODE_GENERATION, query="实现函数"))
+    ctx = LayerContext(
+        core=core, request=TaskRequest(type=TaskType.CODE_GENERATION, query="实现函数")
+    )
     await layer.run(ctx)
 
     for key in ("difficulty", "capability"):
@@ -485,7 +493,7 @@ async def test_l4_h2_long_query_raises_difficulty(core):
     ctx_short = LayerContext(core=core, request=TaskRequest(type=TaskType.NLP_TASK, query="hi"))
     await layer.run(ctx_short)
 
-    long_q = ("请设计一个分布式系统，包含一致性协议、故障恢复、分片路由与可观测性方案。" * 20)
+    long_q = "请设计一个分布式系统，包含一致性协议、故障恢复、分片路由与可观测性方案。" * 20
     ctx_long = LayerContext(core=core, request=TaskRequest(type=TaskType.NLP_TASK, query=long_q))
     await layer.run(ctx_long)
 
@@ -506,7 +514,9 @@ async def test_l4_b1_empty_query_still_plans(core):
 async def test_l4_i1_plan_available_for_l5_monitoring(core):
     """L4-I1: plan 结构可供 L5 监控。"""
     layer = core.get_layer(LayerId.L4)
-    ctx = LayerContext(core=core, request=TaskRequest(type=TaskType.CODE_GENERATION, query="写模块"))
+    ctx = LayerContext(
+        core=core, request=TaskRequest(type=TaskType.CODE_GENERATION, query="写模块")
+    )
     await layer.run(ctx)
     plan = ctx.scratch.get("plan") or {}
     assert "difficulty" in plan and "decomposed" in plan
@@ -554,9 +564,7 @@ async def test_l5_g3_self_mod_gate_off_skips_hyperagent(core):
     saved = core.metacognition.maybe_self_modify
     core.metacognition.maybe_self_modify = AsyncMock()
     try:
-        req = TaskRequest(
-            type=TaskType.SELF_IMPROVEMENT, query="x", allow_self_improvement=True
-        )
+        req = TaskRequest(type=TaskType.SELF_IMPROVEMENT, query="x", allow_self_improvement=True)
         await layer.run(LayerContext(core=core, request=req))
         core.metacognition.maybe_self_modify.assert_not_awaited()
     finally:
@@ -672,8 +680,13 @@ async def test_l5_e1_self_modification_failure_is_contained(core):
 
 @pytest.mark.parametrize(
     "task_type",
-    [TaskType.NLP_TASK, TaskType.CODE_GENERATION, TaskType.MATH_REASONING,
-     TaskType.SELF_IMPROVEMENT, TaskType.DATA_ANALYSIS],
+    [
+        TaskType.NLP_TASK,
+        TaskType.CODE_GENERATION,
+        TaskType.MATH_REASONING,
+        TaskType.SELF_IMPROVEMENT,
+        TaskType.DATA_ANALYSIS,
+    ],
 )
 def test_x_i2_every_task_type_routes_to_registered_layers(core, task_type):
     """X-I2（**迁移到权威来源**）: 各 TaskType 实际管道非空、层均已注册、L0 居末。

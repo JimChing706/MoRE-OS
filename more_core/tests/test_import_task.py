@@ -151,7 +151,9 @@ class TestParser:
 
         assert doc.contract_kind == "code"
         assert doc.contract_required_dimensions == [
-            "core_output", "reasoning", "tests",
+            "core_output",
+            "reasoning",
+            "tests",
         ]
         assert doc.contract_min_output_length == 100
         assert len(doc.contract_quality_gates) == 2
@@ -279,15 +281,9 @@ class TestGenerator:
         assert doc2.priority == doc1.priority
         assert len(doc2.requirements) == len(doc1.requirements)
         assert doc2.requirements[0].id == doc1.requirements[0].id
-        assert (
-            doc2.requirements[0].acceptance_criteria
-            == doc1.requirements[0].acceptance_criteria
-        )
+        assert doc2.requirements[0].acceptance_criteria == doc1.requirements[0].acceptance_criteria
         assert doc2.contract_kind == doc1.contract_kind
-        assert (
-            doc2.contract_required_dimensions
-            == doc1.contract_required_dimensions
-        )
+        assert doc2.contract_required_dimensions == doc1.contract_required_dimensions
         assert len(doc2.kill_criteria) == len(doc1.kill_criteria)
         assert doc2.budget.estimated_tokens == doc1.budget.estimated_tokens
 

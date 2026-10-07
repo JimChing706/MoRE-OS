@@ -87,8 +87,7 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
         from ...skills.delivery import archive_skill_manager, get_default_skill_ledger
 
         archived = archive_skill_manager(core.skill_manager)
-        return {"status": "ok", "archived": archived,
-                "stats": get_default_skill_ledger().stats()}
+        return {"status": "ok", "archived": archived, "stats": get_default_skill_ledger().stats()}
 
     @router.get("/skill-delivery/{skill_id}")
     async def skill_delivery_detail(skill_id: str) -> dict[str, Any]:

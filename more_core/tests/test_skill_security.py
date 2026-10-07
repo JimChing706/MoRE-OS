@@ -11,11 +11,11 @@ from more_core.skills import APICallSkill, WebBrowseSkill
 @pytest.mark.parametrize(
     "url",
     [
-        "http://169.254.169.254/latest/meta-data/",   # 云元数据
-        "http://127.0.0.1:8011/api/v1/health",        # 回环
-        "http://localhost:11434/api/tags",            # 私有主机名
-        "http://10.0.0.5/internal",                   # 私网
-        "file:///etc/passwd",                          # 非 http(s)
+        "http://169.254.169.254/latest/meta-data/",  # 云元数据
+        "http://127.0.0.1:8011/api/v1/health",  # 回环
+        "http://localhost:11434/api/tags",  # 私有主机名
+        "http://10.0.0.5/internal",  # 私网
+        "file:///etc/passwd",  # 非 http(s)
     ],
 )
 async def test_api_call_blocks_ssrf(url):
@@ -72,8 +72,11 @@ async def test_code_execute_subprocess_is_sandboxed():
     from more_core.skills import CodeExecutionSkill
 
     r = await CodeExecutionSkill().execute(
-        {"code": "import subprocess; subprocess.run(['echo','x'])",
-         "language": "python", "timeout": 10}
+        {
+            "code": "import subprocess; subprocess.run(['echo','x'])",
+            "language": "python",
+            "timeout": 10,
+        }
     )
     assert r.success is False
     assert "subprocess" in (r.error or "")

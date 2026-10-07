@@ -33,7 +33,20 @@ __all__ = [
 
 _CODE_FENCE_RE = re.compile(r"```([A-Za-z0-9_+-]*)\s*\n(.*?)```", re.DOTALL)
 _PY_LANGS = {"", "python", "py", "python3"}
-_BRACE_LANGS = {"rust", "rs", "typescript", "ts", "tsx", "javascript", "js", "json", "go", "java", "c", "cpp"}
+_BRACE_LANGS = {
+    "rust",
+    "rs",
+    "typescript",
+    "ts",
+    "tsx",
+    "javascript",
+    "js",
+    "json",
+    "go",
+    "java",
+    "c",
+    "cpp",
+}
 _STUB_PATTERNS = (
     re.compile(r"^\s*pass\s*$", re.MULTILINE),
     re.compile(r"\bNotImplementedError\b"),
@@ -44,10 +57,38 @@ _STUB_PATTERNS = (
 )
 # 需求匹配用的标识符噪声词（不作为必须命中项）
 _STOPWORDS = {
-    "the", "and", "for", "with", "use", "using", "code", "only", "output",
-    "python", "rust", "typescript", "javascript", "function", "class", "def",
-    "return", "import", "int", "str", "float", "bool", "list", "dict", "none",
-    "write", "实现", "函数", "类", "只输出", "代码", "一个",
+    "the",
+    "and",
+    "for",
+    "with",
+    "use",
+    "using",
+    "code",
+    "only",
+    "output",
+    "python",
+    "rust",
+    "typescript",
+    "javascript",
+    "function",
+    "class",
+    "def",
+    "return",
+    "import",
+    "int",
+    "str",
+    "float",
+    "bool",
+    "list",
+    "dict",
+    "none",
+    "write",
+    "实现",
+    "函数",
+    "类",
+    "只输出",
+    "代码",
+    "一个",
 }
 
 
@@ -203,7 +244,7 @@ def logic_gate(text: str, *, min_lines: int = 8) -> GateFinding:
     stub_hits: list[str] = []
     for pat in _STUB_PATTERNS:
         for m in pat.finditer(body):
-            frag = body[max(0, m.start() - 40): m.end() + 10].strip().replace("\n", " ⏎ ")
+            frag = body[max(0, m.start() - 40) : m.end() + 10].strip().replace("\n", " ⏎ ")
             stub_hits.append(frag[:110])
 
     # 统计"只有 pass 的函数体"
@@ -229,7 +270,9 @@ def logic_gate(text: str, *, min_lines: int = 8) -> GateFinding:
     blocking = bool(stub_hits and len(lines) < 60) or (empty_defs > 0 and len(lines) < 40)
     if blocking:
         return GateFinding(
-            "logic", False, True,
+            "logic",
+            False,
+            True,
             "产物被判为占位/空壳实现：" + "，".join(detail_parts),
             stub_hits[:5],
         )
@@ -239,14 +282,16 @@ def logic_gate(text: str, *, min_lines: int = 8) -> GateFinding:
 
 
 _REQ_IDENT_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_.]{2,})`")
-_DEF_RE = re.compile(r"\b(?:def|class|fn|struct|enum|interface|function)\s+([A-Za-z_][A-Za-z0-9_]*)")
+_DEF_RE = re.compile(
+    r"\b(?:def|class|fn|struct|enum|interface|function)\s+([A-Za-z_][A-Za-z0-9_]*)"
+)
 _CALLISH_RE = re.compile(r"\b([a-z_][a-z0-9_]{3,})\s*\(")
 
 
 #: 仅这些"代码式"写法才被视为必须存在的符号（避免把自然语言词当符号）
 _SYMBOL_PATTERNS = (
-    re.compile(r"`([A-Za-z_][A-Za-z0-9_]{2,})`"),                 # `foo`
-    re.compile(r"\b([A-Za-z_][A-Za-z0-9_]{2,})\s*\("),            # foo(
+    re.compile(r"`([A-Za-z_][A-Za-z0-9_]{2,})`"),  # `foo`
+    re.compile(r"\b([A-Za-z_][A-Za-z0-9_]{2,})\s*\("),  # foo(
     re.compile(r"\b(?:def|class|fn|struct|enum|interface|function)\s+([A-Za-z_][A-Za-z0-9_]*)"),
 )
 

@@ -149,9 +149,7 @@ class ConvergenceTracker:
         )
 
     @staticmethod
-    def assess(
-        output: str, contract: DeliverableContract
-    ) -> tuple[bool, list[str], float]:
+    def assess(output: str, contract: DeliverableContract) -> tuple[bool, list[str], float]:
         """Single-scan completeness assessment.
 
         Returns (complete, missing, completeness_score).  Callers needing

@@ -96,8 +96,14 @@ def test_scene_decision_to_dict_shape():
     d = resolve_scene("架构")
     out = d.to_dict()
     assert set(out) >= {
-        "label", "confidence", "needs_clarification", "matched_keywords",
-        "mode", "pipeline_hint", "output_focus", "description",
+        "label",
+        "confidence",
+        "needs_clarification",
+        "matched_keywords",
+        "mode",
+        "pipeline_hint",
+        "output_focus",
+        "description",
     }
     assert set(out["pipeline_hint"]) == {"prepend", "append", "skip"}
     assert all(isinstance(v, str) for v in out["pipeline_hint"]["prepend"])
@@ -169,6 +175,7 @@ def test_router_scene_endpoint(core):
         assert "L5" in body["scene_pipeline"]
         assert body["scene_pipeline"][-1] == "L0"
         # 非法 task_type
-        assert client.get(
-            "/api/v1/router/scene", params={"q": "x", "task_type": "nope"}
-        ).status_code == 422
+        assert (
+            client.get("/api/v1/router/scene", params={"q": "x", "task_type": "nope"}).status_code
+            == 422
+        )

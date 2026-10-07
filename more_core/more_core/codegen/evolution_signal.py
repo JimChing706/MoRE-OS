@@ -53,10 +53,25 @@ FAILURE_CLASS_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("key_error_index", re.compile(r"(KeyError|IndexError)")),
     ("assertion_failed", re.compile(r"(AssertionError|assert .* failed)")),
     ("test_failure", re.compile(r"(FAILED|ERROR).*::test_|pytest.*failed|test.*FAIL")),
-    ("lint_error", re.compile(r"(ruff[\s:]|flake8[\s:]|mypy[\s:]|eslint[\s:]|tsc[\s:]|E[0-9]{3}|error TS[0-9]{4})", re.IGNORECASE)),
-    ("review_p1_p2", re.compile(r"(P1|P2)[^\n]{0,60}(finding|defect|issue|风险|漏洞|缺陷|问题)", re.IGNORECASE)),
-    ("safety_blocked", re.compile(r"(safety|dangerous|blocked|violation|拦截|安全)", re.IGNORECASE)),
-    ("stagnation", re.compile(r"(stagnant|converged|no progress|stagnation|停滞|收敛)", re.IGNORECASE)),
+    (
+        "lint_error",
+        re.compile(
+            r"(ruff[\s:]|flake8[\s:]|mypy[\s:]|eslint[\s:]|tsc[\s:]|E[0-9]{3}|error TS[0-9]{4})",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "review_p1_p2",
+        re.compile(r"(P1|P2)[^\n]{0,60}(finding|defect|issue|风险|漏洞|缺陷|问题)", re.IGNORECASE),
+    ),
+    (
+        "safety_blocked",
+        re.compile(r"(safety|dangerous|blocked|violation|拦截|安全)", re.IGNORECASE),
+    ),
+    (
+        "stagnation",
+        re.compile(r"(stagnant|converged|no progress|stagnation|停滞|收敛)", re.IGNORECASE),
+    ),
     ("differential", re.compile(r"(differential|disagreed|差异|不一致)", re.IGNORECASE)),
 ]
 
@@ -138,6 +153,7 @@ CREATE INDEX IF NOT EXISTS idx_fixes_success    ON codegen_fix_patterns(succeede
 
 # ── Low-level DB helpers ─────────────────────────────────────────────────────
 
+
 def _resolve_db_path(project_root: str | None = None) -> Path:
     explicit = os.getenv("MORE_CODEGEN_EVOLUTION_DB")
     if explicit:
@@ -165,15 +181,16 @@ def _get_conn(db_path: Path) -> sqlite3.Connection:
 
 # ── Fingerprinting helpers ───────────────────────────────────────────────────
 
+
 def _fingerprint(text: str) -> str:
     """Short stable hash of a failure body; normalises line numbers + paths."""
     if not text:
         return "empty"
-    t = re.sub(r'0[xX][0-9a-fA-F]+', 'HEX', text)
-    t = re.sub(r'line \d+', 'line N', t)
+    t = re.sub(r"0[xX][0-9a-fA-F]+", "HEX", text)
+    t = re.sub(r"line \d+", "line N", t)
     t = re.sub(r'File "[^"]+"', 'File "PATH"', t)
-    t = re.sub(r'\d+', '0', t)
-    t = re.sub(r'\s+', ' ', t).strip().lower()
+    t = re.sub(r"\d+", "0", t)
+    t = re.sub(r"\s+", " ", t).strip().lower()
     return hashlib.sha1(t.encode("utf-8")).hexdigest()[:12]
 
 
@@ -189,6 +206,7 @@ def classify_failure(text: str) -> tuple[str, str]:
 
 
 # ── Core export entrypoint ───────────────────────────────────────────────────
+
 
 def _ensure_schema_migrated(conn: sqlite3.Connection) -> None:
     """Best-effort: ALTER TABLE add any missing delegation columns to old DBs.
@@ -217,7 +235,9 @@ def _ensure_schema_migrated(conn: sqlite3.Connection) -> None:
         ).fetchall()
         if not idx_rows:
             try:
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_delegated ON codegen_runs(delegated)")
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_runs_delegated ON codegen_runs(delegated)"
+                )
             except Exception:
                 pass
         conn.commit()
@@ -275,11 +295,11 @@ def export_codegen_evolution_signal(
     best_of_k = 1 if bool(artifacts.get("best_of_k") or _g("best_of_k")) else 0
 
     # ── Step-4 fusion: delegation telemetry ──────────────────────────────
-    delegated = 1 if bool(
-        scratch.get("_chassis_delegated")
-        or artifacts.get("delegated")
-        or _g("delegated")
-    ) else 0
+    delegated = (
+        1
+        if bool(scratch.get("_chassis_delegated") or artifacts.get("delegated") or _g("delegated"))
+        else 0
+    )
     trigger = str(
         scratch.get("_chassis_delegation_trigger")
         or artifacts.get("delegation_trigger")
@@ -315,8 +335,7 @@ def export_codegen_evolution_signal(
     except Exception:
         thinking_tokens = 0
     uplift_from_ctx = bool(
-        scratch.get("diff_uplift_applied")
-        or artifacts.get("diff_uplift_applied")
+        scratch.get("diff_uplift_applied") or artifacts.get("diff_uplift_applied")
     )
     # Rationale string carries "bias-l1-diff-uplift applied" when the
     # difficulty-uplift bias fired; mirror it to the int column.
@@ -357,25 +376,30 @@ def export_codegen_evolution_signal(
         bias_notes_parts: list[str] = []
         for key in ("_bias_applied", "rationale", "advice"):
             val = scratch.get(key)
-            if isinstance(val, str) and val and (
-                "delegation-bias applied" in val
-                or "bias-l1-diff-uplift applied" in val
+            if (
+                isinstance(val, str)
+                and val
+                and ("delegation-bias applied" in val or "bias-l1-diff-uplift applied" in val)
             ):
                 bias_notes_parts.append(val)
         artifacts_merged: dict[str, Any] = dict(artifacts or {})
         artifacts_merged.update(ctx.extra or {})
-        artifacts_merged.update({
-            "delegated": bool(delegated),
-            "delegation_trigger": trigger,
-            "delegation_state": del_state,
-            "tier_used": tier_used,
-            "thinking_tokens": thinking_tokens,
-            "diff_uplift_applied": bool(diff_uplift_applied),
-        })
+        artifacts_merged.update(
+            {
+                "delegated": bool(delegated),
+                "delegation_trigger": trigger,
+                "delegation_state": del_state,
+                "tier_used": tier_used,
+                "thinking_tokens": thinking_tokens,
+                "diff_uplift_applied": bool(diff_uplift_applied),
+            }
+        )
         if bias_notes_parts:
             artifacts_merged["_bias_notes"] = "\n".join(bias_notes_parts)
         artifacts_json_dump = json.dumps(
-            artifacts_merged, ensure_ascii=False, default=str,
+            artifacts_merged,
+            ensure_ascii=False,
+            default=str,
         )
         reasons_json_dump = json.dumps(reasons, ensure_ascii=False)
         checks_json_dump = json.dumps(checks, ensure_ascii=False, default=str)
@@ -438,7 +462,7 @@ def export_codegen_evolution_signal(
                 det_repaired_in_run = bool(_g("fix_deterministic"))
                 review_guided = bool(_g("review") or _g("review_rejected") or _g("review_approved"))
                 succeeded_all = 1 if decision == "pass" else 0
-                for (cls, fp) in seen:
+                for cls, fp in seen:
                     if det_repaired_in_run:
                         conn.execute(
                             "INSERT INTO codegen_fix_patterns "
@@ -477,6 +501,7 @@ def export_codegen_evolution_signal(
 
 
 # ── L2-facing query API ──────────────────────────────────────────────────────
+
 
 def query_top_fixes_for_failure(
     failure_class: str,
@@ -600,7 +625,9 @@ def query_verdict_stats(
                 "failure_class": fc,
                 "distinct_fingerprints": int(dfp),
                 "occurrences": int(occ),
-                "top_fixes": query_top_fixes_for_failure(fc, min_samples=1, project_root=project_root)[:3],
+                "top_fixes": query_top_fixes_for_failure(
+                    fc, min_samples=1, project_root=project_root
+                )[:3],
             }
             for fc, dfp, occ in top_failures
         ],
@@ -734,10 +761,7 @@ def query_dynamic_k(
         if query_fp:
             where.append("query_fp = ?")
             params.append(query_fp)
-        q = (
-            "SELECT COUNT(*), SUM(CASE WHEN decision = 'pass' THEN 1 ELSE 0 END) "
-            "FROM codegen_runs"
-        )
+        q = "SELECT COUNT(*), SUM(CASE WHEN decision = 'pass' THEN 1 ELSE 0 END) FROM codegen_runs"
         if where:
             q += " WHERE " + " AND ".join(where)
         (total, passed) = conn.execute(q, params).fetchone()
@@ -745,8 +769,7 @@ def query_dynamic_k(
         passed = int(passed or 0)
         if total < min_runs:
             rationale = (
-                f"dynamic-k: not enough history (n={total} < {min_runs}); "
-                f"use default k policy."
+                f"dynamic-k: not enough history (n={total} < {min_runs}); use default k policy."
             )
             return 0, rationale
         rate = passed / total if total else 0.0
@@ -818,46 +841,9 @@ def get_delegation_success_stats(
     except Exception:
         return result
     try:
-        where: list[str] = []
-        params: list[Any] = []
-        if task_type:
-            where.append("task_type = ?")
-            params.append(task_type)
-        if query_fp:
-            where.append("query_fp = ?")
-            params.append(query_fp)
-        filter_suffix = (
-            (" WHERE " + " AND ".join(where)) if where else ""
-        )
-        # Three separate queries (cheap, indexed via idx_runs_delegated for
-        # chassis buckets; and avoids complex CASE bloat).
-        queries: list[tuple[str, str]] = [
-            (
-                "local",
-                "SELECT COUNT(*), SUM(CASE WHEN decision='pass' THEN 1 ELSE 0 END) "
-                "FROM codegen_runs"
-                f"{filter_suffix + (' AND ' if where else ' WHERE ')}delegated = 0",
-            ),
-            (
-                "chassis_default",
-                "SELECT COUNT(*), SUM(CASE WHEN decision='pass' AND delegation_state='completed' THEN 1 ELSE 0 END) "
-                "FROM codegen_runs"
-                f"{filter_suffix + (' AND ' if where else ' WHERE ')}delegated = 1 AND delegation_trigger = 'default_gate'",
-            ),
-            (
-                "chassis_evolution",
-                "SELECT COUNT(*), SUM(CASE WHEN decision='pass' AND delegation_state='completed' THEN 1 ELSE 0 END) "
-                "FROM codegen_runs"
-                f"{filter_suffix + (' AND ' if where else ' WHERE ')}delegated = 1 AND delegation_trigger = 'evolution_escalation'",
-            ),
-        ]
-        # Re-bind params per query since the suffix changes placeholder order.
-        for key, q_text in queries:
-            # Rebuild with per-bucket where clause and then append the
-            # delegated/trigger parts; simpler approach: re-build from a
-            # shared base per query via positional args concat so parameter
-            # order matches the query text exactly.
-            parts = q_text.split(" WHERE ", 1)
+        # 三个统计桶。每个查询都按 key 现场重建（shared_where + bucket_filter），
+        # 避免 CASE 膨胀，并保证参数顺序与 SQL 文本严格一致。
+        for key in ("local", "chassis_default", "chassis_evolution"):
             # Reconstruct query from task_type/query_fp + bucket predicates.
             shared_where: list[str] = []
             shared_params: list[Any] = []
@@ -1058,8 +1044,11 @@ def compute_evolution_summary(
     """
     empty_strategy = {"n": 0.0, "passed": 0.0, "rate": 0.0}
     _tier_empty = {
-        "n": 0, "passed": 0, "pass_rate": 0.0,
-        "avg_thinking_ratio": 0.0, "tier_transitions_per_hour": 0.0,
+        "n": 0,
+        "passed": 0,
+        "pass_rate": 0.0,
+        "avg_thinking_ratio": 0.0,
+        "tier_transitions_per_hour": 0.0,
     }
     result: dict = {
         "total_runs": 0,
@@ -1103,8 +1092,7 @@ def compute_evolution_summary(
         # 1) Totals / rate / range
         row = conn.execute(
             "SELECT COUNT(*), SUM(CASE WHEN decision='pass' THEN 1 ELSE 0 END), "
-            "       MIN(created_at), MAX(created_at) FROM codegen_runs "
-            + where_suffix,
+            "       MIN(created_at), MAX(created_at) FROM codegen_runs " + where_suffix,
             where_params,
         ).fetchone()
         total = int(row[0] or 0)
@@ -1138,11 +1126,10 @@ def compute_evolution_summary(
 
         # 4) Bias-applied count (artifacts_json carries the applied tag, or
         # rationale artifacts_json._bias_applied was set if caller injected)
-        q_bias = (
-            "SELECT COUNT(*) FROM codegen_runs"
-            + ((" WHERE " + " AND ".join(where_parts + ["artifacts_json LIKE ?"]))
-               if where_parts else
-               " WHERE artifacts_json LIKE ?")
+        q_bias = "SELECT COUNT(*) FROM codegen_runs" + (
+            (" WHERE " + " AND ".join(where_parts + ["artifacts_json LIKE ?"]))
+            if where_parts
+            else " WHERE artifacts_json LIKE ?"
         )
         bias_params = where_params + ["%delegation-bias applied%"]
         (bias_count,) = conn.execute(q_bias, bias_params).fetchone()
@@ -1227,9 +1214,7 @@ def compute_evolution_summary(
                 if a != b:
                     transitions_count += 1
         span_h = (
-            max((max(ts_list) - min(ts_list)) / 3600.0, 1.0 / 3600.0)
-            if len(ts_list) >= 2
-            else 1.0
+            max((max(ts_list) - min(ts_list)) / 3600.0, 1.0 / 3600.0) if len(ts_list) >= 2 else 1.0
         )
         tph = transitions_count / max(span_h, 1.0 / 3600.0)
         for key in tb:
@@ -1246,13 +1231,10 @@ def compute_evolution_summary(
         (uplift_sum_row,) = conn.execute(q_uplift_sum, where_params).fetchone()
         uplift_count = int(uplift_sum_row or 0)
         if uplift_count == 0:
-            q_uplift_str = (
-                "SELECT COUNT(*) FROM codegen_runs"
-                + (
-                    (" WHERE " + " AND ".join(where_parts + ["artifacts_json LIKE ?"]))
-                    if where_parts
-                    else " WHERE artifacts_json LIKE ?"
-                )
+            q_uplift_str = "SELECT COUNT(*) FROM codegen_runs" + (
+                (" WHERE " + " AND ".join(where_parts + ["artifacts_json LIKE ?"]))
+                if where_parts
+                else " WHERE artifacts_json LIKE ?"
             )
             uplift_params = where_params + ["%bias-l1-diff-uplift applied%"]
             (uplift_count_row,) = conn.execute(q_uplift_str, uplift_params).fetchone()

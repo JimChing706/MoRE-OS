@@ -23,7 +23,7 @@ class _FakeServer:
     async def write(self, message: str) -> None:
         obj = json.loads(message)
         self.sent.append(obj)
-        if "id" not in obj:          # notification，无响应
+        if "id" not in obj:  # notification，无响应
             return
         if self._reply_override is not None:
             self._inbox.append(self._reply_override)
@@ -46,7 +46,8 @@ class _FakeServer:
 def _ok_handlers() -> dict[str, Any]:
     return {
         "initialize": lambda i, p: {
-            "jsonrpc": "2.0", "id": i,
+            "jsonrpc": "2.0",
+            "id": i,
             "result": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
@@ -54,26 +55,34 @@ def _ok_handlers() -> dict[str, Any]:
             },
         },
         "tools/list": lambda i, p: {
-            "jsonrpc": "2.0", "id": i,
+            "jsonrpc": "2.0",
+            "id": i,
             "result": {"tools": [{"name": "echo", "description": "d", "inputSchema": {}}]},
         },
         "tools/call": lambda i, p: {
-            "jsonrpc": "2.0", "id": i,
+            "jsonrpc": "2.0",
+            "id": i,
             "result": {"content": [{"type": "text", "text": "ok"}], "isError": False},
         },
         "resources/list": lambda i, p: {
-            "jsonrpc": "2.0", "id": i,
+            "jsonrpc": "2.0",
+            "id": i,
             "result": {"resources": [{"uri": "file:///a", "name": "a"}]},
         },
         "resources/read": lambda i, p: {
-            "jsonrpc": "2.0", "id": i, "result": {"contents": [{"uri": p.get("uri")}]},
+            "jsonrpc": "2.0",
+            "id": i,
+            "result": {"contents": [{"uri": p.get("uri")}]},
         },
         "prompts/list": lambda i, p: {
-            "jsonrpc": "2.0", "id": i,
+            "jsonrpc": "2.0",
+            "id": i,
             "result": {"prompts": [{"name": "p1", "description": "d"}]},
         },
         "prompts/get": lambda i, p: {
-            "jsonrpc": "2.0", "id": i, "result": {"messages": [], "name": p.get("name")},
+            "jsonrpc": "2.0",
+            "id": i,
+            "result": {"messages": [], "name": p.get("name")},
         },
         "shutdown": lambda i, p: {"jsonrpc": "2.0", "id": i, "result": {}},
     }
@@ -112,9 +121,9 @@ async def test_initialize_passes_auth_token():
 
 @pytest.mark.asyncio
 async def test_initialize_error_response_raises():
-    srv = _FakeServer(reply=json.dumps(
-        {"jsonrpc": "2.0", "id": 1, "error": {"code": -32000, "message": "nope"}}
-    ))
+    srv = _FakeServer(
+        reply=json.dumps({"jsonrpc": "2.0", "id": 1, "error": {"code": -32000, "message": "nope"}})
+    )
     with pytest.raises(MCPClientError) as ei:
         await srv.session.initialize(ClientCapabilities(), {"name": "c"})
     assert "Initialize failed" in str(ei.value)
@@ -176,7 +185,9 @@ async def test_resources_and_prompts():
 async def test_call_error_response_raises():
     handlers = _ok_handlers()
     handlers["tools/list"] = lambda i, p: {
-        "jsonrpc": "2.0", "id": i, "error": {"code": -1, "message": "boom"}
+        "jsonrpc": "2.0",
+        "id": i,
+        "error": {"code": -1, "message": "boom"},
     }
     srv = _FakeServer(handlers)
     sess = srv.session
@@ -191,7 +202,7 @@ async def test_shutdown_marks_uninitialized():
     sess, _ = await _initialized_session()
     await sess.shutdown()
     assert sess._initialized is False
-    await sess.shutdown()          # 再次调用是 no-op
+    await sess.shutdown()  # 再次调用是 no-op
 
 
 # ---------------------------------------------------------------------------
@@ -246,9 +257,9 @@ async def test_client_connect_registers_session_and_transport():
 
 @pytest.mark.asyncio
 async def test_client_connect_failure_disconnects_transport():
-    srv = _FakeServer(reply=json.dumps(
-        {"jsonrpc": "2.0", "id": 1, "error": {"code": -1, "message": "x"}}
-    ))
+    srv = _FakeServer(
+        reply=json.dumps({"jsonrpc": "2.0", "id": 1, "error": {"code": -1, "message": "x"}})
+    )
     transport = _FakeTransport()
     client = MCPClient()
     with pytest.raises(MCPClientError):
@@ -260,7 +271,7 @@ async def test_client_connect_failure_disconnects_transport():
 @pytest.mark.asyncio
 async def test_client_disconnect_unknown_is_noop():
     client = MCPClient()
-    await client.disconnect("ghost")   # 不应抛异常
+    await client.disconnect("ghost")  # 不应抛异常
     assert client.list_sessions() == []
 
 

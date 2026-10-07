@@ -23,15 +23,22 @@ def _no_backoff(monkeypatch):
 
 def _provider(handler, **kw) -> OpenAICompatProvider:
     p = OpenAICompatProvider(
-        "openai", "http://api.test/v1", "gpt-x", "sk-test",
-        timeout=5, max_retries=kw.pop("max_retries", 3), **kw,
+        "openai",
+        "http://api.test/v1",
+        "gpt-x",
+        "sk-test",
+        timeout=5,
+        max_retries=kw.pop("max_retries", 3),
+        **kw,
     )
     p._client = httpx.AsyncClient(transport=httpx.MockTransport(handler), timeout=5)
     return p
 
 
-_OK = {"choices": [{"message": {"content": "hi"}}],
-       "usage": {"prompt_tokens": 3, "completion_tokens": 4}}
+_OK = {
+    "choices": [{"message": {"content": "hi"}}],
+    "usage": {"prompt_tokens": 3, "completion_tokens": 4},
+}
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +57,8 @@ def test_non_retryable_statuses(code):
 
 
 @pytest.mark.parametrize(
-    "msg", ["model is loading", "rate limit exceeded", "connection reset by peer", "SERVER OVERLOADED"]
+    "msg",
+    ["model is loading", "rate limit exceeded", "connection reset by peer", "SERVER OVERLOADED"],
 )
 def test_retryable_message_patterns_case_insensitive(msg):
     assert _is_retryable(418, msg) is True

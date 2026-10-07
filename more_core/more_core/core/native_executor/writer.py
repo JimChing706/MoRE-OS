@@ -19,12 +19,15 @@ import hashlib
 import json
 import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from .planner import Step
 from .types import TaskTemplateKey
+
+if TYPE_CHECKING:  # pragma: no cover - 仅供类型检查，避免运行时循环导入
+    from .payload_mixins import PayloadWriterMixin
 
 # 防止循环导入：mixin 模块会在下方局部位置 import。
 
@@ -32,6 +35,7 @@ from .types import TaskTemplateKey
 # ============================================================
 # 异常类型
 # ============================================================
+
 
 class ProvenanceViolation(Exception):
     """违反安全来源（路径白名单 / 穿越检测）的异常。
@@ -47,6 +51,7 @@ class ProvenanceViolation(Exception):
 # ============================================================
 # 审计记录数据类
 # ============================================================
+
 
 @dataclass
 class WriteAuditRecord:
@@ -64,6 +69,7 @@ class WriteAuditRecord:
 # ============================================================
 # 核心类
 # ============================================================
+
 
 class Writer:
     """安全文件写入器。
@@ -134,7 +140,8 @@ class Writer:
         audit_root_abs = os.path.abspath(audit_root)
 
         # ---------- 阶段 0：按 template_key 取 manifest 白名单（防错位） ----------
-        from .payload_mixins import PayloadWriterMixin, TetrisWriterMixin, CSShooterWriterMixin, GenericWriterMixin
+        from .payload_mixins import TetrisWriterMixin, CSShooterWriterMixin, GenericWriterMixin
+
         _MANIFEST_MAP: dict[TaskTemplateKey, set[str]] = {
             "tetris": TetrisWriterMixin().expected_file_manifest(),
             "cs_shooter": CSShooterWriterMixin().expected_file_manifest(),
@@ -228,16 +235,17 @@ class Writer:
             )
 
         # 规则 2：白名单前缀匹配
-        in_tmp = normalized.startswith(self.TMP_WHITELIST_PREFIX.rstrip("/") + "/") or \
-                 normalized == self.TMP_WHITELIST_PREFIX.rstrip("/")
-        in_workdata = normalized.startswith(self._workdata_prefix.rstrip("/") + "/") or \
-                      normalized == self._workdata_prefix.rstrip("/")
+        in_tmp = normalized.startswith(
+            self.TMP_WHITELIST_PREFIX.rstrip("/") + "/"
+        ) or normalized == self.TMP_WHITELIST_PREFIX.rstrip("/")
+        in_workdata = normalized.startswith(
+            self._workdata_prefix.rstrip("/") + "/"
+        ) or normalized == self._workdata_prefix.rstrip("/")
 
         # 特殊规则：如果是以 /tmp/ 开头但不在 tmp 白名单，**立即拒绝**
         if normalized.startswith("/tmp/") and not in_tmp:
             raise ProvenanceViolation(
-                f"/tmp/ 下仅允许写入 {self.TMP_WHITELIST_PREFIX!r} 子目录，"
-                f"拒绝写入: {abs_path!r}",
+                f"/tmp/ 下仅允许写入 {self.TMP_WHITELIST_PREFIX!r} 子目录，拒绝写入: {abs_path!r}",
                 offending_path=abs_path,
             )
 
@@ -328,7 +336,7 @@ codegen-units = 1
     # -- src/lib.rs (核心算法，含 SRS_KICKS 常量 + srs_kick 函数) ---------------
     @staticmethod
     def _default_lib_rs() -> str:
-        return '''//! Tetris 核心逻辑库：SRS 踢墙、7-Bag、Hold、Ghost、Lock Delay。
+        return """//! Tetris 核心逻辑库：SRS 踢墙、7-Bag、Hold、Ghost、Lock Delay。
 //!
 //! 所有算法均采用纯函数风格，便于单测与 WASM 编译。
 
@@ -609,18 +617,23 @@ pub const LOCK_DELAY_MS_DEFAULT: u32 = 500;
 // 在 lib.rs 内部 include 单元测试模块
 #[path = "tests.rs"]
 mod tests;
-'''
+"""
 
     # -- src/tests.rs (≥ 24 个 #[test] 标注) --------------------------------
     @staticmethod
     def _default_tests_rs() -> str:
         parts = []
-        parts.append("//! 俄罗斯方块核心逻辑单元测试。\n//! 本文件包含 ≥ 24 个 #[test] 标注，覆盖核心算法。\n\n")
+        parts.append(
+            "//! 俄罗斯方块核心逻辑单元测试。\n//! 本文件包含 ≥ 24 个 #[test] 标注，覆盖核心算法。\n\n"
+        )
         parts.append("use super::*;\n\n")
 
         test_cases = [
             ("test_board_empty_new", "assert_eq!(b.get(0,0), None);"),
-            ("test_board_set_get", "b.set(3,5,PieceType::T); assert_eq!(b.get(3,5),Some(PieceType::T));"),
+            (
+                "test_board_set_get",
+                "b.set(3,5,PieceType::T); assert_eq!(b.get(3,5),Some(PieceType::T));",
+            ),
             ("test_board_oob_get", "assert_eq!(b.get(-1,0), None);"),
             ("test_board_oob_set_no_panic", "b.set(-1,0,PieceType::T);"),
             ("test_rot_cw_n0", "assert_eq!(RotState::N0.cw(), RotState::R);"),
@@ -629,29 +642,77 @@ mod tests;
             ("test_rot_cw_l", "assert_eq!(RotState::L.cw(), RotState::N0);"),
             ("test_rot_ccw_n0", "assert_eq!(RotState::N0.ccw(), RotState::L);"),
             ("test_rot_ccw_r", "assert_eq!(RotState::R.ccw(), RotState::N0);"),
-            ("test_piece_cells_o_len", "assert_eq!(piece_cells(PieceType::O,RotState::N0).len(),4);"),
-            ("test_piece_cells_i_unique", "let c=piece_cells(PieceType::I,RotState::N0); let mut s=c.to_vec(); s.sort(); s.dedup(); assert_eq!(s.len(),4);"),
-            ("test_valid_pos_origin", "assert!(is_valid_position(&b,PieceType::T,RotState::N0,3,0));"),
-            ("test_invalid_pos_left_wall", "assert!(!is_valid_position(&b,PieceType::T,RotState::N0,-5,0));"),
-            ("test_invalid_pos_right_wall", "assert!(!is_valid_position(&b,PieceType::I,RotState::N0,8,0));"),
-            ("test_invalid_pos_floor", "assert!(!is_valid_position(&b,PieceType::T,RotState::N0,3,-1));"),
-            ("test_bag_seven_unique", "let mut bag=BagRandomizer::new(42); let mut v=Vec::new(); for _ in 0..7 { v.push(bag.next()); } v.sort_by_key(|p|*p as u8); v.dedup(); assert_eq!(v.len(),7);"),
-            ("test_bag_deterministic_seed", "let mut a=BagRandomizer::new(123); let mut b2=BagRandomizer::new(123); for _ in 0..21 { assert_eq!(a.next(),b2.next()); }"),
-            ("test_ghost_simple", "assert_eq!(ghost_y(&b,PieceType::O,RotState::N0,4,0), BOARD_H-2);"),
+            (
+                "test_piece_cells_o_len",
+                "assert_eq!(piece_cells(PieceType::O,RotState::N0).len(),4);",
+            ),
+            (
+                "test_piece_cells_i_unique",
+                "let c=piece_cells(PieceType::I,RotState::N0); let mut s=c.to_vec(); s.sort(); s.dedup(); assert_eq!(s.len(),4);",
+            ),
+            (
+                "test_valid_pos_origin",
+                "assert!(is_valid_position(&b,PieceType::T,RotState::N0,3,0));",
+            ),
+            (
+                "test_invalid_pos_left_wall",
+                "assert!(!is_valid_position(&b,PieceType::T,RotState::N0,-5,0));",
+            ),
+            (
+                "test_invalid_pos_right_wall",
+                "assert!(!is_valid_position(&b,PieceType::I,RotState::N0,8,0));",
+            ),
+            (
+                "test_invalid_pos_floor",
+                "assert!(!is_valid_position(&b,PieceType::T,RotState::N0,3,-1));",
+            ),
+            (
+                "test_bag_seven_unique",
+                "let mut bag=BagRandomizer::new(42); let mut v=Vec::new(); for _ in 0..7 { v.push(bag.next()); } v.sort_by_key(|p|*p as u8); v.dedup(); assert_eq!(v.len(),7);",
+            ),
+            (
+                "test_bag_deterministic_seed",
+                "let mut a=BagRandomizer::new(123); let mut b2=BagRandomizer::new(123); for _ in 0..21 { assert_eq!(a.next(),b2.next()); }",
+            ),
+            (
+                "test_ghost_simple",
+                "assert_eq!(ghost_y(&b,PieceType::O,RotState::N0,4,0), BOARD_H-2);",
+            ),
             ("test_score_single", "assert_eq!(score_lines(1,1),100);"),
             ("test_score_double", "assert_eq!(score_lines(2,1),300);"),
             ("test_score_triple", "assert_eq!(score_lines(3,1),500);"),
             ("test_score_tetris", "assert_eq!(score_lines(4,1),800);"),
             ("test_score_level_mult", "assert_eq!(score_lines(4,3),2400);"),
-            ("test_srs_o_empty", "assert!(srs_kick(PieceType::O,RotState::N0,RotState::R).is_empty());"),
-            ("test_srs_i_len", "assert!(srs_kick(PieceType::I,RotState::N0,RotState::R).len()>=4);"),
-            ("test_srs_jlstz_len", "assert!(srs_kick(PieceType::J,RotState::N0,RotState::R).len()>=4);"),
-            ("test_clear_line_one", "let mut bx=Board::new(); for x in 0..BOARD_W {{ bx.set(x,0,PieceType::O); }} assert!(bx.is_row_full(0)); assert_eq!(bx.clear_lines(),1); assert!(!bx.is_row_full(0));"),
+            (
+                "test_srs_o_empty",
+                "assert!(srs_kick(PieceType::O,RotState::N0,RotState::R).is_empty());",
+            ),
+            (
+                "test_srs_i_len",
+                "assert!(srs_kick(PieceType::I,RotState::N0,RotState::R).len()>=4);",
+            ),
+            (
+                "test_srs_jlstz_len",
+                "assert!(srs_kick(PieceType::J,RotState::N0,RotState::R).len()>=4);",
+            ),
+            (
+                "test_clear_line_one",
+                "let mut bx=Board::new(); for x in 0..BOARD_W {{ bx.set(x,0,PieceType::O); }} assert!(bx.is_row_full(0)); assert_eq!(bx.clear_lines(),1); assert!(!bx.is_row_full(0));",
+            ),
             ("test_clear_line_none", "let mut bx=Board::new(); assert_eq!(bx.clear_lines(),0);"),
-            ("test_lock_delay_consts", "assert_eq!(MAX_LOCK_DELAY_RESETS,15); assert_eq!(LOCK_DELAY_MS_DEFAULT,500);"),
+            (
+                "test_lock_delay_consts",
+                "assert_eq!(MAX_LOCK_DELAY_RESETS,15); assert_eq!(LOCK_DELAY_MS_DEFAULT,500);",
+            ),
             ("test_board_dimensions", "assert_eq!(BOARD_W,10); assert_eq!(BOARD_H,40);"),
-            ("test_piece_t_cells_rot0", "let c=piece_cells(PieceType::T,RotState::N0); assert!(c.contains(&(1,2)));"),
-            ("test_valid_pos_after_set_collide", "let mut bx=Board::new(); bx.set(4,2,PieceType::O); assert!(!is_valid_position(&bx,PieceType::T,RotState::N0,3,0));"),
+            (
+                "test_piece_t_cells_rot0",
+                "let c=piece_cells(PieceType::T,RotState::N0); assert!(c.contains(&(1,2)));",
+            ),
+            (
+                "test_valid_pos_after_set_collide",
+                "let mut bx=Board::new(); bx.set(4,2,PieceType::O); assert!(!is_valid_position(&bx,PieceType::T,RotState::N0,3,0));",
+            ),
         ]
         for name, body in test_cases:
             parts.append("#[test]\n")
@@ -1549,8 +1610,12 @@ clean:
         here = Path(__file__).resolve()
         # here:  .../more_core/more_core/core/native_executor/writer.py
         # 向上 4 层到达 .../ （包含 more_core/ 子目录的父目录）
-        for candidate in [here.parents[4], here.parents[3], here.parents[2],
-                          Path(os.getcwd()).resolve()]:
+        for candidate in [
+            here.parents[4],
+            here.parents[3],
+            here.parents[2],
+            Path(os.getcwd()).resolve(),
+        ]:
             if (candidate / "more_core").is_dir():
                 return str(candidate)
         return str(Path(os.getcwd()).resolve())
@@ -1570,6 +1635,7 @@ class TaskPayloadTemplateRegistry:
     def __init__(self) -> None:
         # 避免顶层循环 import —— 这里做 lazy import
         from .payload_mixins import TetrisWriterMixin, CSShooterWriterMixin, GenericWriterMixin
+
         self._singletons = {
             "tetris": TetrisWriterMixin(),
             "cs_shooter": CSShooterWriterMixin(),
@@ -1589,4 +1655,3 @@ class TaskPayloadTemplateRegistry:
             return self._singletons[key]
         # 兜底：未知 key 不 crash，给 generic（回退行为）
         return self._singletons["generic"]
-

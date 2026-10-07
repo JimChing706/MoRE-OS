@@ -85,13 +85,15 @@ def test_verdict_dict_shape():
 
 def test_store_tracks_parent_and_lists_children(tmp_path):
     st = SQLiteTaskStore(tmp_path / "t.db")
-    st.create_task("p1", {"title": "parent", "created_at": "now",
-                          "context": {"is_parent": True}})
+    st.create_task("p1", {"title": "parent", "created_at": "now", "context": {"is_parent": True}})
     for i in (1, 2):
         st.create_task(
             f"p1-REQ-00{i}",
-            {"title": f"REQ-00{i}", "created_at": "now",
-             "context": {"parent_id": "p1", "requirement_id": f"REQ-00{i}"}},
+            {
+                "title": f"REQ-00{i}",
+                "created_at": "now",
+                "context": {"parent_id": "p1", "requirement_id": f"REQ-00{i}"},
+            },
         )
     kids = st.list_children("p1")
     assert [k["task_id"] for k in kids] == ["p1-REQ-001", "p1-REQ-002"]
@@ -120,8 +122,11 @@ async def test_executor_dispatches_requirements_and_gates_parent(tmp_path):
     from more_core.api.routers.tasks import _execute_task_background_v2
 
     settings = Settings(
-        providers=[], fallback_chain=[], enable_evolution=False,
-        enable_metacognition=False, enable_symbolic=True,
+        providers=[],
+        fallback_chain=[],
+        enable_evolution=False,
+        enable_metacognition=False,
+        enable_symbolic=True,
     )
     core = MoRECore(settings)
     core.llm._providers["fake"] = _FakeLLMProvider()
@@ -134,33 +139,62 @@ async def test_executor_dispatches_requirements_and_gates_parent(tmp_path):
     _pa._default_layer = ProvenanceLayer(tmp_path / "prov.db")
 
     parent = "req-dispatch-test-001"
-    store.create_task(parent, {
-        "task_id": parent, "title": "Tetris Build", "type": "code_generation",
-        "description": "build tetris project", "status": "pending", "progress": 0,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "context": {"is_parent": True, "max_iterations": 1},
-    })
+    store.create_task(
+        parent,
+        {
+            "task_id": parent,
+            "title": "Tetris Build",
+            "type": "code_generation",
+            "description": "build tetris project",
+            "status": "pending",
+            "progress": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "context": {"is_parent": True, "max_iterations": 1},
+        },
+    )
     # 子任务 1：产物（tetris 模板）里必然存在这些符号 → 应 completed
-    store.create_task(f"{parent}-REQ-001", {
-        "task_id": f"{parent}-REQ-001", "title": "REQ-001: Cargo 构建产物",
-        "description": "输出 Cargo.toml 与 Makefile",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "context": {"parent_id": parent, "requirement_id": "REQ-001",
-                    "acceptance_criteria": ["存在 Cargo.toml"]},
-    })
+    store.create_task(
+        f"{parent}-REQ-001",
+        {
+            "task_id": f"{parent}-REQ-001",
+            "title": "REQ-001: Cargo 构建产物",
+            "description": "输出 Cargo.toml 与 Makefile",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "context": {
+                "parent_id": parent,
+                "requirement_id": "REQ-001",
+                "acceptance_criteria": ["存在 Cargo.toml"],
+            },
+        },
+    )
     # 子任务 2：产物里绝不存在 → 应 failed
-    store.create_task(f"{parent}-REQ-002", {
-        "task_id": f"{parent}-REQ-002", "title": "REQ-002: 火箭发动机推力控制",
-        "description": "implement rocket_thrust_controller 与 orbital_guidance 模块",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "context": {"parent_id": parent, "requirement_id": "REQ-002",
-                    "acceptance_criteria": ["rocket_thrust_controller 可调用"]},
-    })
+    store.create_task(
+        f"{parent}-REQ-002",
+        {
+            "task_id": f"{parent}-REQ-002",
+            "title": "REQ-002: 火箭发动机推力控制",
+            "description": "implement rocket_thrust_controller 与 orbital_guidance 模块",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "context": {
+                "parent_id": parent,
+                "requirement_id": "REQ-002",
+                "acceptance_criteria": ["rocket_thrust_controller 可调用"],
+            },
+        },
+    )
 
-    await _execute_task_background_v2(parent, {
-        "task_id": parent, "title": "Tetris Build", "description": "build tetris project",
-        "type": "code_generation", "priority": "medium", "context": {"max_iterations": 1},
-    }, core)
+    await _execute_task_background_v2(
+        parent,
+        {
+            "task_id": parent,
+            "title": "Tetris Build",
+            "description": "build tetris project",
+            "type": "code_generation",
+            "priority": "medium",
+            "context": {"max_iterations": 1},
+        },
+        core,
+    )
 
     kids = {k["task_id"]: k for k in store.list_children(parent)}
     assert len(kids) == 2

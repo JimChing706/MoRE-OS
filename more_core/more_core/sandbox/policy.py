@@ -35,29 +35,77 @@ __all__ = ["SandboxPolicy", "default_policy", "reset_default_policy"]
 _DANGEROUS_CALLS: frozenset[str] = frozenset(
     {
         # 进程 / shell
-        "os.system", "os.popen", "os.execv", "os.execve", "os.execl", "os.execlp",
-        "os.execvp", "os.execvpe", "os.spawnl", "os.spawnv", "os.spawnlp", "os.fork",
-        "os.forkpty", "os.kill", "os.killpg", "os.setuid", "os.setgid",
-        "subprocess.run", "subprocess.Popen", "subprocess.call", "subprocess.check_call",
-        "subprocess.check_output", "subprocess.getoutput", "subprocess.getstatusoutput",
+        "os.system",
+        "os.popen",
+        "os.execv",
+        "os.execve",
+        "os.execl",
+        "os.execlp",
+        "os.execvp",
+        "os.execvpe",
+        "os.spawnl",
+        "os.spawnv",
+        "os.spawnlp",
+        "os.fork",
+        "os.forkpty",
+        "os.kill",
+        "os.killpg",
+        "os.setuid",
+        "os.setgid",
+        "subprocess.run",
+        "subprocess.Popen",
+        "subprocess.call",
+        "subprocess.check_call",
+        "subprocess.check_output",
+        "subprocess.getoutput",
+        "subprocess.getstatusoutput",
         # 文件系统破坏
-        "shutil.rmtree", "shutil.move", "shutil.copytree",
-        "os.remove", "os.unlink", "os.rmdir", "os.removedirs", "os.chmod", "os.chown",
-        "pathlib.Path.unlink", "pathlib.Path.rmdir", "pathlib.Path.chmod",
-        "pathlib.Path.write_text", "pathlib.Path.write_bytes",
+        "shutil.rmtree",
+        "shutil.move",
+        "shutil.copytree",
+        "os.remove",
+        "os.unlink",
+        "os.rmdir",
+        "os.removedirs",
+        "os.chmod",
+        "os.chown",
+        "pathlib.Path.unlink",
+        "pathlib.Path.rmdir",
+        "pathlib.Path.chmod",
+        "pathlib.Path.write_text",
+        "pathlib.Path.write_bytes",
         # 动态执行 / 反射式导入
-        "eval", "exec", "compile", "__import__",
-        "builtins.eval", "builtins.exec", "builtins.__import__",
-        "importlib.import_module", "importlib.__import__", "importlib.reload",
+        "eval",
+        "exec",
+        "compile",
+        "__import__",
+        "builtins.eval",
+        "builtins.exec",
+        "builtins.__import__",
+        "importlib.import_module",
+        "importlib.__import__",
+        "importlib.reload",
         # 网络 / 原生互操作 / 反序列化
-        "socket.socket", "socket.create_connection", "socket.create_server",
-        "ctypes.CDLL", "ctypes.PyDLL", "ctypes.cdll.LoadLibrary",
-        "ctypes.windll", "ctypes.util.find_library",
-        "pickle.loads", "pickle.Unpickler", "marshal.loads", "shelve.open",
-        "urllib.request.urlopen", "http.client.HTTPConnection",
+        "socket.socket",
+        "socket.create_connection",
+        "socket.create_server",
+        "ctypes.CDLL",
+        "ctypes.PyDLL",
+        "ctypes.cdll.LoadLibrary",
+        "ctypes.windll",
+        "ctypes.util.find_library",
+        "pickle.loads",
+        "pickle.Unpickler",
+        "marshal.loads",
+        "shelve.open",
+        "urllib.request.urlopen",
+        "http.client.HTTPConnection",
         # 运行时自省 / 调试钩子
-        "sys.settrace", "sys.setprofile", "sys._getframe",
-        "resource.setrlimit", "signal.signal",
+        "sys.settrace",
+        "sys.setprofile",
+        "sys._getframe",
+        "resource.setrlimit",
+        "signal.signal",
     }
 )
 
@@ -106,10 +154,29 @@ class SandboxPolicy:
     allowed_imports: frozenset[str] = field(
         default_factory=lambda: frozenset(
             {
-                "math", "random", "re", "json", "datetime", "time", "collections",
-                "itertools", "functools", "typing", "dataclasses", "enum", "pathlib",
-                "os.path", "textwrap", "hashlib", "base64", "uuid", "copy", "pprint",
-                "statistics", "decimal", "fractions",
+                "math",
+                "random",
+                "re",
+                "json",
+                "datetime",
+                "time",
+                "collections",
+                "itertools",
+                "functools",
+                "typing",
+                "dataclasses",
+                "enum",
+                "pathlib",
+                "os.path",
+                "textwrap",
+                "hashlib",
+                "base64",
+                "uuid",
+                "copy",
+                "pprint",
+                "statistics",
+                "decimal",
+                "fractions",
             }
         )
     )
@@ -121,18 +188,31 @@ class SandboxPolicy:
             r"\bpython3?\s+-c\s+",
             r"\bbash\s+-c\s+",
             r"\bsh\s+-c\s+",
-            r"\$\(",              # 命令替换
-            r"`[^`]+`",           # 反引号命令替换
+            r"\$\(",  # 命令替换
+            r"`[^`]+`",  # 反引号命令替换
             r"\|\s*(?:sh|bash)\b",  # curl … | sh
-            r">\s*/dev/",         # 写设备
+            r">\s*/dev/",  # 写设备
         ]
     )
 
     # System commands denied at the sandbox boundary.
     blocked_commands: list[str] = field(
         default_factory=lambda: [
-            "rm", "dd", "mkfs", "shutdown", "reboot", "kill", "pkill", "sudo",
-            "chown", "chmod", "mount", "umount", "nc", "netcat", "ncat",
+            "rm",
+            "dd",
+            "mkfs",
+            "shutdown",
+            "reboot",
+            "kill",
+            "pkill",
+            "sudo",
+            "chown",
+            "chmod",
+            "mount",
+            "umount",
+            "nc",
+            "netcat",
+            "ncat",
         ]
     )
 
@@ -141,7 +221,19 @@ class SandboxPolicy:
         {"-c", "-e", "--eval", "-E", "--exec", "-x"}
     )
     interpreters: frozenset[str] = frozenset(
-        {"python", "python3", "node", "ruby", "perl", "php", "bash", "sh", "zsh", "ksh", "osascript"}
+        {
+            "python",
+            "python3",
+            "node",
+            "ruby",
+            "perl",
+            "php",
+            "bash",
+            "sh",
+            "zsh",
+            "ksh",
+            "osascript",
+        }
     )
 
     #: 允许写入的路径前缀（用于 open(..., "w") 的静态判定）
@@ -195,7 +287,12 @@ class SandboxPolicy:
                     continue
                 simple = name.rsplit(".", 1)[-1]
                 if name.split(".")[0] in {"os", "shutil"} and simple in {
-                    "system", "popen", "remove", "unlink", "rmdir", "rmtree",
+                    "system",
+                    "popen",
+                    "remove",
+                    "unlink",
+                    "rmdir",
+                    "rmtree",
                 }:
                     violations.append(f"blocked call: {name}()")
             elif isinstance(node, ast.Attribute):
@@ -281,15 +378,23 @@ class SandboxPolicy:
                 violations.append(f"blocked command: {base}")
         # 解释器 + 内联代码
         exe = tokens[0].rsplit("/", 1)[-1]
-        if exe in self.interpreters and any(t in self.dangerous_interpreter_flags for t in tokens[1:]):
+        if exe in self.interpreters and any(
+            t in self.dangerous_interpreter_flags for t in tokens[1:]
+        ):
             violations.append(f"blocked inline code execution: {exe} {' '.join(tokens[1:3])}")
         # env VAR=VALUE 注入（LD_PRELOAD / DYLD_* / PYTHONPATH …）
         if exe == "env":
             for tok in tokens[1:]:
                 if "=" in tok:
                     key = tok.split("=", 1)[0]
-                    if key in {"LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_INSERT_LIBRARIES",
-                               "DYLD_LIBRARY_PATH", "PYTHONPATH", "PYTHONSTARTUP"}:
+                    if key in {
+                        "LD_PRELOAD",
+                        "LD_LIBRARY_PATH",
+                        "DYLD_INSERT_LIBRARIES",
+                        "DYLD_LIBRARY_PATH",
+                        "PYTHONPATH",
+                        "PYTHONSTARTUP",
+                    }:
                         violations.append(f"blocked env injection: {key}")
 
         # 路径穿越 / 敏感路径读取（R-10）
@@ -300,8 +405,14 @@ class SandboxPolicy:
             if any(seg == ".." for seg in segments):
                 violations.append(f"blocked path traversal: {tok}")
                 continue
-            for sensitive in ("/etc/passwd", "/etc/shadow", "/etc/sudoers",
-                              "/root/", "/.ssh/", "/var/root/"):
+            for sensitive in (
+                "/etc/passwd",
+                "/etc/shadow",
+                "/etc/sudoers",
+                "/root/",
+                "/.ssh/",
+                "/var/root/",
+            ):
                 if norm == sensitive.rstrip("/") or sensitive in norm:
                     violations.append(f"blocked sensitive path: {tok}")
                     break

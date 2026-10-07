@@ -16,12 +16,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from pathlib import Path
 
-import pytest
 
 from more_core.core.native_executor.delivery import (
     Delivery,
-    DeliveryArtifact,
-    ManifestEntry,
 )
 
 
@@ -47,7 +44,9 @@ def _make_source_project(with_cargo: bool = True) -> Path:
         encoding="utf-8",
     )
     tests_body = "\n".join(
-        f"#    [test]\n    fn t_{i}() {{ assert!(true); }}\n".replace("    ", "").replace("#    [", "#[")
+        f"#    [test]\n    fn t_{i}() {{ assert!(true); }}\n".replace("    ", "").replace(
+            "#    [", "#["
+        )
         for i in range(26)
     )
     (proj / "src" / "tests.rs").write_text(tests_body, encoding="utf-8")
@@ -77,9 +76,11 @@ def test_delivery_test_report_has_6_chapters():
     text = Path(art.test_report_path).read_text(encoding="utf-8")
     for i, ch_title in enumerate(Delivery.TEST_REPORT_CHAPTERS):
         # 章节标题可能包含 "1. xxx" 或 "## 1. xxx" 格式，用子串匹配即可
-        assert ch_title[:16] in text or f"## {ch_title[:20]}" in text or ch_title.split(" (")[0] in text, (
-            f"第 {i+1} 章标题缺失或格式不符: {ch_title!r}"
-        )
+        assert (
+            ch_title[:16] in text
+            or f"## {ch_title[:20]}" in text
+            or ch_title.split(" (")[0] in text
+        ), f"第 {i + 1} 章标题缺失或格式不符: {ch_title!r}"
     # 额外确认 6 章都存在（含"执行环境/测试范围/单元测试/构建验证/归档完整性/SHA256"关键词）
     keywords = ["执行环境", "测试范围", "单元测试", "构建验证", "归档完整性", "SHA256"]
     for kw in keywords:
@@ -101,9 +102,7 @@ def test_delivery_manifest_has_path_size_sha_prefix16_for_each_entry():
         assert "sha256_prefix16" in entry
         sha = entry["sha256_prefix16"]
         assert len(sha) == 16, f"sha256 前缀长度 != 16: {sha!r}"
-        assert all(c in "0123456789abcdef" for c in sha), (
-            f"sha256 前缀非十六进制小写: {sha!r}"
-        )
+        assert all(c in "0123456789abcdef" for c in sha), f"sha256 前缀非十六进制小写: {sha!r}"
     # manifest 中应当包含 Cargo.toml / src/lib.rs / src/tests.rs / frontend/index.html / js/tetris.js
     paths = {e["path"] for e in data}
     for required in ("src/lib.rs", "src/tests.rs", "frontend/index.html", "js/tetris.js"):
@@ -120,7 +119,7 @@ def test_delivery_creates_tar_gz_and_zip_and_top_level_dir_matches_prefix():
 
     # 两份压缩包都存在
     assert Path(art.tar_gz_path).is_file(), f"tar.gz 不存在: {art.tar_gz_path}"
-    assert Path(art.zip_path).is_file(),    f"zip 不存在: {art.zip_path}"
+    assert Path(art.zip_path).is_file(), f"zip 不存在: {art.zip_path}"
     assert art.tar_gz_path.endswith(".tar.gz")
     assert art.zip_path.endswith(".zip")
 
@@ -129,18 +128,14 @@ def test_delivery_creates_tar_gz_and_zip_and_top_level_dir_matches_prefix():
         names = tf.getnames()
         assert len(names) >= 5, f"tar.gz 内容不足: {names}"
         top_levels = {n.split("/")[0] for n in names if n}
-        assert top_levels == {prefix}, (
-            f"tar.gz 顶层目录必须恰好为 {prefix!r}，实际: {top_levels}"
-        )
+        assert top_levels == {prefix}, f"tar.gz 顶层目录必须恰好为 {prefix!r}，实际: {top_levels}"
 
     # zip 顶层目录前缀检查
     with zipfile.ZipFile(art.zip_path, "r") as zf:
         names = zf.namelist()
         assert len(names) >= 5
         top_levels = {n.split("/")[0] for n in names if n}
-        assert top_levels == {prefix}, (
-            f"zip 顶层目录必须恰好为 {prefix!r}，实际: {top_levels}"
-        )
+        assert top_levels == {prefix}, f"zip 顶层目录必须恰好为 {prefix!r}，实际: {top_levels}"
         # zip CRC 健康检查（无损坏条目）
         assert zf.testzip() is None, "zip 文件 CRC 校验失败"
 
@@ -166,6 +161,7 @@ def test_delivery_artifact_roundtrip_field_values():
 def test_delivery_manifest_sha_prefix16_matches_full_sha():
     """从 manifest 取一个条目，验证 sha256_prefix16 确实等于真实 SHA256 前 16 位。"""
     import hashlib
+
     proj = _make_source_project()
     d = Delivery(_use_system_tar=False, _use_system_zip=False)
     art = d.run(str(proj), project_prefix="sha-verify")

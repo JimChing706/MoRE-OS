@@ -33,16 +33,23 @@ class WebSearchSkill(Skill):
                 "type": "object",
                 "properties": {
                     "query": {
-                        "type": "string", "minLength": 1, "maxLength": 2000,
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000,
                         "description": "搜索关键词",
                     },
                     "limit": {
-                        "type": "integer", "minimum": 1, "maximum": 50, "default": 10,
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 50,
+                        "default": 10,
                         "description": "返回结果条数 (1-50)",
                     },
                     "provider": {
-                        "type": "string", "enum": ["duckduckgo", "serpapi"],
-                        "default": "duckduckgo", "description": "搜索提供方",
+                        "type": "string",
+                        "enum": ["duckduckgo", "serpapi"],
+                        "default": "duckduckgo",
+                        "description": "搜索提供方",
                     },
                 },
                 "required": ["query"],
@@ -92,9 +99,7 @@ class WebSearchSkill(Skill):
         """SerpAPI key 来源：技能 config 优先，其次环境变量 SERPAPI_API_KEY。"""
         import os
 
-        return str(
-            self._config.get("serpapi_key") or os.getenv("SERPAPI_API_KEY") or ""
-        ).strip()
+        return str(self._config.get("serpapi_key") or os.getenv("SERPAPI_API_KEY") or "").strip()
 
     async def _search(self, provider: str, query: str, limit: int) -> list[dict[str, Any]]:
         """按指定 provider 搜索。
@@ -183,13 +188,18 @@ class WebBrowseSkill(Skill):
                 "type": "object",
                 "properties": {
                     "url": {
-                        "type": "string", "format": "uri", "pattern": "^https?://",
-                        "minLength": 1, "maxLength": 2048,
+                        "type": "string",
+                        "format": "uri",
+                        "pattern": "^https?://",
+                        "minLength": 1,
+                        "maxLength": 2048,
                         "description": "目标网页 URL，必须以 http:// 或 https:// 开头",
                     },
                     "extract": {
-                        "type": "string", "enum": ["text", "json", "links"],
-                        "default": "text", "description": "内容抽取类型",
+                        "type": "string",
+                        "enum": ["text", "json", "links"],
+                        "default": "text",
+                        "description": "内容抽取类型",
                     },
                 },
                 "required": ["url"],

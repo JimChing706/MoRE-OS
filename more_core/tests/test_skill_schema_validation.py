@@ -40,10 +40,21 @@ _SCHEMA = {
 
 
 def test_valid_object_passes():
-    assert validate_params(
-        {"name": "ok", "n": 5, "ratio": 0.5, "mode": "a", "tags": ["x"], "url": "https://e.com", "pat": "abc"},
-        _SCHEMA,
-    ) == []
+    assert (
+        validate_params(
+            {
+                "name": "ok",
+                "n": 5,
+                "ratio": 0.5,
+                "mode": "a",
+                "tags": ["x"],
+                "url": "https://e.com",
+                "pat": "abc",
+            },
+            _SCHEMA,
+        )
+        == []
+    )
 
 
 @pytest.mark.parametrize(
@@ -82,7 +93,11 @@ def test_empty_schema_is_permissive():
 
 def test_unknown_keywords_are_ignored_not_failing():
     # 不认识的复杂关键字不应误拦合法入参
-    schema = {"type": "object", "anyOf": [{"required": ["x"]}], "properties": {"x": {"type": "string"}}}
+    schema = {
+        "type": "object",
+        "anyOf": [{"required": ["x"]}],
+        "properties": {"x": {"type": "string"}},
+    }
     assert validate_params({"x": "ok"}, schema) == []
 
 
@@ -97,6 +112,7 @@ def test_check_params_returns_standard_message():
 # ---------------------------------------------------------------------------
 # 2. 5 个内置技能的入参契约
 # ---------------------------------------------------------------------------
+
 
 def _schemas() -> dict[str, dict]:
     mgr = create_default_skill_manager()
@@ -119,19 +135,59 @@ def test_all_builtin_skills_have_proper_json_schema():
     [
         ("web.search", {"query": "hello"}, {"query": ""}, "小于最小长度"),
         ("web.search", {"query": "hi", "limit": 5}, {"query": "hi", "limit": 999}, "超过最大值 50"),
-        ("web.search", {"query": "hi", "provider": "serpapi"}, {"query": "hi", "provider": "bing"}, "不在允许集合"),
+        (
+            "web.search",
+            {"query": "hi", "provider": "serpapi"},
+            {"query": "hi", "provider": "bing"},
+            "不在允许集合",
+        ),
         ("web.browse", {"url": "https://example.com"}, {"url": "ftp://x"}, "不匹配模式"),
         ("web.browse", {"url": "https://example.com"}, {"url": "not-a-url"}, "不是合法 URI"),
-        ("web.browse", {"url": "https://e.com", "extract": "json"}, {"url": "https://e.com", "extract": "xml"}, "不在允许集合"),
+        (
+            "web.browse",
+            {"url": "https://e.com", "extract": "json"},
+            {"url": "https://e.com", "extract": "xml"},
+            "不在允许集合",
+        ),
         ("code.execute", {"code": "print(1)"}, {}, "缺少必填字段"),
-        ("code.execute", {"code": "x", "language": "python"}, {"code": "x", "language": "ruby"}, "不在允许集合"),
-        ("code.execute", {"code": "x", "timeout": 30}, {"code": "x", "timeout": 9999}, "超过最大值 300"),
+        (
+            "code.execute",
+            {"code": "x", "language": "python"},
+            {"code": "x", "language": "ruby"},
+            "不在允许集合",
+        ),
+        (
+            "code.execute",
+            {"code": "x", "timeout": 30},
+            {"code": "x", "timeout": 9999},
+            "超过最大值 300",
+        ),
         ("data.analyze", {"data": "a,b\n1,2"}, {"operation": "parse"}, "缺少必填字段"),
-        ("data.analyze", {"data": "x", "operation": "stats"}, {"data": "x", "operation": "nope"}, "不在允许集合"),
-        ("data.analyze", {"data": "x", "format": "csv"}, {"data": "x", "format": "xml"}, "不在允许集合"),
+        (
+            "data.analyze",
+            {"data": "x", "operation": "stats"},
+            {"data": "x", "operation": "nope"},
+            "不在允许集合",
+        ),
+        (
+            "data.analyze",
+            {"data": "x", "format": "csv"},
+            {"data": "x", "format": "xml"},
+            "不在允许集合",
+        ),
         ("api.call", {"url": "https://api.example.com"}, {"url": "notaurl"}, "不是合法 URI"),
-        ("api.call", {"url": "https://api.example.com", "method": "POST"}, {"url": "https://a.com", "method": "TRACE"}, "不在允许集合"),
-        ("api.call", {"url": "https://api.example.com", "timeout": 10}, {"url": "https://a.com", "timeout": 0}, "小于最小值 1"),
+        (
+            "api.call",
+            {"url": "https://api.example.com", "method": "POST"},
+            {"url": "https://a.com", "method": "TRACE"},
+            "不在允许集合",
+        ),
+        (
+            "api.call",
+            {"url": "https://api.example.com", "timeout": 10},
+            {"url": "https://a.com", "timeout": 0},
+            "小于最小值 1",
+        ),
     ],
 )
 def test_builtin_skill_param_contracts(sid, good, bad, needle):
@@ -145,6 +201,7 @@ def test_builtin_skill_param_contracts(sid, good, bad, needle):
 # ---------------------------------------------------------------------------
 # 3. SkillManager.execute 集成：统一拦截 + 结构化失败 + 遥测
 # ---------------------------------------------------------------------------
+
 
 class _SchemaSkill(Skill):
     def __init__(self) -> None:

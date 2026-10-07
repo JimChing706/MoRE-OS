@@ -45,9 +45,9 @@ DEFAULT_OLLAMA_MODEL = "qwen2.5:7b"
 # 每级可经环境变量覆盖: MORE_TIER_{0..3}_MODEL=provider:model
 _TIER_DEFAULTS: tuple[tuple[str, str], ...] = (
     ("lmstudio", DEFAULT_LM_REASONING_MODEL),  # T0 推理 — 最难推理/架构
-    ("lmstudio", DEFAULT_LM_MODEL),            # T1 主力 — 代码/编排/默认
-    ("lmstudio", DEFAULT_LM_SMALL_MODEL),      # T2 轻量 — 简单任务 (避开 thinking 开销)
-    ("ollama", DEFAULT_OLLAMA_MODEL),          # T3 兜底 — 资源隔离的最后防线
+    ("lmstudio", DEFAULT_LM_MODEL),  # T1 主力 — 代码/编排/默认
+    ("lmstudio", DEFAULT_LM_SMALL_MODEL),  # T2 轻量 — 简单任务 (避开 thinking 开销)
+    ("ollama", DEFAULT_OLLAMA_MODEL),  # T3 兜底 — 资源隔离的最后防线
 )
 # 每级生成策略 (性能平衡):
 #   thinking   — 推理/主力开 (对支持 API 关闭的模型生效), 轻量/兜底关
@@ -56,7 +56,9 @@ _TIER_THINKING: tuple[bool, ...] = (True, True, False, False)
 _TIER_MAX_TOKENS: tuple[int, ...] = (8192, 4096, 2048, 1024)
 
 
-def _parse_tier_config(env: dict[str, str] | None = None) -> tuple[tuple[str, ...], tuple[str, ...]]:
+def _parse_tier_config(
+    env: dict[str, str] | None = None,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Load the tier ladder from env (``MORE_TIER_{0..3}_MODEL=provider:model``).
 
     A bare model name (no ``:``) keeps the tier's default provider (tiers 0-2
@@ -82,7 +84,9 @@ def _parse_tier_config(env: dict[str, str] | None = None) -> tuple[tuple[str, ..
     return tuple(models), tuple(providers)
 
 
-def _parse_prev_tier_config(env: dict[str, str] | None = None) -> tuple[tuple[str, ...], tuple[str, ...]]:
+def _parse_prev_tier_config(
+    env: dict[str, str] | None = None,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """P1-4 G-1 覃朗：前版梯子从环境变量 MORE_PREV_TIER_{0..3}_MODEL 加载。
 
     用于灰度发布后，经 RBAC 受控 rollback API 一键切回上一版 (G-2)。未配置则
@@ -120,9 +124,7 @@ __all__.extend(["PREV_MODEL_TIER_LADDER", "PREV_TIER_PROVIDERS"])
 # ── R1: Tier cooldown (anti-oscillation) + T0 whitelist ─────────────────
 
 _DEFAULT_COOLDOWN_S = 30.0
-_DEFAULT_REASONING_TASK_TYPES_CSV = (
-    "MATH_REASONING,ARCHITECTURE_DESIGN,DATA_ANALYSIS"
-)
+_DEFAULT_REASONING_TASK_TYPES_CSV = "MATH_REASONING,ARCHITECTURE_DESIGN,DATA_ANALYSIS"
 
 
 def _parse_cooldown_s(env: dict[str, str] | None = None) -> float:
@@ -135,7 +137,8 @@ def _parse_cooldown_s(env: dict[str, str] | None = None) -> float:
     except ValueError:
         _log_cfg.warning(
             "invalid MORE_TIER_SWITCH_COOLDOWN_S=%r → using default %.1fs",
-            raw, _DEFAULT_COOLDOWN_S,
+            raw,
+            _DEFAULT_COOLDOWN_S,
         )
         return _DEFAULT_COOLDOWN_S
     return max(0.0, v)

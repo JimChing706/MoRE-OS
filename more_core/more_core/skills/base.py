@@ -137,9 +137,7 @@ class SkillManager:
             "on_error": [],
         }
         # 0 表示禁用超时保护（默认 120s，可用 MORE_SKILL_TIMEOUT_S 覆盖）
-        self._timeout_s = (
-            _DEFAULT_SKILL_TIMEOUT_S if timeout_s is None else float(timeout_s)
-        )
+        self._timeout_s = _DEFAULT_SKILL_TIMEOUT_S if timeout_s is None else float(timeout_s)
 
     def register(self, skill: Skill) -> None:
         """注册技能（重复 id 覆盖旧实现，避免分类里出现重复条目）。"""
@@ -195,8 +193,12 @@ class SkillManager:
         )
         if not ok_schema:
             return await self._finalize(
-                skill_id, skill, params, success=False,
-                error=f"Validation failed: {schema_msg}", duration_ms=0.0,
+                skill_id,
+                skill,
+                params,
+                success=False,
+                error=f"Validation failed: {schema_msg}",
+                duration_ms=0.0,
             )
 
         # 2) 技能自身语义校验（跨字段条件等，异常同样隔离）
@@ -204,13 +206,21 @@ class SkillManager:
             valid, msg = await skill.validate(params)
         except Exception as exc:  # noqa: BLE001
             return await self._finalize(
-                skill_id, skill, params, success=False,
-                error=f"validation error: {type(exc).__name__}: {exc}", duration_ms=0.0,
+                skill_id,
+                skill,
+                params,
+                success=False,
+                error=f"validation error: {type(exc).__name__}: {exc}",
+                duration_ms=0.0,
             )
         if not valid:
             return await self._finalize(
-                skill_id, skill, params, success=False,
-                error=f"Validation failed: {msg}", duration_ms=0.0,
+                skill_id,
+                skill,
+                params,
+                success=False,
+                error=f"Validation failed: {msg}",
+                duration_ms=0.0,
             )
 
         start = time.perf_counter()
@@ -223,28 +233,44 @@ class SkillManager:
         except asyncio.TimeoutError:
             duration_ms = (time.perf_counter() - start) * 1000
             return await self._finalize(
-                skill_id, skill, params, success=False,
-                error=f"skill timed out after {self._timeout_s}s", duration_ms=duration_ms,
+                skill_id,
+                skill,
+                params,
+                success=False,
+                error=f"skill timed out after {self._timeout_s}s",
+                duration_ms=duration_ms,
             )
         except Exception as exc:  # noqa: BLE001 - 技能异常必须隔离
             duration_ms = (time.perf_counter() - start) * 1000
             text = str(exc).strip() or type(exc).__name__
             return await self._finalize(
-                skill_id, skill, params, success=False,
-                error=f"{type(exc).__name__}: {text}", duration_ms=duration_ms,
+                skill_id,
+                skill,
+                params,
+                success=False,
+                error=f"{type(exc).__name__}: {text}",
+                duration_ms=duration_ms,
             )
 
         duration_ms = (time.perf_counter() - start) * 1000
         if not isinstance(result, SkillResult):
             return await self._finalize(
-                skill_id, skill, params, success=False,
+                skill_id,
+                skill,
+                params,
+                success=False,
                 error=f"skill returned {type(result).__name__}, expected SkillResult",
                 duration_ms=duration_ms,
             )
         result.duration_ms = duration_ms
         return await self._finalize(
-            skill_id, skill, params, success=result.success,
-            error=result.error, duration_ms=duration_ms, result=result,
+            skill_id,
+            skill,
+            params,
+            success=result.success,
+            error=result.error,
+            duration_ms=duration_ms,
+            result=result,
         )
 
     async def _finalize(
@@ -259,8 +285,10 @@ class SkillManager:
         result: SkillResult | None = None,
     ) -> SkillResult:
         """统一收尾：更新指标 → 失败钩子 → 落库遥测 → after 钩子。"""
-        out = result if result is not None else SkillResult(
-            success=success, error=error, duration_ms=duration_ms
+        out = (
+            result
+            if result is not None
+            else SkillResult(success=success, error=error, duration_ms=duration_ms)
         )
         self._update_metrics(skill, success, duration_ms)
 
@@ -287,9 +315,7 @@ class SkillManager:
         ok = 1.0 if success else 0.0
         md.success_rate = ok if prev == 0 else (md.success_rate * prev + ok) / md.usage_count
         md.avg_duration_ms = (
-            duration_ms
-            if prev == 0
-            else (md.avg_duration_ms * prev + duration_ms) / md.usage_count
+            duration_ms if prev == 0 else (md.avg_duration_ms * prev + duration_ms) / md.usage_count
         )
 
     @staticmethod
@@ -339,9 +365,7 @@ class SkillManager:
         return {
             "total_skills": len(self._skills),
             "by_category": {c.value: len(ids) for c, ids in self._categories.items()},
-            "active": sum(
-                1 for s in self._skills.values() if s.get_status() == SkillStatus.ACTIVE
-            ),
+            "active": sum(1 for s in self._skills.values() if s.get_status() == SkillStatus.ACTIVE),
             "total_runs": total_runs,
             "success_rate": round(weighted_ok / total_runs, 3) if total_runs else 0.0,
             "timeout_s": self._timeout_s,

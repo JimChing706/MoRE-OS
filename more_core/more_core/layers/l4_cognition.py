@@ -153,7 +153,9 @@ class CognitionLayer(Layer):
             if council:
                 scene_label = ctx.request.context.get("scene_label", "general")
                 plan = await self._decompose_with_council(
-                    ctx, difficulty, scene_label,
+                    ctx,
+                    difficulty,
+                    scene_label,
                 )
             elif ctx.core.llm:
                 plan = await self._decompose_with_llm(ctx, difficulty)
@@ -289,7 +291,9 @@ class CognitionLayer(Layer):
 
         except Exception as exc:
             _log.warning(
-                "Council deliberation failed for task %s: %s", ctx.request.id, exc,
+                "Council deliberation failed for task %s: %s",
+                ctx.request.id,
+                exc,
             )
 
         return {

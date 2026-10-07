@@ -43,7 +43,11 @@ class CodegenVerdict:
     def summary(self) -> str:
         if self.decision == DECISION_PASS:
             return "codegen loop passed all success criteria"
-        head = "codegen loop partial" if self.decision == DECISION_PARTIAL else "codegen loop escalated to P0"
+        head = (
+            "codegen loop partial"
+            if self.decision == DECISION_PARTIAL
+            else "codegen loop escalated to P0"
+        )
         return f"{head}: " + "; ".join(self.reasons) if self.reasons else head
 
     def to_dict(self) -> dict[str, Any]:
@@ -65,7 +69,10 @@ def _review_state(scratch: dict[str, Any], scope: str) -> str | None:
 
 def _last_sandbox_result(scratch: dict[str, Any], scope: str) -> Any:
     """取出该 scope 最近一次沙箱结果（兼容 code/test 与历史键名）。"""
-    for key in (f"{scope}_result", "sandbox_result" if scope == "code" else f"{scope}_sandbox_result"):
+    for key in (
+        f"{scope}_result",
+        "sandbox_result" if scope == "code" else f"{scope}_sandbox_result",
+    ):
         value = scratch.get(key)
         if value is not None:
             return value
@@ -157,19 +164,14 @@ def adjudicate_codegen(
         reasons.append("fix loop converged with no progress (stagnation guard)")
 
     # ── Step-4 fusion: pick up delegation markers from scratch ──────
-    delegated_flag = bool(
-        scratch.get("_chassis_delegated")
-        or scratch.get(f"{scope}_delegated")
-    )
+    delegated_flag = bool(scratch.get("_chassis_delegated") or scratch.get(f"{scope}_delegated"))
     delegation_trigger = str(
         scratch.get("_chassis_delegation_trigger")
         or scratch.get(f"{scope}_delegation_trigger")
         or ""
     )
     delegation_state = str(
-        scratch.get("_chassis_delegation_state")
-        or scratch.get(f"{scope}_delegation_state")
-        or ""
+        scratch.get("_chassis_delegation_state") or scratch.get(f"{scope}_delegation_state") or ""
     )
 
     artifacts: dict[str, Any] = {

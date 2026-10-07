@@ -44,7 +44,8 @@ class TestGenerateAPIKey:
         k = generate_api_key("compat")
         assert len(k) == 46
         assert validate_api_key_report(k).valid is True
-        import base64, string
+        import string
+
         charset = set(string.ascii_letters + string.digits + "-_=")
         assert all(ch in charset for ch in k)
 
@@ -107,7 +108,9 @@ class TestValidateReport:
     def test_more_envvar_prefix_collision_warning(self):
         pseudo = "MORE_API_KEY=pretend_I_was_a_46char_value_okay??"
         r = validate_api_key_report(pseudo)
-        found = any("MORE." in w or "rotate it" in w.lower() or "collision" in w.lower() for w in r.warnings)
+        found = any(
+            "MORE." in w or "rotate it" in w.lower() or "collision" in w.lower() for w in r.warnings
+        )
         assert found is True, f"warnings should flag MORE.* prefix collision: {r.warnings}"
 
     def test_constants_aligned_with_server_baseline(self):
@@ -179,27 +182,39 @@ class TestRotationProof:
         proof = sign_rotation_proof(
             master_key=self.MASTER, new_key=new_key, revoke_old_in_seconds=3600
         )
-        assert verify_rotation_proof(
-            master_key=self.MASTER, proof=proof, new_key=new_key, revoke_old_in_seconds=3600
-        ) is True
+        assert (
+            verify_rotation_proof(
+                master_key=self.MASTER, proof=proof, new_key=new_key, revoke_old_in_seconds=3600
+            )
+            is True
+        )
 
     def test_wrong_master_key_verify_false(self):
         new_key = generate_api_key("modern")
         proof = sign_rotation_proof(
             master_key=self.MASTER, new_key=new_key, revoke_old_in_seconds=3600
         )
-        assert verify_rotation_proof(
-            master_key=self.MASTER + "X", proof=proof, new_key=new_key, revoke_old_in_seconds=3600
-        ) is False
+        assert (
+            verify_rotation_proof(
+                master_key=self.MASTER + "X",
+                proof=proof,
+                new_key=new_key,
+                revoke_old_in_seconds=3600,
+            )
+            is False
+        )
 
     def test_wrong_revoke_window_verify_false(self):
         new_key = generate_api_key("modern")
         proof = sign_rotation_proof(
             master_key=self.MASTER, new_key=new_key, revoke_old_in_seconds=3600
         )
-        assert verify_rotation_proof(
-            master_key=self.MASTER, proof=proof, new_key=new_key, revoke_old_in_seconds=7200
-        ) is False
+        assert (
+            verify_rotation_proof(
+                master_key=self.MASTER, proof=proof, new_key=new_key, revoke_old_in_seconds=7200
+            )
+            is False
+        )
 
     def test_ttl_expired_verify_false(self):
         new_key = generate_api_key("modern")
@@ -207,10 +222,16 @@ class TestRotationProof:
         proof = sign_rotation_proof(
             master_key=self.MASTER, new_key=new_key, revoke_old_in_seconds=3600, issued_at_unix=old
         )
-        assert verify_rotation_proof(
-            master_key=self.MASTER, proof=proof, new_key=new_key, revoke_old_in_seconds=3600,
-            ttl_seconds=300,
-        ) is False
+        assert (
+            verify_rotation_proof(
+                master_key=self.MASTER,
+                proof=proof,
+                new_key=new_key,
+                revoke_old_in_seconds=3600,
+                ttl_seconds=300,
+            )
+            is False
+        )
 
 
 # ---------------------------------------------------------------------------

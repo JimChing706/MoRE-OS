@@ -125,7 +125,11 @@ def _save_to_db(output_id: str, data: dict[str, Any]) -> None:
             conn = _get_conn()
             conn.execute(
                 "INSERT OR REPLACE INTO outputs (id, data, created_at) VALUES (?, ?, ?)",
-                (output_id, json.dumps(serializable, ensure_ascii=False), data.get("created_at", "")),
+                (
+                    output_id,
+                    json.dumps(serializable, ensure_ascii=False),
+                    data.get("created_at", ""),
+                ),
             )
             conn.commit()
     except Exception as exc:

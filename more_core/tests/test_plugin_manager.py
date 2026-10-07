@@ -14,7 +14,7 @@ import pytest
 from more_core.core.errors import PluginError
 from more_core.plugins.manager import PluginManager
 
-_PLUGIN_SRC = '''\
+_PLUGIN_SRC = """\
 from more_core.plugins.interface import PluginMetadata
 
 
@@ -32,7 +32,7 @@ class Plugin:
 
     def capabilities(self):
         return {{"cap": True}}
-'''
+"""
 
 
 class _FakeCore:
@@ -159,7 +159,7 @@ async def test_activate_and_deactivate(tmp_path):
     assert [m.name for m in mgr.active()] == ["live_plug"]
     assert mgr.load("live_plug").activated is True
 
-    await mgr.activate("live_plug", core)          # 幂等
+    await mgr.activate("live_plug", core)  # 幂等
     assert mgr.is_active("live_plug") is True
 
     await mgr.deactivate("live_plug")
@@ -204,7 +204,7 @@ async def test_deactivate_blocked_by_reverse_dependency(tmp_path):
     mgr = PluginManager(tmp_path)
     mgr.discover()
     core = _FakeCore()
-    await mgr.activate("child_plug", core)         # 会先激活 base_plug
+    await mgr.activate("child_plug", core)  # 会先激活 base_plug
 
     with pytest.raises(PluginError) as ei:
         await mgr.deactivate("base_plug")

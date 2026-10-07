@@ -49,13 +49,19 @@ def test_image_from_env_and_config(monkeypatch):
 
 @pytest.mark.parametrize(
     "language,interpreter,script",
-    [("python", "python", "main.py"), ("javascript", "node", "main.js"), ("bash", "bash", "main.sh")],
+    [
+        ("python", "python", "main.py"),
+        ("javascript", "node", "main.js"),
+        ("bash", "bash", "main.sh"),
+    ],
 )
 def test_container_argv_security_flags(language, interpreter, script):
     argv = CodeExecutionSkill._container_argv("img", language)
     assert argv[:2] == ["run", "--rm"]
     for flag, value in (
-        ("--network", "none"), ("--memory", "256m"), ("--cpus", "0.5"),
+        ("--network", "none"),
+        ("--memory", "256m"),
+        ("--cpus", "0.5"),
         ("--pids-limit", "64"),
     ):
         assert flag in argv and argv[argv.index(flag) + 1] == value
@@ -109,8 +115,8 @@ async def test_run_in_container_mounts_script_readonly(monkeypatch):
     assert result["returncode"] == 0 and result["stdout"] == "42\n"
     mount = captured["argv"][captured["argv"].index("-v") + 1]
     assert mount.endswith(":/work:ro")
-    assert captured["script_exists"] is True          # 脚本已写入挂载目录
-    assert captured["script_text"] == "print(42)"      # 内容一致
+    assert captured["script_exists"] is True  # 脚本已写入挂载目录
+    assert captured["script_text"] == "print(42)"  # 内容一致
 
 
 @pytest.mark.asyncio
@@ -142,8 +148,14 @@ async def test_run_code_prefers_container_when_configured(monkeypatch):
 
     async def fake_container(self, runtime, image, language, code, timeout):
         called["image"] = image
-        return {"returncode": 0, "stdout": "from-container", "stderr": "",
-                "timed_out": False, "sandboxed": True, "sandbox_mode": "container"}
+        return {
+            "returncode": 0,
+            "stdout": "from-container",
+            "stderr": "",
+            "timed_out": False,
+            "sandboxed": True,
+            "sandbox_mode": "container",
+        }
 
     monkeypatch.setattr(CodeExecutionSkill, "_run_in_container", fake_container)
     s = _skill(container_image="img")
@@ -166,8 +178,14 @@ async def test_execute_reports_container_mode(monkeypatch):
     monkeypatch.setattr("shutil.which", lambda n: f"/usr/bin/{n}")
 
     async def fake_container(self, runtime, image, language, code, timeout):
-        return {"returncode": 0, "stdout": "42\n", "stderr": "",
-                "timed_out": False, "sandboxed": True, "sandbox_mode": "container"}
+        return {
+            "returncode": 0,
+            "stdout": "42\n",
+            "stderr": "",
+            "timed_out": False,
+            "sandboxed": True,
+            "sandbox_mode": "container",
+        }
 
     monkeypatch.setattr(CodeExecutionSkill, "_run_in_container", fake_container)
     result = await _skill(container_image="img").execute(

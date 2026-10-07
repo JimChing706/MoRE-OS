@@ -133,7 +133,7 @@ def test_format_list_empty_has_no_stray_bullet():
 def test_format_table_aligns_columns():
     out = F.format_table(["a", "bb"], [["1", "2"], ["333", "4"]])
     lines = out.split("\n")
-    assert len(lines) == 4                      # 表头 + 分隔 + 2 行
+    assert len(lines) == 4  # 表头 + 分隔 + 2 行
     assert lines[0].startswith("a")
     assert "---" in lines[1]
     # 每列宽度取该列最大值

@@ -31,13 +31,13 @@ class EscalationCause(str, Enum):
     """升级（escalated）的根因分类。"""
 
     NONE = "none"
-    CODE_ERROR = "code_error"                 # 沙箱执行了，但代码报错
-    ASSERTIONS_FAILED = "assertions_failed"   # 验收断言未通过
-    SANDBOX_TIMEOUT = "sandbox_timeout"       # 沙箱超时
+    CODE_ERROR = "code_error"  # 沙箱执行了，但代码报错
+    ASSERTIONS_FAILED = "assertions_failed"  # 验收断言未通过
+    SANDBOX_TIMEOUT = "sandbox_timeout"  # 沙箱超时
     SANDBOX_UNAVAILABLE = "sandbox_unavailable"  # 沙箱/工具不可用（基础设施）
-    SAFETY_BLOCKED = "safety_blocked"         # 静态安全检查拦截
-    REVIEW_REJECTED = "review_rejected"       # 评审面板 P1/P2 否决
-    STAGNANT = "stagnant"                     # 修复轮次耗尽且无进展
+    SAFETY_BLOCKED = "safety_blocked"  # 静态安全检查拦截
+    REVIEW_REJECTED = "review_rejected"  # 评审面板 P1/P2 否决
+    STAGNANT = "stagnant"  # 修复轮次耗尽且无进展
     UNKNOWN = "unknown"
 
 
@@ -122,19 +122,13 @@ def classify_escalation(
         if timed_out or any(h in last_error.lower() for h in _TIMEOUT_HINTS):
             # 超时可能是"代码死循环"也可能是"环境慢"，先按基础设施告警，
             # 由 last_error/last_output_tail 进一步人工判定。
-            return EscalationInfo(
-                EscalationCause.SANDBOX_TIMEOUT, last_error, is_infra=True
-            )
+            return EscalationInfo(EscalationCause.SANDBOX_TIMEOUT, last_error, is_infra=True)
         if any(h in last_error.lower() for h in _UNAVAILABLE_HINTS):
-            return EscalationInfo(
-                EscalationCause.SANDBOX_UNAVAILABLE, last_error, is_infra=True
-            )
+            return EscalationInfo(EscalationCause.SANDBOX_UNAVAILABLE, last_error, is_infra=True)
         if last_error:
             # 沙箱确实跑了并报错 → 代码问题
             return EscalationInfo(EscalationCause.CODE_ERROR, last_error)
-        return EscalationInfo(
-            EscalationCause.UNKNOWN, "sandbox failed without a recorded reason"
-        )
+        return EscalationInfo(EscalationCause.UNKNOWN, "sandbox failed without a recorded reason")
 
     if checks.get("assertions") is False and checks.get("stagnant"):
         return EscalationInfo(EscalationCause.ASSERTIONS_FAILED, last_error)

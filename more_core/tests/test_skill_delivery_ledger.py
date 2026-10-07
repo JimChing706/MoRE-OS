@@ -21,12 +21,19 @@ from more_core.skills.delivery import (
 
 def _meta(sid: str = "t.skill", **over: object) -> SkillMetadata:
     base = dict(
-        id=sid, name="Demo", description="demo skill",
-        category=SkillCategory.TOOLS, version="1.0.0",
-        dependencies=["httpx"], maintainer="Team A",
+        id=sid,
+        name="Demo",
+        description="demo skill",
+        category=SkillCategory.TOOLS,
+        version="1.0.0",
+        dependencies=["httpx"],
+        maintainer="Team A",
         deployment={"runtime": "python>=3.10", "network_egress": True},
-        config_schema={"type": "object", "properties": {"x": {"type": "string"}},
-                       "required": ["x"]},
+        config_schema={
+            "type": "object",
+            "properties": {"x": {"type": "string"}},
+            "required": ["x"],
+        },
     )
     base.update(over)
     return SkillMetadata(**base)  # type: ignore[arg-type]
@@ -100,8 +107,7 @@ def test_archive_skill_manager_covers_all_default_skills():
 
     assert count == len(mgr.list_skills()) == 5
     records = {r.skill_id: r for r in ledger.list()}
-    assert set(records) == {"web.search", "web.browse", "code.execute",
-                            "data.analyze", "api.call"}
+    assert set(records) == {"web.search", "web.browse", "code.execute", "data.analyze", "api.call"}
     for sid, rec in records.items():
         assert rec.accepted, sid
         assert rec.complete, sid

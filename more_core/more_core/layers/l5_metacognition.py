@@ -68,14 +68,18 @@ class MetacognitionLayer(Layer):
         if council_result:
             _alignment_before = alignment
             council_review = self._review_council_output(
-                council_result, calibration, alignment,
+                council_result,
+                calibration,
+                alignment,
             )
             ctx.scratch["council_review"] = council_review
             if council_review.get("confidence_adjustment", 0.0) < 0:
                 alignment = max(0.0, alignment + council_review["confidence_adjustment"])
                 _log.info(
                     "L5 council review adjusted alignment: %.2f → %.2f (reason: %s)",
-                    _alignment_before, alignment, council_review.get("adjustment_reason", ""),
+                    _alignment_before,
+                    alignment,
+                    council_review.get("adjustment_reason", ""),
                 )
             if council_review.get("risks", []):
                 _log.info(
@@ -83,9 +87,7 @@ class MetacognitionLayer(Layer):
                     council_review.get("risk_count", len(council_review["risks"])),
                     ctx.request.id,
                 )
-            self._record_council_review(
-                ctx, council_review, _alignment_before, alignment
-            )
+            self._record_council_review(ctx, council_review, _alignment_before, alignment)
 
         # --- Self-modification (opt-in) ---
         enable_self_mod = (
@@ -244,9 +246,7 @@ class MetacognitionLayer(Layer):
         core_conclusion = getattr(council_result, "core_conclusion", "")
 
         risk_count = len(risks)
-        high_risks = sum(
-            1 for r in risks if isinstance(r, dict) and r.get("severity") == "high"
-        )
+        high_risks = sum(1 for r in risks if isinstance(r, dict) and r.get("severity") == "high")
         divided = consensus_level == "divided"
         weak_consensus = consensus_level in ("weak", "divided")
 

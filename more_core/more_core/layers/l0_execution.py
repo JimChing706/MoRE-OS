@@ -55,6 +55,7 @@ _TOOL_CALL_RE = re.compile(
     re.DOTALL,
 )
 
+
 @dataclass(slots=True)
 class _DelegationAdvice:
     """Result of ``_evolution_delegation_advice``.
@@ -65,7 +66,7 @@ class _DelegationAdvice:
     """
 
     recommend: bool = False
-    trigger: str = "default_gate"   # evolution_escalation | default_gate | user_override
+    trigger: str = "default_gate"  # evolution_escalation | default_gate | user_override
     rationale: str = ""
     candidate_k: int = 0
 
@@ -282,7 +283,9 @@ class ExecutionLayer(Layer):
             # (2) Default gate path
             try:
                 default_enabled = bool(
-                    getattr(getattr(ctx.core, "settings", None), "bailongma_enable_delegation", False)
+                    getattr(
+                        getattr(ctx.core, "settings", None), "bailongma_enable_delegation", False
+                    )
                 )
             except Exception:
                 default_enabled = False
@@ -501,7 +504,6 @@ class ExecutionLayer(Layer):
                 else:
                     ctx.scratch["test_blocked"] = violations
                     output += "\n\n⚠️ 测试代码被安全检查拦截: " + str(violations)
-
 
         # --- Build dynamic description ---
         desc_parts = ["LLM generation"]
@@ -869,9 +871,7 @@ class ExecutionLayer(Layer):
                         continue
                     # 产出**表达式**而非完整语句：拼接器会负责加 assert 与提示语，
                     # 若这里再写 `assert ...` 会导致二次包裹（见上）。
-                    checks.append(
-                        f"callable(globals().get('{name}')) or '{name}' in globals()"
-                    )
+                    checks.append(f"callable(globals().get('{name}')) or '{name}' in globals()")
                 if checks:
                     return checks
         return None
@@ -1118,9 +1118,7 @@ class ExecutionLayer(Layer):
             project_root = None
         for round_idx in range(1, _MAX_CODE_FIX_ROUNDS + 1):
             fix_req = LLMRequest(
-                prompt=self._build_fix_prompt(
-                    gen_req, code, sbx_result, project_root=project_root
-                ),
+                prompt=self._build_fix_prompt(gen_req, code, sbx_result, project_root=project_root),
                 system=gen_req.system,
                 temperature=0.4,
                 max_tokens=gen_req.max_tokens,
@@ -1218,7 +1216,11 @@ class ExecutionLayer(Layer):
         try:
             pref = ctx.request.context.get("prefer_delegation")
             if isinstance(pref, bool):
-                if pref and _s("bailongma_enable_delegation", False) and _s("bailongma_endpoint", ""):
+                if (
+                    pref
+                    and _s("bailongma_enable_delegation", False)
+                    and _s("bailongma_endpoint", "")
+                ):
                     return _DelegationAdvice(
                         recommend=True,
                         trigger="user_override",
@@ -1272,7 +1274,12 @@ class ExecutionLayer(Layer):
         try:
             from ..codegen.evolution_signal import query_dynamic_k
         except Exception:  # pragma: no cover
-            return _DelegationAdvice(recommend=False, trigger="default_gate", rationale="signal import failed", candidate_k=0)
+            return _DelegationAdvice(
+                recommend=False,
+                trigger="default_gate",
+                rationale="signal import failed",
+                candidate_k=0,
+            )
         try:
             task_type = str(getattr(req, "type", "") or "")
             q = getattr(req, "query", "") or ""
@@ -1374,7 +1381,9 @@ class ExecutionLayer(Layer):
                 # Clear scratch markers so export doesn't claim we delegated.
                 try:
                     ctx.scratch["_chassis_delegated"] = False
-                    ctx.scratch["_chassis_delegation_state"] = submitted.state.value if submitted is not None else "submit_failed"
+                    ctx.scratch["_chassis_delegation_state"] = (
+                        submitted.state.value if submitted is not None else "submit_failed"
+                    )
                 except Exception:
                     pass
                 return None
@@ -1395,7 +1404,11 @@ class ExecutionLayer(Layer):
                     except Exception:
                         pass
                     return None
-                if last_state in (A2ATaskState.COMPLETED, A2ATaskState.FAILED, A2ATaskState.CANCELED):
+                if last_state in (
+                    A2ATaskState.COMPLETED,
+                    A2ATaskState.FAILED,
+                    A2ATaskState.CANCELED,
+                ):
                     break  # last_state 已是枚举 final_state；final_task 已是最终 A2ATask 对象
                 await asyncio.sleep(ExecutionLayer._CHASSIS_POLL_INTERVAL_S)
                 polled = await bridge.poll_task(final_task.id)
@@ -1437,7 +1450,11 @@ class ExecutionLayer(Layer):
                 "decision": "pass" if last_state == A2ATaskState.COMPLETED else "partial",
                 "reasons": [f"chassis_delegation:{last_state.value}:{trigger}"],
                 "checks": {"sandbox": last_state == A2ATaskState.COMPLETED},
-                "artifacts": {"delegated": True, "delegation_trigger": trigger, "delegation_state": last_state.value},
+                "artifacts": {
+                    "delegated": True,
+                    "delegation_trigger": trigger,
+                    "delegation_state": last_state.value,
+                },
             }
             ctx.scratch["codegen_verdict"] = verdict_dict
             # Also write the codegen evolution signal for cross-run learning,
@@ -1504,9 +1521,7 @@ class ExecutionLayer(Layer):
         # Pull project_root for evolution DB lookup.
         project_root: str | None = None
         try:
-            project_root = getattr(
-                getattr(ctx.core, "settings", None), "project_root", None
-            )
+            project_root = getattr(getattr(ctx.core, "settings", None), "project_root", None)
         except Exception:
             project_root = None
 
@@ -1528,7 +1543,11 @@ class ExecutionLayer(Layer):
         task_type = ""
         query_fp = ""
         try:
-            task_type = str(ctx.request.type) if hasattr(ctx.request, "type") and ctx.request.type is not None else ""
+            task_type = (
+                str(ctx.request.type)
+                if hasattr(ctx.request, "type") and ctx.request.type is not None
+                else ""
+            )
             q = getattr(ctx.request, "query", "") or ""
             query_fp = _fingerprint(q)[:12]
         except Exception:
@@ -1704,9 +1723,7 @@ class ExecutionLayer(Layer):
 
         if not results:
             for _ in range(k):
-                in_tok, out_tok, content = await self._do_generate(
-                    ctx, gen_req, provider, model
-                )
+                in_tok, out_tok, content = await self._do_generate(ctx, gen_req, provider, model)
                 total_in += in_tok
                 total_out += out_tok
                 results.append(await self._run_candidate(ctx, content, assertions))
@@ -1734,9 +1751,7 @@ class ExecutionLayer(Layer):
             cand = await self._run_candidate(ctx, content, assertions)
             return in_tok, out_tok, cand
 
-        settled = await asyncio.gather(
-            *(_one(i) for i in range(k)), return_exceptions=True
-        )
+        settled = await asyncio.gather(*(_one(i) for i in range(k)), return_exceptions=True)
         out: list[tuple[int, int, _CodeCandidate]] = []
         for item in settled:
             if isinstance(item, BaseException):

@@ -27,8 +27,13 @@ def store(tmp_path, monkeypatch):
 def test_dispatch_batch_binds_owner_consumer_and_quota(store):
     out = store.dispatch_batch(
         [
-            {"owner": "team-a", "consumer": "ci-runner", "label": "ci",
-             "scopes": ["tasks:execute"], "quota_per_min": 10},
+            {
+                "owner": "team-a",
+                "consumer": "ci-runner",
+                "label": "ci",
+                "scopes": ["tasks:execute"],
+                "quota_per_min": 10,
+            },
             {"owner": "team-b", "consumer": "dashboard", "ttl_seconds": 3600},
         ],
         default_scopes=["tasks:execute"],
@@ -46,8 +51,9 @@ def test_dispatch_batch_binds_owner_consumer_and_quota(store):
 
 
 def test_dispatch_batch_uses_defaults(store):
-    out = store.dispatch_batch([{"consumer": "svc"}], default_scopes=["tasks:execute"],
-                               default_ttl_seconds=600)
+    out = store.dispatch_batch(
+        [{"consumer": "svc"}], default_scopes=["tasks:execute"], default_ttl_seconds=600
+    )
     rec = out[0]["key"]
     assert rec["scopes"] == ["tasks:execute"]
     assert rec["expires_at"] is not None
@@ -61,9 +67,14 @@ def test_dispatch_batch_uses_defaults(store):
 def test_record_usage_accumulates_counters(store):
     _raw, rec = store.register(label="x", scopes=["tasks:execute"])
     for i in range(3):
-        store.record_usage(rec.key_id, endpoint="/api/v1/tasks/execute",
-                           status=200 if i < 2 else 500, latency_ms=100 + i, tokens=10,
-                           ip="10.0.0.1")
+        store.record_usage(
+            rec.key_id,
+            endpoint="/api/v1/tasks/execute",
+            status=200 if i < 2 else 500,
+            latency_ms=100 + i,
+            tokens=10,
+            ip="10.0.0.1",
+        )
     got = store.get(rec.key_id)
     assert got.call_count == 3
     assert got.tokens_used == 30
@@ -76,8 +87,9 @@ def test_record_usage_accumulates_counters(store):
 def test_usage_report_shape_and_percentiles(store):
     _raw, rec = store.register(label="x", scopes=["tasks:execute"])
     for lat in (100, 200, 300, 400):
-        store.record_usage(rec.key_id, endpoint="/a", status=200,
-                           latency_ms=lat, tokens=5, ip="1.1.1.1")
+        store.record_usage(
+            rec.key_id, endpoint="/a", status=200, latency_ms=lat, tokens=5, ip="1.1.1.1"
+        )
     store.record_usage(rec.key_id, endpoint="/b", status=500, latency_ms=500)
 
     u = store.usage(rec.key_id, window_s=3600)
@@ -149,7 +161,7 @@ def test_record_denied_does_not_extend_window(store):
 
 
 def test_attention_flags_unused_and_expiring(store):
-    store.register(label="unused")                       # 从未使用
+    store.register(label="unused")  # 从未使用
     _raw, soon = store.register(label="soon", ttl_seconds=3600)
     att = store.attention(expiry_days=2, stale_days=0)
     assert att["counts"]["never_used"] >= 2
@@ -159,8 +171,7 @@ def test_attention_flags_unused_and_expiring(store):
 
 def test_prune_usage_removes_old_rows(store):
     _raw, rec = store.register(label="p")
-    store.record_usage(rec.key_id, endpoint="/old", status=200,
-                       ts=time.time() - 10 * 86400)
+    store.record_usage(rec.key_id, endpoint="/old", status=200, ts=time.time() - 10 * 86400)
     store.record_usage(rec.key_id, endpoint="/new", status=200)
     removed = store.prune_usage(keep_days=7)
     assert removed == 1

@@ -217,16 +217,12 @@ class TestL2QueryAPI:
                     (),
                     {
                         "success": i < 4,
-                        "error": "ModuleNotFoundError: missing_foo"
-                        if i < 5
-                        else "",
+                        "error": "ModuleNotFoundError: missing_foo" if i < 5 else "",
                         "output": "",
                     },
                 )(),
             }
-            v = adjudicate_codegen(
-                scratch, scope="code", sbx_success=(i < 4)
-            )
+            v = adjudicate_codegen(scratch, scope="code", sbx_success=(i < 4))
             export_codegen_evolution_signal(
                 v,
                 scratch,
@@ -238,13 +234,9 @@ class TestL2QueryAPI:
                 "code_review_approved": True if i < 3 else False,
                 "code_review_p3": ["unused import"] if i < 3 else [],
                 "code_review_summary": "ruff: E501 line too long" if i >= 3 else "",
-                "sandbox_result": type(
-                    "SB", (), {"success": True, "error": "", "output": ""}
-                )(),
+                "sandbox_result": type("SB", (), {"success": True, "error": "", "output": ""})(),
             }
-            v = adjudicate_codegen(
-                scratch, scope="code", sbx_success=True
-            )
+            v = adjudicate_codegen(scratch, scope="code", sbx_success=True)
             export_codegen_evolution_signal(
                 v,
                 scratch,
@@ -254,18 +246,14 @@ class TestL2QueryAPI:
         for _i in range(2):
             scratch = {"code_fix_iterations": 3, "code_fix_stagnant": True}
             v = adjudicate_codegen(scratch, scope="code", sbx_success=False)
-            export_codegen_evolution_signal(
-                v, scratch, run_ctx=CodegenRunContext()
-            )
+            export_codegen_evolution_signal(v, scratch, run_ctx=CodegenRunContext())
 
     def test_query_verdict_stats_aggregates(self, tmp_db: Path):
         self._seed(tmp_db)
         stats = query_verdict_stats(last_n_days=None)
         assert stats["total_runs"] == 12
         assert stats["by_decision"].get(DECISION_PASS, 0) >= 1
-        assert any(
-            fc["failure_class"] == "import_error" for fc in stats["top_failure_classes"]
-        )
+        assert any(fc["failure_class"] == "import_error" for fc in stats["top_failure_classes"])
 
     def test_query_top_fixes_min_samples_gate(self, tmp_db: Path):
         self._seed(tmp_db)
@@ -306,9 +294,7 @@ class TestControllerBackwardsCompat:
         v = adjudicate_codegen({}, scope="code", sbx_success=True)
         assert v.decision == DECISION_PASS
         # safety
-        v = adjudicate_codegen(
-            {"code_blocked": ["os.system used"]}, scope="code", sbx_success=True
-        )
+        v = adjudicate_codegen({"code_blocked": ["os.system used"]}, scope="code", sbx_success=True)
         assert v.decision == DECISION_ESCALATED and "safety" in v.reasons[0]
         # sandbox fail
         v = adjudicate_codegen(
@@ -316,14 +302,10 @@ class TestControllerBackwardsCompat:
         )
         assert v.decision == DECISION_ESCALATED and "3/3" in v.reasons[0]
         # assertions required
-        v = adjudicate_codegen(
-            {}, scope="code", sbx_success=True, assertions_required=True
-        )
+        v = adjudicate_codegen({}, scope="code", sbx_success=True, assertions_required=True)
         assert v.decision == DECISION_ESCALATED and "assertions" in v.reasons[0]
         # review rejected
-        v = adjudicate_codegen(
-            {"code_review_rejected": True}, scope="code", sbx_success=True
-        )
+        v = adjudicate_codegen({"code_review_rejected": True}, scope="code", sbx_success=True)
         assert v.decision == DECISION_ESCALATED and "review rejected" in v.reasons[0]
         # partial (P3 only)
         v = adjudicate_codegen(

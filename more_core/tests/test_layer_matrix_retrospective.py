@@ -110,8 +110,7 @@ async def test_self_improvement_without_monitoring_is_rejected_before_side_effec
     core.settings.enable_metacognition = True
     try:
         result = await core.execute(
-            TaskRequest(type=TaskType.SELF_IMPROVEMENT, query="自改进",
-                        allow_self_improvement=True)
+            TaskRequest(type=TaskType.SELF_IMPROVEMENT, query="自改进", allow_self_improvement=True)
         )
         assert result.status == TaskStatus.REJECTED
         executed = _executed(result)
@@ -129,9 +128,12 @@ async def test_deep_self_improvement_runs_l5_then_l2(core):
     core.settings.enable_metacognition = True
     try:
         result = await core.execute(
-            TaskRequest(type=TaskType.SELF_IMPROVEMENT, query="自改进",
-                        allow_self_improvement=True,
-                        require_metacognitive_monitoring=True)
+            TaskRequest(
+                type=TaskType.SELF_IMPROVEMENT,
+                query="自改进",
+                allow_self_improvement=True,
+                require_metacognitive_monitoring=True,
+            )
         )
         executed = _executed(result)
         assert executed[:2] == [LayerId.L5.value, LayerId.L2.value]
@@ -184,11 +186,9 @@ async def test_stream_and_execute_share_pipeline_source(core):
     expected = [lid.value for lid in core.resolve_pipeline(req)[0].pipeline]
 
     layers: list[str] | None = None
-    async for chunk in core.stream_execute(
-        TaskRequest(type=TaskType.NLP_TASK, query="统一管道")
-    ):
+    async for chunk in core.stream_execute(TaskRequest(type=TaskType.NLP_TASK, query="统一管道")):
         if chunk.startswith("data: "):
-            event = json.loads(chunk[len("data: "):].strip())
+            event = json.loads(chunk[len("data: ") :].strip())
             if event.get("event") == "pipeline":
                 layers = event.get("layers")
                 break

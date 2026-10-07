@@ -28,12 +28,8 @@ def _make_ctx(
 
     # Metacognition engine
     core.metacognition = MagicMock()
-    core.metacognition.calibrate = AsyncMock(
-        return_value={"alignment": 0.95, "num_samples": 10}
-    )
-    core.metacognition.maybe_self_modify = AsyncMock(
-        return_value={"modified": False}
-    )
+    core.metacognition.calibrate = AsyncMock(return_value={"alignment": 0.95, "num_samples": 10})
+    core.metacognition.maybe_self_modify = AsyncMock(return_value={"modified": False})
 
     # Plan monitor
     core.plan_monitor = MagicMock()
@@ -79,12 +75,9 @@ def _make_ctx(
 
 
 class TestActorBlocking:
-
     @pytest.mark.asyncio
     async def test_blocked_actor_returns_access_denied(self):
-        with patch(
-            "more_core.layers.l5_metacognition.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l5_metacognition.get_incident_manager") as mock_get_incident:
             mgr = MagicMock()
             mgr.is_actor_blocked.return_value = True
             mgr.handle_unauthorized_access = AsyncMock()
@@ -99,9 +92,7 @@ class TestActorBlocking:
 
     @pytest.mark.asyncio
     async def test_unblocked_actor_proceeds_normally(self):
-        with patch(
-            "more_core.layers.l5_metacognition.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l5_metacognition.get_incident_manager") as mock_get_incident:
             mgr = MagicMock()
             mgr.is_actor_blocked.return_value = False
             mock_get_incident.return_value = mgr
@@ -112,12 +103,9 @@ class TestActorBlocking:
 
 
 class TestCalibration:
-
     @pytest.mark.asyncio
     async def test_calibration_runs_and_stores_in_scratch(self):
-        with patch(
-            "more_core.layers.l5_metacognition.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l5_metacognition.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
             mock_get_incident.return_value.is_actor_blocked.return_value = False
 
@@ -128,9 +116,7 @@ class TestCalibration:
 
     @pytest.mark.asyncio
     async def test_confidence_from_calibration_alignment(self):
-        with patch(
-            "more_core.layers.l5_metacognition.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l5_metacognition.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
             mock_get_incident.return_value.is_actor_blocked.return_value = False
 
@@ -140,9 +126,7 @@ class TestCalibration:
 
     @pytest.mark.asyncio
     async def test_description_contains_alignment(self):
-        with patch(
-            "more_core.layers.l5_metacognition.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l5_metacognition.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
             mock_get_incident.return_value.is_actor_blocked.return_value = False
 
@@ -152,12 +136,9 @@ class TestCalibration:
 
 
 class TestPlanMonitoring:
-
     @pytest.mark.asyncio
     async def test_no_plan_returns_no_active_plan(self):
-        with patch(
-            "more_core.layers.l5_metacognition.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l5_metacognition.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
             mock_get_incident.return_value.is_actor_blocked.return_value = False
 
@@ -167,9 +148,7 @@ class TestPlanMonitoring:
 
     @pytest.mark.asyncio
     async def test_decomposed_plan_triggers_monitoring(self):
-        with patch(
-            "more_core.layers.l5_metacognition.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l5_metacognition.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
             mock_get_incident.return_value.is_actor_blocked.return_value = False
 
@@ -182,9 +161,7 @@ class TestPlanMonitoring:
 
     @pytest.mark.asyncio
     async def test_plan_without_plan_id_reports_pending(self):
-        with patch(
-            "more_core.layers.l5_metacognition.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l5_metacognition.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
             mock_get_incident.return_value.is_actor_blocked.return_value = False
 
@@ -195,9 +172,7 @@ class TestPlanMonitoring:
 
     @pytest.mark.asyncio
     async def test_plan_health_in_output(self):
-        with patch(
-            "more_core.layers.l5_metacognition.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l5_metacognition.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
             mock_get_incident.return_value.is_actor_blocked.return_value = False
 
@@ -208,12 +183,9 @@ class TestPlanMonitoring:
 
 
 class TestSelfModification:
-
     @pytest.mark.asyncio
     async def test_self_modification_when_enabled(self):
-        with patch(
-            "more_core.layers.l5_metacognition.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l5_metacognition.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
             mock_get_incident.return_value.is_actor_blocked.return_value = False
 
@@ -232,9 +204,7 @@ class TestSelfModification:
 
     @pytest.mark.asyncio
     async def test_self_modification_disabled_no_call(self):
-        with patch(
-            "more_core.layers.l5_metacognition.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l5_metacognition.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
             mock_get_incident.return_value.is_actor_blocked.return_value = False
 
@@ -247,9 +217,7 @@ class TestSelfModification:
 
     @pytest.mark.asyncio
     async def test_self_modification_gated_by_settings_and_request(self):
-        with patch(
-            "more_core.layers.l5_metacognition.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l5_metacognition.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
             mock_get_incident.return_value.is_actor_blocked.return_value = False
 
@@ -263,12 +231,9 @@ class TestSelfModification:
 
 
 class TestCodeTaskAbortSuppression:
-
     @pytest.mark.asyncio
     async def test_non_code_task_abort_raises(self):
-        with patch(
-            "more_core.layers.l5_metacognition.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l5_metacognition.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
             mock_get_incident.return_value.is_actor_blocked.return_value = False
 
@@ -280,9 +245,7 @@ class TestCodeTaskAbortSuppression:
             abort_action = MagicMock()
             abort_action.value = "abort"
             ctx.core.plan_monitor.observe_step_completion.return_value = [abort_action]
-            ctx.core.plan_monitor.apply_adaptive_actions.return_value = {
-                "aborted": True
-            }
+            ctx.core.plan_monitor.apply_adaptive_actions.return_value = {"aborted": True}
             health_report = MagicMock()
             health_report.status = "budget_exceeded"
             health_report.plan_id = "plan-123"
@@ -297,9 +260,7 @@ class TestCodeTaskAbortSuppression:
 
     @pytest.mark.asyncio
     async def test_code_task_abort_suppressed(self):
-        with patch(
-            "more_core.layers.l5_metacognition.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l5_metacognition.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
             mock_get_incident.return_value.is_actor_blocked.return_value = False
 
@@ -309,9 +270,7 @@ class TestCodeTaskAbortSuppression:
                 plan_id="plan-123",
             )
             ctx.core.plan_monitor.observe_step_completion.return_value = []
-            ctx.core.plan_monitor.apply_adaptive_actions.return_value = {
-                "aborted": True
-            }
+            ctx.core.plan_monitor.apply_adaptive_actions.return_value = {"aborted": True}
             health_report = MagicMock()
             health_report.status = "budget_exceeded"
             health_report.plan_id = "plan-123"
@@ -327,16 +286,13 @@ class TestCodeTaskAbortSuppression:
 
 
 class TestPlanHealthReport:
-
     @pytest.mark.asyncio
     async def test_layer_id(self):
         assert MetacognitionLayer().layer_id == LayerId.L5
 
     @pytest.mark.asyncio
     async def test_output_contains_calibration_and_structured_plan(self):
-        with patch(
-            "more_core.layers.l5_metacognition.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l5_metacognition.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
             mock_get_incident.return_value.is_actor_blocked.return_value = False
 
@@ -348,9 +304,7 @@ class TestPlanHealthReport:
 
     @pytest.mark.asyncio
     async def test_description_with_plan_health(self):
-        with patch(
-            "more_core.layers.l5_metacognition.get_incident_manager"
-        ) as mock_get_incident:
+        with patch("more_core.layers.l5_metacognition.get_incident_manager") as mock_get_incident:
             mock_get_incident.return_value = MagicMock()
             mock_get_incident.return_value.is_actor_blocked.return_value = False
 

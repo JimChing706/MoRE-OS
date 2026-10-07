@@ -91,7 +91,7 @@ async def test_exception_is_isolated_and_on_error_fires():
 
     mgr.add_hook("on_error", on_error)
 
-    result = await mgr.execute("s1", {})   # 不得抛异常
+    result = await mgr.execute("s1", {})  # 不得抛异常
     assert result.success is False
     assert "kaboom" in (result.error or "")
     assert "RuntimeError" in (result.error or "")
@@ -213,7 +213,7 @@ async def test_start_all_activates_and_isolates_failures():
 
     mgr.register(good)
     mgr.register(bad)
-    await mgr.start_all()   # 不得因 bad 抛异常
+    await mgr.start_all()  # 不得因 bad 抛异常
 
     assert good.get_status().value == "active"
     assert bad.get_status().value != "active"

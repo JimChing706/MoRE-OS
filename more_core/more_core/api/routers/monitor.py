@@ -201,8 +201,11 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
         """L5 Council 复评指标：下修率 / 共识分布 / 平均调整量。"""
         from ...governance import observability as _obs
 
-        return {"status": "ok", "window_s": int(window_s),
-                "metrics": _obs.query_council_stats(window_s)}
+        return {
+            "status": "ok",
+            "window_s": int(window_s),
+            "metrics": _obs.query_council_stats(window_s),
+        }
 
     @router.get("/metrics/governance/prometheus", include_in_schema=False)
     async def governance_prometheus(window_s: int = 3600) -> Any:
@@ -279,7 +282,7 @@ def create_router(core: MoRECore, require_api_key: Any = None) -> APIRouter:
             safe = str(prov.get("name") or "?").replace('"', "")
             lines.append(
                 f'more_os_provider_model_present{{provider="{safe}"}} '
-                f'{1 if prov.get("model_present") else 0}'
+                f"{1 if prov.get('model_present') else 0}"
             )
         lines.append("# TYPE more_os_provider_alerts gauge")
         for a in _obs.evaluate_provider_alerts(ph):

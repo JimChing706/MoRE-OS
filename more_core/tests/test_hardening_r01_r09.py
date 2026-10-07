@@ -122,7 +122,9 @@ async def test_mcp_rejects_unauthenticated_tool_call(monkeypatch):
     def msg(method, params):
         return json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
 
-    out = await srv._handler.handle_message(msg("tools/call", {"name": "shell_exec", "arguments": {}}))
+    out = await srv._handler.handle_message(
+        msg("tools/call", {"name": "shell_exec", "arguments": {}})
+    )
     assert "Unauthorized" in out and "EXECUTED" not in out
 
     out = await srv._handler.handle_message(msg("tools/list", {}))
@@ -155,7 +157,9 @@ async def test_mcp_allows_after_valid_initialize(monkeypatch):
     )
     assert "protocolVersion" in ok
 
-    out = await srv._handler.handle_message(msg("tools/call", {"name": "shell_exec", "arguments": {}}))
+    out = await srv._handler.handle_message(
+        msg("tools/call", {"name": "shell_exec", "arguments": {}})
+    )
     assert "EXECUTED" in out
 
 
@@ -174,8 +178,14 @@ async def test_mcp_dev_mode_without_token_stays_open(monkeypatch):
 
     srv.register_tool("shell_exec", "x", {"type": "object"}, danger)
     out = await srv._handler.handle_message(
-        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                    "params": {"name": "shell_exec", "arguments": {}}})
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "shell_exec", "arguments": {}},
+            }
+        )
     )
     assert "EXECUTED" in out
 

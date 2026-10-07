@@ -111,7 +111,7 @@ async def test_run_builds_unshare_command(monkeypatch):
     monkeypatch.setattr(ls.asyncio, "create_subprocess_exec", fake_exec)
     sbx = ls.LinuxSandbox(timeout_s=5, enable_network=False)
     sbx._use_unshare = True
-    sbx._use_cgroup = False          # 跳过真实 cgroup 写入
+    sbx._use_cgroup = False  # 跳过真实 cgroup 写入
 
     result = await sbx.run("echo hi")
     assert result.stdout == "hello\n" and result.exit_code == 0
@@ -180,7 +180,7 @@ async def test_teardown_cgroup_kills_leftover_procs(tmp_path, monkeypatch):
     cg = tmp_path / "sbx_x"
     cg.mkdir()
     (cg / "cgroup.procs").write_text("12345\n999999999\n")
-    await sbx._teardown_cgroup(cg)          # 不得抛异常
+    await sbx._teardown_cgroup(cg)  # 不得抛异常
 
     assert 12345 in killed
 
@@ -188,4 +188,4 @@ async def test_teardown_cgroup_kills_leftover_procs(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_teardown_cgroup_missing_dir_is_safe(tmp_path):
     sbx = ls.LinuxSandbox()
-    await sbx._teardown_cgroup(tmp_path / "nope")   # 不应抛异常
+    await sbx._teardown_cgroup(tmp_path / "nope")  # 不应抛异常

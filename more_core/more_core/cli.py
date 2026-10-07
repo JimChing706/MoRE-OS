@@ -106,6 +106,7 @@ async def _chat_interactive(task_type: str = "nlp_task") -> None:
 # 补缺环节：api-key generate / validate / inject / rotate-proof CLI
 # ---------------------------------------------------------------------------
 
+
 def _cmd_api_key_generate(args: argparse.Namespace) -> int:
     from .security.api_key_ops import generate_api_key, validate_api_key_report
 
@@ -155,10 +156,15 @@ def _cmd_api_key_validate(args: argparse.Namespace) -> int:
             if key:
                 break
     if not key:
-        print("ERROR: no key supplied (pass --key, set MORE_API_KEY, or use --from-env)", file=sys.stderr)
+        print(
+            "ERROR: no key supplied (pass --key, set MORE_API_KEY, or use --from-env)",
+            file=sys.stderr,
+        )
         return 2
 
-    rep = validate_api_key_report(key, require_prefix=args.strict, min_length=args.min_length or None)
+    rep = validate_api_key_report(
+        key, require_prefix=args.strict, min_length=args.min_length or None
+    )
     if args.rotate_event:
         # Best-effort provenance.mark — 补缺测试阶段允许 provenance DB 不存在
         try:
@@ -170,7 +176,11 @@ def _cmd_api_key_validate(args: argparse.Namespace) -> int:
                 "more_api_key_rotated_admin_event",
                 channel="native_planner_loop",
                 token_count=32,
-                payload={"event": "more_api_key_validated", "length": rep.length, "entropy_bits": rep.entropy_bits},
+                payload={
+                    "event": "more_api_key_validated",
+                    "length": rep.length,
+                    "entropy_bits": rep.entropy_bits,
+                },
             )
         except Exception:
             pass
@@ -208,7 +218,9 @@ def _cmd_api_key_rotate_proof(args: argparse.Namespace) -> int:
     if not master:
         print("ERROR: pass --master-key or set MORE_MASTER_ROTATION_KEY", file=sys.stderr)
         return 2
-    new_key = args.new_key or generate_api_key(strength=("modern" if args.modern else "compat"), enforce_prefix=False)
+    new_key = args.new_key or generate_api_key(
+        strength=("modern" if args.modern else "compat"), enforce_prefix=False
+    )
     proof = sign_rotation_proof(
         master_key=master,
         new_key=new_key,
@@ -232,10 +244,10 @@ def _cmd_api_key_rotate_proof(args: argparse.Namespace) -> int:
     return 0
 
 
-
 # ---------------------------------------------------------------------------
 # 受管密钥生命周期：issue / list / rotate / revoke（存储 + 作用域 + 过期）
 # ---------------------------------------------------------------------------
+
 
 def _ak_store():
     from .security.api_key_store import APIKeyStore
@@ -271,21 +283,26 @@ def _cmd_api_key_issue(args: argparse.Namespace) -> int:
 
 def _cmd_api_key_list(args: argparse.Namespace) -> int:
     store = _ak_store()
-    print(json.dumps(
-        {
-            "keys": [r.as_dict() for r in store.list_keys(include_inactive=args.all)],
-            "stats": store.stats(),
-            "db": str(store.db_path),
-        },
-        indent=2,
-        ensure_ascii=False,
-    ))
+    print(
+        json.dumps(
+            {
+                "keys": [r.as_dict() for r in store.list_keys(include_inactive=args.all)],
+                "stats": store.stats(),
+                "db": str(store.db_path),
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
     return 0
 
 
 def _cmd_api_key_revoke(args: argparse.Namespace) -> int:
     ok = _ak_store().revoke(args.key_id)
-    print(f"revoked {args.key_id}" if ok else f"no such active key: {args.key_id}", file=sys.stderr if not ok else sys.stdout)
+    print(
+        f"revoked {args.key_id}" if ok else f"no such active key: {args.key_id}",
+        file=sys.stderr if not ok else sys.stdout,
+    )
     return 0 if ok else 1
 
 
@@ -314,39 +331,73 @@ def _cmd_api_key_usage(args: argparse.Namespace) -> int:
 
 def _cmd_api_key_overview(args: argparse.Namespace) -> int:
     store = _ak_store()
-    print(json.dumps(store.usage_overview(window_s=args.window, top=args.top),
-                     indent=2, ensure_ascii=False))
+    print(
+        json.dumps(
+            store.usage_overview(window_s=args.window, top=args.top), indent=2, ensure_ascii=False
+        )
+    )
     return 0
 
 
 def _cmd_api_key_attention(args: argparse.Namespace) -> int:
     store = _ak_store()
-    print(json.dumps(store.attention(expiry_days=args.expiry_days, stale_days=args.stale_days),
-                     indent=2, ensure_ascii=False))
+    print(
+        json.dumps(
+            store.attention(expiry_days=args.expiry_days, stale_days=args.stale_days),
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
     return 0
 
 
 def _build_api_key_subparser(sub: argparse._SubParsersAction) -> None:
-    p_ak = sub.add_parser("api-key", help="API-key generate / validate / inject / rotate-proof (测试补缺专用)")
+    p_ak = sub.add_parser(
+        "api-key", help="API-key generate / validate / inject / rotate-proof (测试补缺专用)"
+    )
     ak_sub = p_ak.add_subparsers(dest="ak_cmd", required=True)
 
     p_gen = ak_sub.add_parser("generate", help="Generate a new API key (默认 46-char compat 格式).")
-    p_gen.add_argument("--strength", choices=["compat", "modern", "hex", "256bit"], default="compat")
-    p_gen.add_argument("--hex", action="store_true", help="Alias for --strength=hex (64 位纯十六进制).")
-    p_gen.add_argument("--modern", action="store_true", help="Alias for --strength=modern (sk-more-os- 前缀).")
-    p_gen.add_argument("--with-prefix", action="store_true", help="给 compat/hex 密钥强制加上 sk-more-os- 前缀.")
-    p_gen.add_argument("--strict", action="store_true", help="Inject/validate 时强制 MORE_REQUIRE_API_KEY=1 规则.")
-    p_gen.add_argument("--output-env", metavar="PATH", help="直接写入 .env 文件 (默认 more_core/.env 回退链).")
-    p_gen.add_argument("--no-backup", action="store_true", help="写入 .env 时跳过自动 .bak.YYYYMMDD_HHMMSS 备份.")
-    p_gen.add_argument("--verbose", action="store_true", help="向 stderr 输出 validate 摘要 (熵/长度/前缀).")
+    p_gen.add_argument(
+        "--strength", choices=["compat", "modern", "hex", "256bit"], default="compat"
+    )
+    p_gen.add_argument(
+        "--hex", action="store_true", help="Alias for --strength=hex (64 位纯十六进制)."
+    )
+    p_gen.add_argument(
+        "--modern", action="store_true", help="Alias for --strength=modern (sk-more-os- 前缀)."
+    )
+    p_gen.add_argument(
+        "--with-prefix", action="store_true", help="给 compat/hex 密钥强制加上 sk-more-os- 前缀."
+    )
+    p_gen.add_argument(
+        "--strict", action="store_true", help="Inject/validate 时强制 MORE_REQUIRE_API_KEY=1 规则."
+    )
+    p_gen.add_argument(
+        "--output-env", metavar="PATH", help="直接写入 .env 文件 (默认 more_core/.env 回退链)."
+    )
+    p_gen.add_argument(
+        "--no-backup", action="store_true", help="写入 .env 时跳过自动 .bak.YYYYMMDD_HHMMSS 备份."
+    )
+    p_gen.add_argument(
+        "--verbose", action="store_true", help="向 stderr 输出 validate 摘要 (熵/长度/前缀)."
+    )
     p_gen.set_defaults(func=_cmd_api_key_generate)
 
     p_val = ak_sub.add_parser("validate", help="Validate a key 与更业务侧 6 项合规报告.")
     p_val.add_argument("--key", help="待校验密钥；留空则读 MORE_API_KEY envvar")
-    p_val.add_argument("--from-env", action="store_true", help="当 --key/envvar 都空时自动回退 ENV_PATHS .env 链解析.")
+    p_val.add_argument(
+        "--from-env",
+        action="store_true",
+        help="当 --key/envvar 都空时自动回退 ENV_PATHS .env 链解析.",
+    )
     p_val.add_argument("--strict", action="store_true", help="必须有 sk-more-os- 前缀.")
     p_val.add_argument("--min-length", type=int, default=None, help="自定义最小长度 (默认=16).")
-    p_val.add_argument("--rotate-event", action="store_true", help="写入 provenance.mark 作为 more_api_key_rotated 审计事件.")
+    p_val.add_argument(
+        "--rotate-event",
+        action="store_true",
+        help="写入 provenance.mark 作为 more_api_key_rotated 审计事件.",
+    )
     p_val.set_defaults(func=_cmd_api_key_validate)
 
     p_inj = ak_sub.add_parser("inject", help="把一个已有/即时生成的新密钥注入 .env 链，自动备份")
@@ -364,18 +415,28 @@ def _build_api_key_subparser(sub: argparse._SubParsersAction) -> None:
     p_rp.add_argument("--new-key", help="留空则本命令直接生成 compat/modern 密钥")
     p_rp.add_argument("--modern", action="store_true")
     p_rp.add_argument("--revoke-seconds", type=int, default=3600)
-    p_rp.add_argument("--include-key", action="store_true", help="输出结果里带上 new_key（仅本地安全测试用）")
+    p_rp.add_argument(
+        "--include-key", action="store_true", help="输出结果里带上 new_key（仅本地安全测试用）"
+    )
     p_rp.set_defaults(func=_cmd_api_key_rotate_proof)
 
-    p_issue = ak_sub.add_parser("issue", help="签发受管密钥（存储 + 作用域 + 过期，仅显示一次明文）")
+    p_issue = ak_sub.add_parser(
+        "issue", help="签发受管密钥（存储 + 作用域 + 过期，仅显示一次明文）"
+    )
     p_issue.add_argument("--label", default="", help="用途标签，例如 ci / dashboard")
-    p_issue.add_argument("--scopes", default="tasks:execute", help="逗号分隔作用域，默认 tasks:execute")
+    p_issue.add_argument(
+        "--scopes", default="tasks:execute", help="逗号分隔作用域，默认 tasks:execute"
+    )
     p_issue.add_argument("--ttl-days", type=float, default=None, help="有效期（天）；留空=永不过期")
-    p_issue.add_argument("--ttl-seconds", type=int, default=None, help="有效期（秒），优先于 --ttl-days")
+    p_issue.add_argument(
+        "--ttl-seconds", type=int, default=None, help="有效期（秒），优先于 --ttl-days"
+    )
     p_issue.add_argument("--owner", default="", help="归属团队/租户")
     p_issue.add_argument("--consumer", default="", help="使用方服务名，例如 ci-runner / dashboard")
     p_issue.add_argument("--purpose", default="", help="用途说明")
-    p_issue.add_argument("--quota-per-min", type=int, default=None, help="每分钟调用上限（留空=不限）")
+    p_issue.add_argument(
+        "--quota-per-min", type=int, default=None, help="每分钟调用上限（留空=不限）"
+    )
     p_issue.set_defaults(func=_cmd_api_key_issue)
 
     p_list = ak_sub.add_parser("list", help="列出受管密钥元数据（不含明文）")

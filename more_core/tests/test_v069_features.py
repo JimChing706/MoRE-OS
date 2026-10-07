@@ -3,7 +3,9 @@
 import pytest
 import time
 from more_core.llm.reasoning import (
-    is_reasoning_model, supports_budget_tokens, get_reasoning_params,
+    is_reasoning_model,
+    supports_budget_tokens,
+    get_reasoning_params,
     ReasoningRouter,
 )
 from more_core.llm.model_aliases import ModelAliasRegistry, ModelAlias
@@ -15,6 +17,7 @@ from more_core.runtime.hot_reload import ReloadScope
 
 
 # -- Reasoning Models (v0.6.3) --------------------------------------------
+
 
 def test_is_reasoning_model_o1():
     assert is_reasoning_model("o1")
@@ -87,6 +90,7 @@ def test_reasoning_router_update_config():
 
 # -- Model Aliases (v0.6.4) -----------------------------------------------
 
+
 def test_alias_registry_defaults():
     reg = ModelAliasRegistry()
     assert len(reg.list_aliases()) > 0
@@ -130,6 +134,7 @@ def test_alias_api_dict():
 
 # -- Channel Reconnect (v0.6.7) -------------------------------------------
 
+
 def test_reconnect_config_defaults():
     cfg = ReconnectConfig()
     assert cfg.max_retries == 10
@@ -158,14 +163,23 @@ def test_reconnect_state():
 
 # -- Media Support (v0.6.6) -----------------------------------------------
 
+
 def test_message_with_attachments():
     msg = Message(
-        id="1", platform="discord", chat_id="ch1",
-        user_id="u1", user_name="test", content="see this image",
+        id="1",
+        platform="discord",
+        chat_id="ch1",
+        user_id="u1",
+        user_name="test",
+        content="see this image",
         timestamp=time.time(),
         attachments=[
-            MediaAttachment(type=MediaType.IMAGE, url="https://example.com/img.png",
-                            filename="img.png", mime_type="image/png"),
+            MediaAttachment(
+                type=MediaType.IMAGE,
+                url="https://example.com/img.png",
+                filename="img.png",
+                mime_type="image/png",
+            ),
         ],
     )
     assert len(msg.attachments) == 1
@@ -186,16 +200,22 @@ def test_response_with_attachments():
 
 def test_message_thread_and_reply():
     msg = Message(
-        id="2", platform="slack", chat_id="ch1",
-        user_id="u1", user_name="bob", content="reply",
+        id="2",
+        platform="slack",
+        chat_id="ch1",
+        user_id="u1",
+        user_name="bob",
+        content="reply",
         timestamp=time.time(),
-        reply_to="1", thread_id="thread-abc",
+        reply_to="1",
+        thread_id="thread-abc",
     )
     assert msg.reply_to == "1"
     assert msg.thread_id == "thread-abc"
 
 
 # -- Browser Hand (v0.6.4) ------------------------------------------------
+
 
 def test_browser_hand_manifest():
     h = BrowserHand()
@@ -227,9 +247,11 @@ async def test_browser_hand_unknown_action():
 
 # -- Hand Persistence (v0.6.5) --------------------------------------------
 
+
 def test_hand_snapshot_roundtrip(tmp_path):
     persistence = HandPersistence(state_dir=str(tmp_path))
     from more_core.hands.builtins import ResearcherHand
+
     hand = ResearcherHand()
     hand._run_count = 42
     hand._total_tokens = 1000
@@ -247,6 +269,7 @@ def test_hand_snapshot_roundtrip(tmp_path):
 def test_hand_persistence_list(tmp_path):
     persistence = HandPersistence(state_dir=str(tmp_path))
     from more_core.hands.builtins import ResearcherHand
+
     hand = ResearcherHand()
     persistence.save(hand)
     assert "researcher" in persistence.list_saved()
@@ -255,12 +278,14 @@ def test_hand_persistence_list(tmp_path):
 def test_hand_persistence_delete(tmp_path):
     persistence = HandPersistence(state_dir=str(tmp_path))
     from more_core.hands.builtins import ResearcherHand
+
     persistence.save(ResearcherHand())
     assert persistence.delete("researcher")
     assert not persistence.exists("researcher")
 
 
 # -- Hot-Reload Scopes (v0.6.3) -------------------------------------------
+
 
 def test_reload_scope_values():
     assert ReloadScope.CONFIG.value == "config"

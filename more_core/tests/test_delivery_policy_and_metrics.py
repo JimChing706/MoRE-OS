@@ -13,9 +13,7 @@ from more_core.codegen.delivery_policy import resolve_delivery_status
 
 
 def test_delivered_when_all_signals_agree():
-    status, reason = resolve_delivery_status(
-        task_succeeded=True, gates_passed=True, verdict="pass"
-    )
+    status, reason = resolve_delivery_status(task_succeeded=True, gates_passed=True, verdict="pass")
     assert status == "delivered"
     assert reason == ""
 
@@ -39,17 +37,13 @@ def test_blocked_when_gates_fail():
 
 
 def test_failed_when_task_failed():
-    status, _ = resolve_delivery_status(
-        task_succeeded=False, gates_passed=True, verdict=""
-    )
+    status, _ = resolve_delivery_status(task_succeeded=False, gates_passed=True, verdict="")
     assert status == "failed"
 
 
 def test_partial_verdict_is_deliverable():
     """partial = 仅 P3（可读性类）问题，允许交付。"""
-    status, _ = resolve_delivery_status(
-        task_succeeded=True, gates_passed=True, verdict="partial"
-    )
+    status, _ = resolve_delivery_status(task_succeeded=True, gates_passed=True, verdict="partial")
     assert status == "delivered"
 
 
@@ -69,9 +63,15 @@ def obs(tmp_path, monkeypatch):
 
 def _call(obs, rid, latency, success=True, cached=False):
     obs.record_llm_call(
-        request_id=rid, provider="p", model="m", prompt_chars=1,
-        prompt_tokens=1, completion_tokens=1, latency_ms=latency,
-        success=success, cached=cached,
+        request_id=rid,
+        provider="p",
+        model="m",
+        prompt_chars=1,
+        prompt_tokens=1,
+        completion_tokens=1,
+        latency_ms=latency,
+        success=success,
+        cached=cached,
     )
 
 
@@ -84,7 +84,7 @@ def test_latency_percentiles_exclude_cached_and_failed(obs):
 
     m = obs.summary(3600)
     assert m["samples"] == 5
-    assert m["measured_calls"] == 2      # 成功且非缓存
+    assert m["measured_calls"] == 2  # 成功且非缓存
     assert m["cached_calls"] == 1
     assert m["failed_calls"] == 2
     assert m["latency_ms"]["p50"] == 800.0
@@ -121,14 +121,19 @@ def test_escalated_verdict_carries_sandbox_failure_reason():
     scratch = {
         "code_fix_iterations": 3,
         "sandbox_result": ToolResult(
-            tool="python_exec", success=False,
+            tool="python_exec",
+            success=False,
             output="Traceback (most recent call last):\nNameError: name 'x' is not defined",
             error="NameError: name 'x' is not defined",
         ),
     }
     verdict = adjudicate_codegen(
-        scratch, scope="code", sbx_success=False, max_rounds=3,
-        assertions_required=False, run_ctx=None,
+        scratch,
+        scope="code",
+        sbx_success=False,
+        max_rounds=3,
+        assertions_required=False,
+        run_ctx=None,
     )
     assert verdict.decision == "escalated"
     assert "NameError" in verdict.artifacts["last_error"]
@@ -143,12 +148,19 @@ def test_escalated_verdict_marks_timeout():
     # 用最小对象模拟带 timed_out 的沙箱结果（ToolResult 无该字段）
     scratch = {
         "sandbox_result": SimpleNamespace(
-            success=False, output="", error="sandbox timeout", timed_out=True,
+            success=False,
+            output="",
+            error="sandbox timeout",
+            timed_out=True,
         ),
     }
     verdict = adjudicate_codegen(
-        scratch, scope="code", sbx_success=False, max_rounds=3,
-        assertions_required=False, run_ctx=None,
+        scratch,
+        scope="code",
+        sbx_success=False,
+        max_rounds=3,
+        assertions_required=False,
+        run_ctx=None,
     )
     assert verdict.artifacts["timed_out"] is True
     assert "timeout" in verdict.artifacts["last_error"]

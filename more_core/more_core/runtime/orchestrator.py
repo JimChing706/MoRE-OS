@@ -269,9 +269,7 @@ class MoRECore:
             for _w in _pf.warnings:
                 self.logger.warning("LLM preflight: %s", _w)
             if _pf.ok:
-                self.logger.info(
-                    "LLM preflight OK (chain=%s)", ",".join(_pf.chain_registered)
-                )
+                self.logger.info("LLM preflight OK (chain=%s)", ",".join(_pf.chain_registered))
         except Exception as exc:  # pragma: no cover - 预检失败不阻断启动
             self.logger.warning("LLM preflight skipped: %s", exc)
         # Wire benchmark runner into DGM for evaluation loop
@@ -466,9 +464,7 @@ class MoRECore:
 
             # ── 管道解析（唯一权威入口） ────────────────────────────
             # resolve_pipeline() 内部：Meta-Orchestrator 优先，否则回退基座路由。
-            decision, meta_decision = self.resolve_pipeline(
-                request, available_providers=available
-            )
+            decision, meta_decision = self.resolve_pipeline(request, available_providers=available)
             guardrail_config = None
             if meta_decision is not None:
                 # Compute dynamic guardrails from the spectral decision
@@ -737,9 +733,7 @@ class MoRECore:
         # 交付标成 delivered —— 否则台账与控制器结论互相矛盾。
         from ..codegen.delivery_policy import resolve_delivery_decision
 
-        _verdict_decision = str(
-            (ctx.scratch.get("codegen_verdict") or {}).get("decision", "")
-        )
+        _verdict_decision = str((ctx.scratch.get("codegen_verdict") or {}).get("decision", ""))
         # 仅代码类任务受 Codegen Controller 约束：NLP/数据分析等任务的
         # verdict 不具业务含义，不能用它阻断交付（否则会大面积误伤）。
         _is_code_task = request.type in (
@@ -774,7 +768,11 @@ class MoRECore:
                 task_id=request.id,
                 detail=delivery_reason,
             )
-        if request.type in (TaskType.CODE_GENERATION, TaskType.CODE_DEBUGGING, TaskType.CODE_TESTING):
+        if request.type in (
+            TaskType.CODE_GENERATION,
+            TaskType.CODE_DEBUGGING,
+            TaskType.CODE_TESTING,
+        ):
             from ..codegen.gates import run_gates
 
             raw_text = str(output or "")
@@ -801,9 +799,7 @@ class MoRECore:
                 delivery_reason = gate_report.summary()[:300]
                 # D-1：闸门拦截同样要记录可聚合的原因（此前只记 reason，
                 # 导致看板出现大量 unspecified）
-                _failed_gates = [
-                    f.gate for f in gate_report.blocking_failures
-                ] or ["unknown"]
+                _failed_gates = [f.gate for f in gate_report.blocking_failures] or ["unknown"]
                 metadata_escalation_cause = {
                     "cause": f"gate_{_failed_gates[0]}_failed",
                     "is_infra": False,
@@ -908,9 +904,7 @@ class MoRECore:
         # --- Taint check: verify output is trusted before delivery ---
         if status == TaskStatus.SUCCESS and not taint.check("query"):
             self.logger.warning("taint violation: untrusted output for task %s", request.id)
-            self.audit.log(
-                actor=actor, action="taint_violation", entity="task", task_id=request.id
-            )
+            self.audit.log(actor=actor, action="taint_violation", entity="task", task_id=request.id)
 
         self._metrics.record_request(total_ms, status == TaskStatus.SUCCESS)
         # Cache successful results for future identical queries
@@ -1107,9 +1101,7 @@ class MoRECore:
 
             available = set(self.llm.list_providers()) if self.llm else set()
             # 统一权威入口：流式与非流式必须使用同一管道来源
-            decision, _meta = self.resolve_pipeline(
-                request, available_providers=available
-            )
+            decision, _meta = self.resolve_pipeline(request, available_providers=available)
             actor_s = str(request.context.get("actor") or "anonymous")
             ctx = LayerContext(core=self, request=request, user_id=actor_s)
 
@@ -1345,7 +1337,11 @@ class MoRECore:
                         # Collect observations (step_count, timing, fatal
                         # errors) from context if the pipeline wrote them.
                         try:
-                            ctx_contract = req.context.get("contract") if isinstance(req.context, dict) else None
+                            ctx_contract = (
+                                req.context.get("contract")
+                                if isinstance(req.context, dict)
+                                else None
+                            )
                             if isinstance(ctx_contract, DeliverableContract):
                                 contract = ctx_contract
                             else:

@@ -101,7 +101,9 @@ def _mock_layer(layer_id: LayerId, output: str = "ok") -> MagicMock:
     m.layer_id = layer_id
     m.run = AsyncMock(
         return_value=LayerResult(
-            layer=layer_id, description=f"{layer_id.value} done", output=output,
+            layer=layer_id,
+            description=f"{layer_id.value} done",
+            output=output,
         ),
     )
     return m
@@ -383,9 +385,7 @@ class TestExecute:
     @pytest.mark.asyncio
     async def test_zen_19_violation_rejects(self, core: "MoRECore") -> None:
         zen = MagicMock()
-        zen.check_violation.side_effect = (
-            lambda rule_id, ctx: rule_id == "ZEN-19"
-        )
+        zen.check_violation.side_effect = lambda rule_id, ctx: rule_id == "ZEN-19"
         with patch("more_core.runtime.orchestrator.get_enforcer", return_value=zen):
             result = await core.execute(TaskRequest(query="rm -rf /"))
         assert result.status == TaskStatus.REJECTED
@@ -444,7 +444,8 @@ class TestExecute:
 
     @pytest.mark.asyncio
     async def test_partial_status_when_critical_dimension_missing(
-        self, core: "MoRECore",
+        self,
+        core: "MoRECore",
     ) -> None:
         result = await core.execute(TaskRequest(query="hello"))
         assert result.status == TaskStatus.SUCCESS
@@ -457,7 +458,9 @@ class TestExecute:
         assert result.performance.layer_transitions >= 0
 
     @pytest.mark.asyncio
-    async def test_taint_violation_logged(self, core: "MoRECore", caplog: pytest.LogCaptureFixture) -> None:
+    async def test_taint_violation_logged(
+        self, core: "MoRECore", caplog: pytest.LogCaptureFixture
+    ) -> None:
         taint_scope = MagicMock()
         taint_scope.track = MagicMock()
         taint_scope.sanitize = MagicMock()
@@ -504,7 +507,8 @@ class TestExecute:
 
     @pytest.mark.asyncio
     async def test_provider_cancelled_error_becomes_failed_result(
-        self, core: "MoRECore",
+        self,
+        core: "MoRECore",
     ) -> None:
         """asyncio.CancelledError from a hung provider surfaces as FAILED, not a 500."""
 
@@ -549,11 +553,10 @@ class TestAutoTypeResolution:
 
     @pytest.mark.asyncio
     async def test_auto_resolution_recorded_in_result_metadata(
-        self, core: "MoRECore",
+        self,
+        core: "MoRECore",
     ) -> None:
-        result = await core.execute(
-            TaskRequest(query="开发电话拨号程序APP", type=TaskType.AUTO)
-        )
+        result = await core.execute(TaskRequest(query="开发电话拨号程序APP", type=TaskType.AUTO))
         assert result.metadata.get("auto_resolved_type") == "code_generation"
         assert "auto_confidence" in result.metadata
 

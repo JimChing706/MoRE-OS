@@ -58,6 +58,8 @@ def _effective_fallback_deadline(contract_timeout_s: float | None) -> float:
         return _FALLBACK_DEADLINE_S
     bounded = contract_timeout_s - _FALLBACK_CONTRACT_HEADROOM_S
     return max(_FALLBACK_MIN_EFFECTIVE_S, min(bounded, _FALLBACK_DEADLINE_S))
+
+
 # LLM response cache TTL: stale responses must not be reused indefinitely.
 _CACHE_TTL_S = 300.0
 # Per-provider health-check wall-clock bound.  A hanging endpoint must not
@@ -106,9 +108,15 @@ _STRIP_PATTERNS: list[tuple[re.Pattern[str], re.Pattern[str]]] = [
         re.compile(r"<\s*thought[^>]*\s*>", re.I | re.S),
         re.compile(r"<\s*/\s*thought\s*>", re.I | re.S),
     ),
-    (re.compile(r"<\|\s*Begin\s+of\s+Thought\s*\|>", re.I | re.S), re.compile(r"<\|\s*End\s+of\s+Thought\s*\|>", re.I | re.S)),
+    (
+        re.compile(r"<\|\s*Begin\s+of\s+Thought\s*\|>", re.I | re.S),
+        re.compile(r"<\|\s*End\s+of\s+Thought\s*\|>", re.I | re.S),
+    ),
     (re.compile(r"<\|\s*BOT\s*\|>", re.I | re.S), re.compile(r"<\|\s*EOT\s*\|>", re.I | re.S)),
-    (re.compile(r"<\|\s*thinking_begin\s*\|>", re.I | re.S), re.compile(r"<\|\s*thinking_end\s*\|>", re.I | re.S)),
+    (
+        re.compile(r"<\|\s*thinking_begin\s*\|>", re.I | re.S),
+        re.compile(r"<\|\s*thinking_end\s*\|>", re.I | re.S),
+    ),
 ]
 
 # Global metrics counters (lightweight; no lock needed for Python int += 1).
@@ -170,7 +178,9 @@ def _bump_stripped_metrics(n_stripped: int) -> None:
         _logger.warning(
             "Thinking tags stripped %d times in %.0fs (>=%d/h threshold). "
             "Provider may be leaking chain-of-thought via content field.",
-            _THINKING_STRIPPED_WINDOW, elapsed, _THINKING_STRIPPED_ALERT_THRESHOLD,
+            _THINKING_STRIPPED_WINDOW,
+            elapsed,
+            _THINKING_STRIPPED_ALERT_THRESHOLD,
         )
 
 
@@ -506,9 +516,7 @@ class LLMManager:
             return False
         return count >= threshold
 
-    def _record_failure(
-        self, provider: str, model: str | None, error: str | None = None
-    ) -> None:
+    def _record_failure(self, provider: str, model: str | None, error: str | None = None) -> None:
         """Record a failure for a provider/model pair.
 
         生产事故修复：模型**加载失败**（模型名不存在 / 引擎起不来）属于确定性故障，
@@ -518,9 +526,7 @@ class LLMManager:
         count = self._failure_counts.get(key, (0, 0.0))[0] + 1
         if error and _is_hard_model_failure(error):
             count = max(count, _HARD_FAILURE_THRESHOLD)
-            _logger.warning(
-                "Hard model failure for %s (skip until TTL): %s", key, str(error)[:160]
-            )
+            _logger.warning("Hard model failure for %s (skip until TTL): %s", key, str(error)[:160])
         self._failure_counts[key] = (count, time.monotonic())
         _logger.warning(f"Failure recorded for {key}: {count}")
 
@@ -570,7 +576,7 @@ class LLMManager:
         deadline = time.monotonic() + effective_deadline_s
         # request_id is the stable grouping key across all fallback attempts
         # in this generate() call; each provider trial bumps attempt +=1.
-        logical_rid = getattr(request, "id", "") or f"gen_{int(time.time()*1e6)}"
+        logical_rid = getattr(request, "id", "") or f"gen_{int(time.time() * 1e6)}"
         attempt = 0
 
         for _idx, name in enumerate(chain):
@@ -629,9 +635,7 @@ class LLMManager:
                 ) from last_exc
             # 预算公平分配：把剩余时间均摊给"剩余已注册 provider"，避免慢的首选
             # 吃光整条链预算、让兜底永远轮不到（此前 35B 超时 → 9B 兜底形同虚设）。
-            remaining_providers = sum(
-                1 for _n in chain[_idx:] if _n in self._providers
-            )
+            remaining_providers = sum(1 for _n in chain[_idx:] if _n in self._providers)
             attempt_timeout = (
                 remaining / remaining_providers if remaining_providers > 1 else remaining
             )
@@ -670,14 +674,17 @@ class LLMManager:
                 # R-11: 请求被外层 wait_for 取消（任务级超时）时也要留痕，
                 # 否则超时故障在指标里表现为"没有调用"。
                 self._emit_llm_call(
-                    request_id=logical_rid, provider=name,
+                    request_id=logical_rid,
+                    provider=name,
                     model=attempt_req.model_override or "",
-                    prompt_chars=len(request.prompt or ""), prompt_tokens=0,
+                    prompt_chars=len(request.prompt or ""),
+                    prompt_tokens=0,
                     completion_tokens=0,
                     latency_ms=(time.perf_counter() - start) * 1000,
                     success=False,
                     error="cancelled (task timeout / client disconnect)",
-                    attempt=attempt, temperature=request.temperature,
+                    attempt=attempt,
+                    temperature=request.temperature,
                     max_tokens=request.max_tokens,
                 )
                 raise
@@ -862,20 +869,23 @@ class LLMManager:
                 return resp
             except asyncio.CancelledError:
                 self._emit_llm_call(
-                    request_id=chain_rid, provider=pair.provider,
-                    model=pair.model or "", prompt_chars=len(request.prompt or ""),
-                    prompt_tokens=0, completion_tokens=0,
+                    request_id=chain_rid,
+                    provider=pair.provider,
+                    model=pair.model or "",
+                    prompt_chars=len(request.prompt or ""),
+                    prompt_tokens=0,
+                    completion_tokens=0,
                     latency_ms=(time.perf_counter() - start) * 1000,
-                    success=False, error="cancelled (task timeout / client disconnect)",
-                    attempt=chain_attempt, temperature=request.temperature,
+                    success=False,
+                    error="cancelled (task timeout / client disconnect)",
+                    attempt=chain_attempt,
+                    temperature=request.temperature,
                     max_tokens=request.max_tokens,
                 )
                 raise
             except Exception as exc:
                 _elapsed = (time.perf_counter() - start) * 1000
-                self._record_failure(
-                    pair.provider, pair.model, _exc_summary(exc, _elapsed)
-                )
+                self._record_failure(pair.provider, pair.model, _exc_summary(exc, _elapsed))
                 self._emit_llm_call(
                     request_id=chain_rid,
                     provider=pair.provider,
@@ -1048,9 +1058,7 @@ class LLMManager:
                 except BaseException as exc:
                     # 并行批次起点（_try_one 的 start 是嵌套局部变量，外层不可见）
                     _elapsed = (time.perf_counter() - par_start) * 1000
-                    self._record_failure(
-                        pair.provider, pair.model, _exc_summary(exc, _elapsed)
-                    )
+                    self._record_failure(pair.provider, pair.model, _exc_summary(exc, _elapsed))
                     self._emit_llm_call(
                         request_id=par_rid,
                         provider=pair.provider,
@@ -1185,12 +1193,17 @@ class LLMManager:
                 return
             except asyncio.CancelledError:
                 self._emit_llm_call(
-                    request_id=stream_rid, provider=name, model=model_override or "",
-                    prompt_chars=len(request.prompt or ""), prompt_tokens=0,
+                    request_id=stream_rid,
+                    provider=name,
+                    model=model_override or "",
+                    prompt_chars=len(request.prompt or ""),
+                    prompt_tokens=0,
                     completion_tokens=0,
                     latency_ms=(time.perf_counter() - started) * 1000,
-                    success=False, error="cancelled (task timeout / client disconnect)",
-                    attempt=stream_attempt, temperature=request.temperature,
+                    success=False,
+                    error="cancelled (task timeout / client disconnect)",
+                    attempt=stream_attempt,
+                    temperature=request.temperature,
                     max_tokens=request.max_tokens,
                 )
                 raise

@@ -1,8 +1,12 @@
 """Tests for skill config injection and secret redaction."""
 
 from more_core.skills.config_injection import (
-    ConfigVar, ConfigSchema, is_secret_name,
-    resolve_config, redact_secrets, inject_config_into_prompt,
+    ConfigVar,
+    ConfigSchema,
+    is_secret_name,
+    resolve_config,
+    redact_secrets,
+    inject_config_into_prompt,
     parse_config_schema,
 )
 
@@ -19,9 +23,11 @@ def test_is_secret_name():
 
 
 def test_resolve_config_user_priority():
-    schema = ConfigSchema(vars=[
-        ConfigVar(name="branch", default="main"),
-    ])
+    schema = ConfigSchema(
+        vars=[
+            ConfigVar(name="branch", default="main"),
+        ]
+    )
     resolved, errors = resolve_config(schema, {"branch": "develop"})
     assert resolved["branch"] == "develop"
     assert not errors
@@ -29,26 +35,32 @@ def test_resolve_config_user_priority():
 
 def test_resolve_config_env_fallback(monkeypatch):
     monkeypatch.setenv("MY_TOKEN", "secret123")
-    schema = ConfigSchema(vars=[
-        ConfigVar(name="token", env="MY_TOKEN", required=True),
-    ])
+    schema = ConfigSchema(
+        vars=[
+            ConfigVar(name="token", env="MY_TOKEN", required=True),
+        ]
+    )
     resolved, errors = resolve_config(schema)
     assert resolved["token"] == "secret123"
     assert not errors
 
 
 def test_resolve_config_default_fallback():
-    schema = ConfigSchema(vars=[
-        ConfigVar(name="port", default=8080),
-    ])
+    schema = ConfigSchema(
+        vars=[
+            ConfigVar(name="port", default=8080),
+        ]
+    )
     resolved, errors = resolve_config(schema)
     assert resolved["port"] == 8080
 
 
 def test_resolve_config_required_missing():
-    schema = ConfigSchema(vars=[
-        ConfigVar(name="api_key", required=True),
-    ])
+    schema = ConfigSchema(
+        vars=[
+            ConfigVar(name="api_key", required=True),
+        ]
+    )
     resolved, errors = resolve_config(schema)
     assert len(errors) == 1
     assert "api_key" in errors[0]
@@ -62,10 +74,12 @@ def test_redact_secrets_by_name():
 
 
 def test_redact_secrets_with_schema():
-    schema = ConfigSchema(vars=[
-        ConfigVar(name="custom_field", is_secret=True),
-        ConfigVar(name="visible"),
-    ])
+    schema = ConfigSchema(
+        vars=[
+            ConfigVar(name="custom_field", is_secret=True),
+            ConfigVar(name="visible"),
+        ]
+    )
     config = {"custom_field": "secret", "visible": "ok"}
     redacted = redact_secrets(config, schema)
     assert redacted["custom_field"] == "***REDACTED***"
@@ -75,10 +89,12 @@ def test_redact_secrets_with_schema():
 def test_inject_config_into_prompt():
     template = "Use branch {{branch}} with token {{api_key}}"
     config = {"branch": "main", "api_key": "secret123"}
-    schema = ConfigSchema(vars=[
-        ConfigVar(name="branch"),
-        ConfigVar(name="api_key", is_secret=True),
-    ])
+    schema = ConfigSchema(
+        vars=[
+            ConfigVar(name="branch"),
+            ConfigVar(name="api_key", is_secret=True),
+        ]
+    )
     result = inject_config_into_prompt(template, config, schema)
     assert "main" in result
     assert "secret123" not in result

@@ -118,9 +118,7 @@ class BaiLongmaBridge:
             latency_ms = (time.perf_counter() - t0) * 1000.0
             if 200 <= r.status_code < 300:
                 return BridgeStatus(True, latency_ms, self._endpoint)
-            return BridgeStatus(
-                False, latency_ms, self._endpoint, f"HTTP {r.status_code}"
-            )
+            return BridgeStatus(False, latency_ms, self._endpoint, f"HTTP {r.status_code}")
         except Exception as exc:  # pragma: no cover - defensive
             latency_ms = (time.perf_counter() - t0) * 1000.0
             return BridgeStatus(False, latency_ms, self._endpoint, repr(exc))
@@ -265,7 +263,9 @@ class BaiLongmaBridge:
             r.raise_for_status()
             body = r.json()
         if "error" in body:
-            raise RuntimeError(f"A2A error {body['error'].get('code')}: {body['error'].get('message')}")
+            raise RuntimeError(
+                f"A2A error {body['error'].get('code')}: {body['error'].get('message')}"
+            )
         return dict(body.get("result") or {})
 
 

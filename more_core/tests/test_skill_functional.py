@@ -26,15 +26,24 @@ async def test_data_analyze_stats_computes_real_statistics():
     )
     assert r.success is True
     assert r.output == {
-        "count": 4, "numeric_count": 4, "sum": 10, "mean": 2.5, "min": 1, "max": 4,
+        "count": 4,
+        "numeric_count": 4,
+        "sum": 10,
+        "mean": 2.5,
+        "min": 1,
+        "max": 4,
     }
 
 
 @pytest.mark.asyncio
 async def test_data_analyze_transform_projects_keys():
     r = await DataAnalysisSkill().execute(
-        {"data": '{"a": 1, "b": 2}', "operation": "transform",
-         "transform": {"keys": ["a"]}, "format": "json"}
+        {
+            "data": '{"a": 1, "b": 2}',
+            "operation": "transform",
+            "transform": {"keys": ["a"]},
+            "format": "json",
+        }
     )
     assert r.success is True
     assert r.output == {"a": 1}

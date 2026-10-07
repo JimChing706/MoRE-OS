@@ -3,6 +3,7 @@
 Tasks 装配层唯一可信入口：一次调用 = (steps + payload_map + warnings + template_key)。
 杜绝 tasks.py 各自 new Planner/Writer 发生 key 错位。
 """
+
 from __future__ import annotations
 
 from typing import Any, Optional

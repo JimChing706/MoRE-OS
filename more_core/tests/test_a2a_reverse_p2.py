@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -102,17 +101,31 @@ class TestA2AReverseBasics:
 
     def test_task_not_found_get_returns_error(self):
         srv = _mk_server()
-        res = asyncio.run(srv.handle_request(
-            {"jsonrpc": "2.0", "id": "x", "method": "tasks/get", "params": {"taskId": "missing"}}
-        ))
+        res = asyncio.run(
+            srv.handle_request(
+                {
+                    "jsonrpc": "2.0",
+                    "id": "x",
+                    "method": "tasks/get",
+                    "params": {"taskId": "missing"},
+                }
+            )
+        )
         assert "error" in res
         assert res["error"]["code"] == -32602
 
     def test_cancel_missing_returns_error(self):
         srv = _mk_server()
-        res = asyncio.run(srv.handle_request(
-            {"jsonrpc": "2.0", "id": "x", "method": "tasks/cancel", "params": {"taskId": "missing"}}
-        ))
+        res = asyncio.run(
+            srv.handle_request(
+                {
+                    "jsonrpc": "2.0",
+                    "id": "x",
+                    "method": "tasks/cancel",
+                    "params": {"taskId": "missing"},
+                }
+            )
+        )
         assert "error" in res
 
 
@@ -136,10 +149,14 @@ class TestA2AReverseTaskDispatch:
             "params": {
                 "task": {
                     "messages": [
-                        {"messageId": "m", "role": "user",
-                         "parts": [{"type": "text", "text": "plain text question"}]}
-                ]
-            }},
+                        {
+                            "messageId": "m",
+                            "role": "user",
+                            "parts": [{"type": "text", "text": "plain text question"}],
+                        }
+                    ]
+                }
+            },
         }
         res = asyncio.run(srv.handle_request(payload))
         # tasks/send completes synchronously (handler runs then returns).
@@ -223,8 +240,12 @@ class TestA2AReverseTaskDispatch:
 
         srv = _mk_server(task_handler=handler)
         payload = {
-            "jsonrpc": "2.0", "id": "1", "method": "tasks/send",
-            "params": {"task": {"messages": [{"role": "user", "parts": [{"type": "text", "text": ""}]}]}}
+            "jsonrpc": "2.0",
+            "id": "1",
+            "method": "tasks/send",
+            "params": {
+                "task": {"messages": [{"role": "user", "parts": [{"type": "text", "text": ""}]}]}
+            },
         }
         res = asyncio.run(srv.handle_request(payload))
         assert res["result"]["status"]["state"] == "failed"
@@ -233,14 +254,28 @@ class TestA2AReverseTaskDispatch:
 class TestA2AReverseCancelAndList:
     def test_cancel_marks_canceled(self):
         srv = _mk_server()
-        asyncio.run(srv.handle_request({
-            "jsonrpc": "2.0", "id": "1", "method": "tasks/send",
-            "params": {"task": {"id": "c1", "messages": [
-                {"role": "user", "parts": [{"type": "text", "text": "x"}]}]}}
-        }))
-        res = asyncio.run(srv.handle_request({
-            "jsonrpc": "2.0", "id": "x", "method": "tasks/cancel",
-            "params": {"taskId": "c1"}}))
+        asyncio.run(
+            srv.handle_request(
+                {
+                    "jsonrpc": "2.0",
+                    "id": "1",
+                    "method": "tasks/send",
+                    "params": {
+                        "task": {
+                            "id": "c1",
+                            "messages": [
+                                {"role": "user", "parts": [{"type": "text", "text": "x"}]}
+                            ],
+                        }
+                    },
+                }
+            )
+        )
+        res = asyncio.run(
+            srv.handle_request(
+                {"jsonrpc": "2.0", "id": "x", "method": "tasks/cancel", "params": {"taskId": "c1"}}
+            )
+        )
         assert res["result"]["taskId"] == "c1"
         st = srv.stats()
         assert st["by_state"]["canceled"] == 1
@@ -248,11 +283,23 @@ class TestA2AReverseCancelAndList:
     def test_list_methods_filters_state(self):
         srv = _mk_server(task_handler=lambda t: asyncio.sleep(0, result=t))
         for tid, state in (("a1", "completed"), ("a2", "working")):
-            asyncio.run(srv.handle_request({
-                "jsonrpc": "2.0", "id": "1", "method": "tasks/send",
-                "params": {"task": {"id": tid, "messages": [
-                    {"role": "user", "parts": [{"type": "text", "text": "x"}]}]}}
-            }))
+            asyncio.run(
+                srv.handle_request(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": "1",
+                        "method": "tasks/send",
+                        "params": {
+                            "task": {
+                                "id": tid,
+                                "messages": [
+                                    {"role": "user", "parts": [{"type": "text", "text": "x"}]}
+                                ],
+                            }
+                        },
+                    }
+                )
+            )
             # Force state via back door
             srv._tasks[tid].state = A2ATaskState(state)
         res = srv._handle_list_tasks({"state": "completed", "limit": 10})
@@ -273,28 +320,37 @@ class TestA2AReverseBackgroundRunner:
             async def runner():
                 await asyncio.sleep(0.05)
                 # Append agent-role message
-                task.messages.append(A2AMessage(
-                    role="agent",
-                    content={"text": "the answer is 42"},
-                    metadata={"task_status": TaskStatus.SUCCESS.value},
-                ))
+                task.messages.append(
+                    A2AMessage(
+                        role="agent",
+                        content={"text": "the answer is 42"},
+                        metadata={"task_status": TaskStatus.SUCCESS.value},
+                    )
+                )
                 task.state = A2ATaskState.COMPLETED
 
             asyncio.create_task(runner())
             return task
 
         srv = _mk_server(task_handler=slow_handler)
-        send_res = await srv.handle_request({
-            "jsonrpc": "2.0", "id": "1", "method": "tasks/send",
-            "params": {"task": {"id": "bg1", "messages": [
-                {"role": "user", "parts": [{"type": "text", "text": "q"}]}]}}
-        })
+        send_res = await srv.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": "1",
+                "method": "tasks/send",
+                "params": {
+                    "task": {
+                        "id": "bg1",
+                        "messages": [{"role": "user", "parts": [{"type": "text", "text": "q"}]}],
+                    }
+                },
+            }
+        )
         assert send_res["result"]["status"]["state"] == "working"
         # Let the runner complete
         await asyncio.sleep(0.2)
-        get_res = await srv.handle_request({
-            "jsonrpc": "2.0", "id": "2", "method": "tasks/get",
-            "params": {"taskId": "bg1"}}
+        get_res = await srv.handle_request(
+            {"jsonrpc": "2.0", "id": "2", "method": "tasks/get", "params": {"taskId": "bg1"}}
         )
         assert get_res["result"]["status"]["state"] == "completed"
         last_msg = get_res["result"]["messages"][-1]

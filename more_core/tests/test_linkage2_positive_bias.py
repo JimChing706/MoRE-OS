@@ -8,8 +8,6 @@ Covers 4+4+2 = 10 tests:
 
 from __future__ import annotations
 
-import asyncio
-import sys
 import time
 from pathlib import Path
 
@@ -41,11 +39,27 @@ def _seed_db(tmp_path: Path, runs):
             "assertions_ok,delegated,delegation_trigger,delegation_state,reasons_json,"
             "checks_json,artifacts_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
-                f"r{i}", f"t{i}", r.get("task_type", TT), "code",
-                r.get("query_fp", QF), r["decision"], 0, 0, 0, 0, 0, 0, 1, 0,
+                f"r{i}",
+                f"t{i}",
+                r.get("task_type", TT),
+                "code",
+                r.get("query_fp", QF),
+                r["decision"],
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
                 1 if r.get("delegated") else 0,
-                r.get("trigger", ""), r.get("state", ""),
-                "[]", "{}", "{}", time.time() + i * 0.001,
+                r.get("trigger", ""),
+                r.get("state", ""),
+                "[]",
+                "{}",
+                "{}",
+                time.time() + i * 0.001,
             ),
         )
     conn.commit()
@@ -71,9 +85,23 @@ class TestStats:
         for _ in range(10):
             runs.append({"decision": "pass", "delegated": False})
         for _ in range(10):
-            runs.append({"decision": "pass", "delegated": True, "trigger": "default_gate", "state": "completed"})
+            runs.append(
+                {
+                    "decision": "pass",
+                    "delegated": True,
+                    "trigger": "default_gate",
+                    "state": "completed",
+                }
+            )
         for _ in range(10):
-            runs.append({"decision": "pass", "delegated": True, "trigger": "evolution_escalation", "state": "completed"})
+            runs.append(
+                {
+                    "decision": "pass",
+                    "delegated": True,
+                    "trigger": "evolution_escalation",
+                    "state": "completed",
+                }
+            )
         pr = _seed_db(tmp_path, runs)
         s = get_delegation_success_stats(project_root=str(pr))
         assert s["local"]["n"] == 10 and s["local"]["rate"] == 0.0
@@ -82,47 +110,65 @@ class TestStats:
 
     def test_03_large_samples_rates_correct(self, tmp_path):
         runs = []
-        for i in range(30): runs.append({"decision": "pass" if i < 15 else "partial", "delegated": False})  # 50%
-        for i in range(30): runs.append({
-            "decision": "pass" if i < 21 else "partial",
-            "delegated": True, "trigger": "default_gate",
-            "state": "completed" if i < 21 else "failed",
-        })  # 70%
-        for i in range(40): runs.append({
-            "decision": "pass" if i < 36 else "partial",
-            "delegated": True, "trigger": "evolution_escalation",
-            "state": "completed" if i < 36 else "failed",
-        })  # 90%
+        for i in range(30):
+            runs.append({"decision": "pass" if i < 15 else "partial", "delegated": False})  # 50%
+        for i in range(30):
+            runs.append(
+                {
+                    "decision": "pass" if i < 21 else "partial",
+                    "delegated": True,
+                    "trigger": "default_gate",
+                    "state": "completed" if i < 21 else "failed",
+                }
+            )  # 70%
+        for i in range(40):
+            runs.append(
+                {
+                    "decision": "pass" if i < 36 else "partial",
+                    "delegated": True,
+                    "trigger": "evolution_escalation",
+                    "state": "completed" if i < 36 else "failed",
+                }
+            )  # 90%
         pr = _seed_db(tmp_path, runs)
         s = get_delegation_success_stats(project_root=str(pr))
         assert s["local"]["n"] == 30 and s["local"]["rate"] == pytest.approx(0.50, abs=0.01)
-        assert s["chassis_default"]["n"] == 30 and s["chassis_default"]["rate"] == pytest.approx(0.70, abs=0.01)
-        assert s["chassis_evolution"]["n"] == 40 and s["chassis_evolution"]["rate"] == pytest.approx(0.90, abs=0.01)
+        assert s["chassis_default"]["n"] == 30 and s["chassis_default"]["rate"] == pytest.approx(
+            0.70, abs=0.01
+        )
+        assert s["chassis_evolution"]["n"] == 40 and s["chassis_evolution"][
+            "rate"
+        ] == pytest.approx(0.90, abs=0.01)
 
     def test_04_filter_task_and_fp(self, tmp_path):
         runs = []
         # Contamination group: different task_type — should NOT leak into filtered stats.
         for _ in range(50):
-            runs.append({
-                "decision": "partial", "delegated": True,
-                "trigger": "evolution_escalation", "state": "failed",
-                "task_type": "other_task",
-            })
+            runs.append(
+                {
+                    "decision": "partial",
+                    "delegated": True,
+                    "trigger": "evolution_escalation",
+                    "state": "failed",
+                    "task_type": "other_task",
+                }
+            )
         # Target group.
         for i in range(40):
             runs.append({"decision": "pass" if i < 20 else "partial", "delegated": False})
         for i in range(40):
-            runs.append({
-                "decision": "pass" if i < 36 else "partial",
-                "delegated": True, "trigger": "evolution_escalation",
-                "state": "completed" if i < 36 else "failed",
-            })
+            runs.append(
+                {
+                    "decision": "pass" if i < 36 else "partial",
+                    "delegated": True,
+                    "trigger": "evolution_escalation",
+                    "state": "completed" if i < 36 else "failed",
+                }
+            )
         pr = _seed_db(tmp_path, runs)
         s_all = get_delegation_success_stats(project_root=str(pr))
         assert s_all["chassis_evolution"]["n"] == 50 + 40
-        s_filtered = get_delegation_success_stats(
-            task_type=TT, query_fp=QF, project_root=str(pr)
-        )
+        s_filtered = get_delegation_success_stats(task_type=TT, query_fp=QF, project_root=str(pr))
         assert s_filtered["local"]["n"] == 40
         assert s_filtered["local"]["rate"] == pytest.approx(0.50)
         assert s_filtered["chassis_evolution"]["n"] == 40
@@ -137,11 +183,17 @@ class TestStats:
 class TestBiasDecision:
     def test_05_low_samples_none_no_suffix(self, tmp_path):
         runs = []
-        for _ in range(10): runs.append({"decision": "pass", "delegated": False})
-        for _ in range(10): runs.append({
-            "decision": "pass", "delegated": True,
-            "trigger": "evolution_escalation", "state": "completed",
-        })
+        for _ in range(10):
+            runs.append({"decision": "pass", "delegated": False})
+        for _ in range(10):
+            runs.append(
+                {
+                    "decision": "pass",
+                    "delegated": True,
+                    "trigger": "evolution_escalation",
+                    "state": "completed",
+                }
+            )
         pr = _seed_db(tmp_path, runs)
         adj, suffix = _delegation_bias_for_query(
             task_type=TT, query_fp=QF, escalate_threshold=0.55, project_root=str(pr)
@@ -150,12 +202,17 @@ class TestBiasDecision:
 
     def test_06_uplift_below_5pp_no_go_suffix(self, tmp_path):
         runs = []
-        for i in range(30): runs.append({"decision": "pass" if i < 24 else "partial", "delegated": False})  # 80%
-        for i in range(30): runs.append({
-            "decision": "pass" if i < 25 else "partial",  # 83% (Δ=+3pp)
-            "delegated": True, "trigger": "evolution_escalation",
-            "state": "completed" if i < 25 else "failed",
-        })
+        for i in range(30):
+            runs.append({"decision": "pass" if i < 24 else "partial", "delegated": False})  # 80%
+        for i in range(30):
+            runs.append(
+                {
+                    "decision": "pass" if i < 25 else "partial",  # 83% (Δ=+3pp)
+                    "delegated": True,
+                    "trigger": "evolution_escalation",
+                    "state": "completed" if i < 25 else "failed",
+                }
+            )
         pr = _seed_db(tmp_path, runs)
         adj, suffix = _delegation_bias_for_query(
             task_type=TT, query_fp=QF, escalate_threshold=0.55, project_root=str(pr)
@@ -166,12 +223,17 @@ class TestBiasDecision:
 
     def test_07_uplift_ok_relaxes_10pp(self, tmp_path):
         runs = []
-        for i in range(30): runs.append({"decision": "pass" if i < 18 else "partial", "delegated": False})  # 60%
-        for i in range(35): runs.append({
-            "decision": "pass" if i < 32 else "partial",  # 91%
-            "delegated": True, "trigger": "evolution_escalation",
-            "state": "completed" if i < 32 else "failed",
-        })
+        for i in range(30):
+            runs.append({"decision": "pass" if i < 18 else "partial", "delegated": False})  # 60%
+        for i in range(35):
+            runs.append(
+                {
+                    "decision": "pass" if i < 32 else "partial",  # 91%
+                    "delegated": True,
+                    "trigger": "evolution_escalation",
+                    "state": "completed" if i < 32 else "failed",
+                }
+            )
         pr = _seed_db(tmp_path, runs)
         adj, suffix = _delegation_bias_for_query(
             task_type=TT, query_fp=QF, escalate_threshold=0.55, project_root=str(pr)
@@ -182,12 +244,17 @@ class TestBiasDecision:
 
     def test_08_clamped_at_0_75(self, tmp_path):
         runs = []
-        for i in range(35): runs.append({"decision": "pass" if i < 21 else "partial", "delegated": False})
-        for i in range(35): runs.append({
-            "decision": "pass" if i >= 2 else "partial",
-            "delegated": True, "trigger": "evolution_escalation",
-            "state": "completed" if i >= 2 else "failed",
-        })
+        for i in range(35):
+            runs.append({"decision": "pass" if i < 21 else "partial", "delegated": False})
+        for i in range(35):
+            runs.append(
+                {
+                    "decision": "pass" if i >= 2 else "partial",
+                    "delegated": True,
+                    "trigger": "evolution_escalation",
+                    "state": "completed" if i >= 2 else "failed",
+                }
+            )
         pr = _seed_db(tmp_path, runs)
         adj, _ = _delegation_bias_for_query(
             task_type=TT, query_fp=QF, escalate_threshold=0.70, project_root=str(pr)
@@ -203,12 +270,17 @@ class TestBiasDecision:
 class TestBiasIntegration:
     def test_09_k_0_with_bias_rationale_applied_label(self, tmp_path):
         runs = []
-        for i in range(40): runs.append({"decision": "pass" if i < 25 else "partial", "delegated": False})  # 62.5%
-        for i in range(40): runs.append({
-            "decision": "pass" if i < 36 else "partial",
-            "delegated": True, "trigger": "evolution_escalation",
-            "state": "completed" if i < 36 else "failed",
-        })  # 90%
+        for i in range(40):
+            runs.append({"decision": "pass" if i < 25 else "partial", "delegated": False})  # 62.5%
+        for i in range(40):
+            runs.append(
+                {
+                    "decision": "pass" if i < 36 else "partial",
+                    "delegated": True,
+                    "trigger": "evolution_escalation",
+                    "state": "completed" if i < 36 else "failed",
+                }
+            )  # 90%
         pr = _seed_db(tmp_path, runs)
         k_base, r_base = query_dynamic_k(
             task_type=TT, query_fp=QF, escalate_threshold=0.55, project_root=str(pr)
@@ -227,14 +299,20 @@ class TestBiasIntegration:
     def test_10_k_2_after_bias_relax(self, tmp_path):
         runs = []
         # 30 local: 50% pass, 30 evolution: 86.7% pass → Δ=+36.7% uplift → bias relax 0.55→0.65
-        for i in range(30): runs.append({"decision": "pass" if i < 15 else "partial", "delegated": False})
-        for i in range(30): runs.append({
-            "decision": "pass" if i < 26 else "partial",
-            "delegated": True, "trigger": "evolution_escalation",
-            "state": "completed" if i < 26 else "failed",
-        })
+        for i in range(30):
+            runs.append({"decision": "pass" if i < 15 else "partial", "delegated": False})
+        for i in range(30):
+            runs.append(
+                {
+                    "decision": "pass" if i < 26 else "partial",
+                    "delegated": True,
+                    "trigger": "evolution_escalation",
+                    "state": "completed" if i < 26 else "failed",
+                }
+            )
         # Add 10 local failed runs → total passes=41 / 70 = 58.6% < 0.65 → k=2
-        for _ in range(10): runs.append({"decision": "partial", "delegated": False})
+        for _ in range(10):
+            runs.append({"decision": "partial", "delegated": False})
         pr = _seed_db(tmp_path, runs)
         k, r = query_dynamic_k_with_delegation_bias(
             task_type=TT, query_fp=QF, escalate_threshold=0.55, project_root=str(pr)

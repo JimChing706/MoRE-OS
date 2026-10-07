@@ -41,7 +41,6 @@ def _make_ctx(
 
 
 class TestSymbolicLayerGovernance:
-
     @pytest.mark.asyncio
     async def test_nlp_task_runs_governance_only(self):
         ctx = _make_ctx(task_type=TaskType.NLP_TASK)
@@ -82,6 +81,7 @@ class TestSymbolicLayerGovernance:
     @pytest.mark.asyncio
     async def test_sandbox_result_included_in_facts(self):
         from more_core.tools.registry import ToolResult
+
         sbx = ToolResult(tool="python_exec", success=True, output="print('ok')")
         ctx = _make_ctx(sandbox_result=sbx)
         r = await SymbolicLayer().process(ctx)
@@ -89,7 +89,6 @@ class TestSymbolicLayerGovernance:
 
 
 class TestSymbolicLayerSymbolicMath:
-
     @pytest.mark.asyncio
     async def test_math_reasoning_runs_symbolic_engine(self):
         ctx = _make_ctx(task_type=TaskType.MATH_REASONING, query="simplify x + x")
@@ -151,8 +150,9 @@ class TestSymbolicLayerSymbolicMath:
 
     @pytest.mark.asyncio
     async def test_math_reasoning_with_governance_violation(self):
-        ctx = _make_ctx(task_type=TaskType.MATH_REASONING, query="simplify x + x",
-                        strict_ontology=False)
+        ctx = _make_ctx(
+            task_type=TaskType.MATH_REASONING, query="simplify x + x", strict_ontology=False
+        )
         ctx.core.ontology.check = AsyncMock(return_value=["outcome.validated"])
         result = await SymbolicLayer().process(ctx)
         # Both governance and symbolic should be present
@@ -162,7 +162,6 @@ class TestSymbolicLayerSymbolicMath:
 
 
 class TestSymbolicLayerEdgeCases:
-
     @pytest.mark.asyncio
     async def test_empty_query_no_crash(self):
         ctx = _make_ctx(task_type=TaskType.MATH_REASONING, query="")

@@ -28,6 +28,7 @@ class _FailHand(Hand):
 
 # -- registry ------------------------------------------------------------------
 
+
 def test_registry_register_and_list():
     reg = HandRegistry()
     h = _TestHand()
@@ -56,6 +57,7 @@ def test_builtin_hands_registered():
 
 
 # -- hand lifecycle ------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_hand_activate_deactivate():
@@ -100,6 +102,7 @@ async def test_hand_run_failure():
 
 
 # -- manager -------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_manager_activate_and_run():

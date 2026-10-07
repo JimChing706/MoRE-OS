@@ -58,7 +58,9 @@ class IssueRequest(BaseModel):
     owner: str = Field(default="", max_length=120, description="归属团队/租户")
     consumer: str = Field(default="", max_length=120, description="使用方服务名")
     purpose: str = Field(default="", max_length=200)
-    channel: str = Field(default="", max_length=60, description="分发渠道，如 cli/api/secret-manager")
+    channel: str = Field(
+        default="", max_length=60, description="分发渠道，如 cli/api/secret-manager"
+    )
     # 使用管理
     quota_per_min: int | None = Field(default=None, ge=1, le=1_000_000)
 
@@ -217,8 +219,10 @@ def create_router(require_api_key: Callable[..., Any]) -> APIRouter:
     @router.get("/api-key/attention")
     async def api_key_attention(expiry_days: int = 14, stale_days: int = 30) -> dict[str, Any]:
         """需要人工关注：即将过期 / 从未使用 / 已过期未清理。"""
-        return {"status": "ok", "attention": _store().attention(
-            expiry_days=expiry_days, stale_days=stale_days)}
+        return {
+            "status": "ok",
+            "attention": _store().attention(expiry_days=expiry_days, stale_days=stale_days),
+        }
 
     @router.post("/api-key/usage/prune")
     async def api_key_usage_prune(keep_days: int = 7) -> dict[str, Any]:
@@ -238,9 +242,7 @@ def create_router(require_api_key: Callable[..., Any]) -> APIRouter:
     async def rotate_api_key(key_id: str, payload: RotateKeyRequest) -> dict[str, Any]:
         """Rotate a key; the old one stays valid for ``grace_seconds``."""
         ttl = int(payload.ttl_days * 86400) if payload.ttl_days is not None else None
-        result = _store().rotate(
-            key_id, grace_seconds=payload.grace_seconds, ttl_seconds=ttl
-        )
+        result = _store().rotate(key_id, grace_seconds=payload.grace_seconds, ttl_seconds=ttl)
         if result is None:
             raise HTTPException(status_code=404, detail=f"unknown key_id {key_id!r}")
         raw, record = result

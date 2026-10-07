@@ -3,14 +3,14 @@
 import sys
 import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from more_core.zen_rules import (
     ZENRule,
     ZENRulesEnforcer,
     RuleSeverity,
     RuleCategory,
-    ViolationRecord
+    ViolationRecord,
 )
 
 
@@ -25,7 +25,7 @@ class TestZENRule:
             category=RuleCategory.SAFETY,
             severity=RuleSeverity.P1_CRITICAL,
             description="A test rule",
-            check_fn=lambda ctx: True
+            check_fn=lambda ctx: True,
         )
         assert rule.id == "ZEN-TEST-01"
         assert rule.name == "Test Rule"
@@ -38,7 +38,7 @@ class TestZENRule:
             category=RuleCategory.SAFETY,
             severity=RuleSeverity.P3_MINOR,
             description="Test evaluation",
-            check_fn=lambda ctx: ctx.get("value", 0) > 10
+            check_fn=lambda ctx: ctx.get("value", 0) > 10,
         )
         assert rule.check_fn({"value": 20}) is True
         assert rule.check_fn({"value": 5}) is False
@@ -60,7 +60,7 @@ class TestZENRulesEnforcer:
         ZENRulesEnforcer._instance = None
         enforcer = ZENRulesEnforcer()
         assert enforcer is not None
-        assert hasattr(enforcer, '_rules')
+        assert hasattr(enforcer, "_rules")
 
     def test_default_rules_registered(self):
         """Test default rules are registered."""
@@ -79,7 +79,7 @@ class TestZENRulesEnforcer:
         """Test checking for violations."""
         ZENRulesEnforcer._instance = None
         enforcer = ZENRulesEnforcer()
-        
+
         # Test with rule that has check_fn
         rule = ZENRule(
             id="ZEN-TEST-VIOLATION",
@@ -87,14 +87,14 @@ class TestZENRulesEnforcer:
             category=RuleCategory.SAFETY,
             severity=RuleSeverity.P3_MINOR,
             description="Test",
-            check_fn=lambda ctx: ctx.get("allowed", True)
+            check_fn=lambda ctx: ctx.get("allowed", True),
         )
         enforcer._rules["ZEN-TEST-VIOLATION"] = rule
-        
+
         # Should not violate when allowed=True
         is_violation = enforcer.check_violation("ZEN-TEST-VIOLATION", {"allowed": True})
         assert is_violation is False
-        
+
         # Should violate when allowed=False
         is_violation = enforcer.check_violation("ZEN-TEST-VIOLATION", {"allowed": False})
         assert is_violation is True
@@ -103,11 +103,12 @@ class TestZENRulesEnforcer:
         """Test registering callback for severity."""
         ZENRulesEnforcer._instance = None
         enforcer = ZENRulesEnforcer()
-        
+
         callback_called = []
+
         def test_callback(violation):
             callback_called.append(violation)
-        
+
         enforcer.register_callback(RuleSeverity.P1_CRITICAL, test_callback)
         assert len(enforcer._callbacks[RuleSeverity.P1_CRITICAL]) > 0
 
@@ -123,7 +124,7 @@ class TestViolationRecord:
             severity=RuleSeverity.P1_CRITICAL,
             category=RuleCategory.SAFETY,
             timestamp=1234567890.0,
-            context={"test": "data"}
+            context={"test": "data"},
         )
         assert violation.rule_id == "ZEN-01"
         assert violation.resolved is False

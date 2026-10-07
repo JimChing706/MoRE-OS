@@ -96,9 +96,7 @@ def _self_check_code(reasoning_chain: list[Any], final_output: str) -> SelfCheck
         backfill_items=(
             ["未生成代码产物（无 ```python 代码块或可编译源码）"] if not has_code else []
         ),
-        overall_assessment=(
-            "代码产物完整" if has_code else "代码任务未产出代码: 需人工介入"
-        ),
+        overall_assessment=("代码产物完整" if has_code else "代码任务未产出代码: 需人工介入"),
         coverage_pct=100.0 if has_code else 0.0,
     )
 

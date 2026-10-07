@@ -54,9 +54,9 @@ def init_capabilities(settings: Settings) -> dict[str, Any]:
             if settings.fallback_chain
             else (settings.providers[0].name if settings.providers else "")
         )
-        primary = next(
-            (p for p in settings.providers if p.name == primary_name), None
-        ) or (settings.providers[0] if settings.providers else None)
+        primary = next((p for p in settings.providers if p.name == primary_name), None) or (
+            settings.providers[0] if settings.providers else None
+        )
         _state_overrides: dict[str, Any] = {}
         if primary is not None and primary.model:
             _state_overrides["provider"] = primary.name

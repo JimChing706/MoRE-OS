@@ -139,11 +139,13 @@ class TestL4CJKDifficulty:
     @pytest.fixture
     def settings(self):
         from more_core.core.config import Settings
+
         return Settings(providers=[], fallback_chain=[])
 
     @pytest.fixture
     def core(self, settings):
         from more_core.runtime.orchestrator import MoRECore
+
         return MoRECore(settings)
 
     @pytest.mark.asyncio
@@ -156,7 +158,9 @@ class TestL4CJKDifficulty:
 
         # 200 CJK chars → semantic_length = 400 → 400//400 = 1 bonus
         chinese_query = "分" * 200
-        ctx = LayerContext(core=core, request=TaskRequest(type=TaskType.NLP_TASK, query=chinese_query))
+        ctx = LayerContext(
+            core=core, request=TaskRequest(type=TaskType.NLP_TASK, query=chinese_query)
+        )
         l4 = CognitionLayer()
         result = await l4.process(ctx)
         # Base NLP difficulty=3, bonus=1 → difficulty=4
@@ -170,7 +174,9 @@ class TestL4CJKDifficulty:
         from more_core.layers.l4_cognition import CognitionLayer
 
         english_query = "a" * 200
-        ctx = LayerContext(core=core, request=TaskRequest(type=TaskType.NLP_TASK, query=english_query))
+        ctx = LayerContext(
+            core=core, request=TaskRequest(type=TaskType.NLP_TASK, query=english_query)
+        )
         l4 = CognitionLayer()
         result = await l4.process(ctx)
         # Base NLP difficulty=3, semantic_length=200, 200//400=0, so difficulty=3
@@ -193,6 +199,7 @@ class TestL0LanguageDetection:
 
     def test_english_system_prompt_selected(self):
         from more_core.core.unicode_utils import detect_language
+
         query = "Please implement a quicksort algorithm"
         lang = detect_language(query)
         assert lang == "en"

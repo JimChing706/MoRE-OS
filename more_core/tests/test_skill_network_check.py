@@ -20,7 +20,10 @@ class _Mgr:
 
 def _meta(sid, *, egress=True, targets=None):
     return SkillMetadata(
-        id=sid, name=sid, description="d", category=SkillCategory.WEB,
+        id=sid,
+        name=sid,
+        description="d",
+        category=SkillCategory.WEB,
         deployment={
             "network_egress": egress,
             "network_targets": targets or ["example.com:443"],
@@ -76,8 +79,7 @@ async def test_partial_reachability_is_flagged(monkeypatch):
     monkeypatch.setattr(nc, "_tcp_ok", tcp)
 
     report = await check_skill_network(
-        _Mgr([_meta("a", targets=["example.com:443"]),
-              _meta("b", targets=["down.example:443"])])
+        _Mgr([_meta("a", targets=["example.com:443"]), _meta("b", targets=["down.example:443"])])
     )
     assert report["ok"] is False
     assert any("部分出网目标不可达" in w for w in report["warnings"])
@@ -111,16 +113,24 @@ def test_default_skills_declare_egress_targets():
 
 
 def test_network_snapshot_roundtrip():
-    obs.record_skill_network({
-        "ok": False,
-        "required_egress": ["web.search"],
-        "targets": [
-            {"skill_id": "web.search", "target": "example.com:443",
-             "dns_ok": False, "tcp_ok": False, "reachable": False,
-             "error": "gaierror", "latency_ms": 0.0},
-        ],
-        "warnings": ["所有出网技能目标均不可达（1 个）"],
-    })
+    obs.record_skill_network(
+        {
+            "ok": False,
+            "required_egress": ["web.search"],
+            "targets": [
+                {
+                    "skill_id": "web.search",
+                    "target": "example.com:443",
+                    "dns_ok": False,
+                    "tcp_ok": False,
+                    "reachable": False,
+                    "error": "gaierror",
+                    "latency_ms": 0.0,
+                },
+            ],
+            "warnings": ["所有出网技能目标均不可达（1 个）"],
+        }
+    )
     h = obs.query_skill_network_health(3600)
     assert h["n_targets"] == 1
     assert h["n_reachable"] == 0
@@ -129,29 +139,44 @@ def test_network_snapshot_roundtrip():
 
 
 def test_network_alerts_critical_when_none_reachable():
-    alerts = obs.evaluate_skill_network_alerts({
-        "checked_at": 1.0, "n_targets": 2, "n_reachable": 0,
-        "targets": [{"reachable": False}, {"reachable": False}],
-        "required_egress": ["web.search"],
-    })
+    alerts = obs.evaluate_skill_network_alerts(
+        {
+            "checked_at": 1.0,
+            "n_targets": 2,
+            "n_reachable": 0,
+            "targets": [{"reachable": False}, {"reachable": False}],
+            "required_egress": ["web.search"],
+        }
+    )
     assert [a["code"] for a in alerts] == ["skill_network_unreachable"]
     assert alerts[0]["level"] == "critical"
 
 
 def test_network_alerts_warning_when_partial():
-    alerts = obs.evaluate_skill_network_alerts({
-        "checked_at": 1.0, "n_targets": 2, "n_reachable": 1,
-        "targets": [{"reachable": True}, {"reachable": False}],
-    })
+    alerts = obs.evaluate_skill_network_alerts(
+        {
+            "checked_at": 1.0,
+            "n_targets": 2,
+            "n_reachable": 1,
+            "targets": [{"reachable": True}, {"reachable": False}],
+        }
+    )
     assert alerts[0]["code"] == "skill_network_partial"
     assert alerts[0]["level"] == "warning"
 
 
 def test_network_alerts_empty_when_all_reachable():
-    assert obs.evaluate_skill_network_alerts({
-        "checked_at": 1.0, "n_targets": 1, "n_reachable": 1,
-        "targets": [{"reachable": True}],
-    }) == []
+    assert (
+        obs.evaluate_skill_network_alerts(
+            {
+                "checked_at": 1.0,
+                "n_targets": 1,
+                "n_reachable": 1,
+                "targets": [{"reachable": True}],
+            }
+        )
+        == []
+    )
 
 
 def test_network_alerts_missing_snapshot():
@@ -170,13 +195,24 @@ def test_skill_network_endpoint_and_overview(core):
     from more_core.api.server import create_app
 
     with TestClient(create_app(core)) as client:
-        obs.record_skill_network({
-            "ok": False, "required_egress": ["web.search"],
-            "targets": [{"skill_id": "web.search", "target": "example.com:443",
-                         "reachable": False, "dns_ok": False, "tcp_ok": False,
-                         "error": "gaierror", "latency_ms": 0.0}],
-            "warnings": ["不可达"],
-        })
+        obs.record_skill_network(
+            {
+                "ok": False,
+                "required_egress": ["web.search"],
+                "targets": [
+                    {
+                        "skill_id": "web.search",
+                        "target": "example.com:443",
+                        "reachable": False,
+                        "dns_ok": False,
+                        "tcp_ok": False,
+                        "error": "gaierror",
+                        "latency_ms": 0.0,
+                    }
+                ],
+                "warnings": ["不可达"],
+            }
+        )
         resp = client.get("/api/v1/metrics/skill-network?window_s=3600")
         assert resp.status_code == 200
         body = resp.json()
@@ -209,11 +245,14 @@ async def test_core_start_runs_skill_network_preflight(core, monkeypatch):
 def test_stale_skill_network_snapshot_is_info():
     import time as _t
 
-    obs.record_skill_network({
-        "ok": True, "required_egress": ["web.search"],
-        "targets": [{"skill_id": "web.search", "target": "x:443", "reachable": True}],
-        "warnings": [],
-    })
+    obs.record_skill_network(
+        {
+            "ok": True,
+            "required_egress": ["web.search"],
+            "targets": [{"skill_id": "web.search", "target": "x:443", "reachable": True}],
+            "warnings": [],
+        }
+    )
     conn = obs._get_conn()
     conn.execute("UPDATE skill_network_snapshots SET ts = ?", (_t.time() - 7200,))
 

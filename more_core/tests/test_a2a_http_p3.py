@@ -62,10 +62,12 @@ def fast_client(request) -> Iterator[TestClient]:
     """
     task_handler = getattr(request, "param", None)
     if task_handler is None:
+
         async def _handler(task):
             from more_core.a2a.client import A2ATaskState, A2AMessage
 
             task.state = A2ATaskState.WORKING
+
             # Micro background step to emulate async runner pattern used by
             # the real orchestrator handler.
             async def _runner():
@@ -78,6 +80,7 @@ def fast_client(request) -> Iterator[TestClient]:
                         metadata={"ok": True},
                     )
                 )
+
             asyncio.create_task(_runner())
             return task
 
@@ -97,9 +100,14 @@ def fast_client(request) -> Iterator[TestClient]:
 RPCID = "rpc-1"
 
 
-def _payload_send(text: str = "hello", task_id: str = "t-http-1", *,
-                  task_type: str | None = None, metadata_task_type: bool = False,
-                  text_only: bool = False) -> dict:
+def _payload_send(
+    text: str = "hello",
+    task_id: str = "t-http-1",
+    *,
+    task_type: str | None = None,
+    metadata_task_type: bool = False,
+    text_only: bool = False,
+) -> dict:
     """Build a JSON-RPC tasks/send body mirroring BaiLongma bridge format."""
     msg: dict = {
         "messageId": "m1",
@@ -222,8 +230,10 @@ class TestA2AHttpBasics:
         This uses a handler that mirrors orchestrator._a2a_handler behaviour
         of marking empty-text tasks FAILED immediately.
         """
+
         async def _empty_check_handler(task):
             from more_core.a2a.client import A2ATaskState
+
             text = ""
             for m in task.messages:
                 body = m.content or {}
@@ -281,24 +291,31 @@ class TestA2AHttpBasics:
             import asyncio as _aio
 
             task.state = A2ATaskState.WORKING
+
             async def _runner():
                 await _aio.sleep(0.01)
                 m = task.messages[0]
                 body = m.content if isinstance(m.content, dict) else {}
                 recorded["task_type"] = body.get("task_type")
                 task.state = A2ATaskState.COMPLETED
-                task.messages.append(A2AMessage(
-                    role="agent",
-                    content={"text": f"type={body.get('task_type')}"},
-                ))
+                task.messages.append(
+                    A2AMessage(
+                        role="agent",
+                        content={"text": f"type={body.get('task_type')}"},
+                    )
+                )
+
             _aio.create_task(_runner())
             return task
 
         core = _mk_core_with_custom_handler(_record_handler)
         with TestClient(create_app(core)) as c:
-            send = c.post("/api/v1/a2a", json=_payload_send(
-                text="build api", task_id="t-body-type-9", task_type="code_generation"
-            ))
+            send = c.post(
+                "/api/v1/a2a",
+                json=_payload_send(
+                    text="build api", task_id="t-body-type-9", task_type="code_generation"
+                ),
+            )
             assert send.status_code == 200
             done = _poll_until(c, "t-body-type-9", done_states={"completed"})
             assert recorded["task_type"] == "code_generation"
@@ -318,6 +335,7 @@ class TestA2AHttpBasics:
             import asyncio as _aio
 
             task.state = A2ATaskState.WORKING
+
             async def _runner():
                 await _aio.sleep(0.01)
                 m = task.messages[0]
@@ -327,19 +345,27 @@ class TestA2AHttpBasics:
                     tt = meta.get("task_type")
                 captured["task_type"] = tt
                 task.state = A2ATaskState.COMPLETED
-                task.messages.append(A2AMessage(
-                    role="agent",
-                    content={"text": f"meta_tt={tt}"},
-                ))
+                task.messages.append(
+                    A2AMessage(
+                        role="agent",
+                        content={"text": f"meta_tt={tt}"},
+                    )
+                )
+
             _aio.create_task(_runner())
             return task
 
         core = _mk_core_with_custom_handler(_meta_handler)
         with TestClient(create_app(core)) as c:
-            send = c.post("/api/v1/a2a", json=_payload_send(
-                text="audit logs", task_id="t-meta-10",
-                task_type="reasoning", metadata_task_type=True,
-            ))
+            send = c.post(
+                "/api/v1/a2a",
+                json=_payload_send(
+                    text="audit logs",
+                    task_id="t-meta-10",
+                    task_type="reasoning",
+                    metadata_task_type=True,
+                ),
+            )
             assert send.status_code == 200
             done = _poll_until(c, "t-meta-10", done_states={"completed"})
             assert captured["task_type"] == "reasoning"

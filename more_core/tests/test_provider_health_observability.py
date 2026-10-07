@@ -120,9 +120,9 @@ async def test_preflight_flags_invalid_effective_state_model(monkeypatch):
     llm = _LLM([_Prov("lmstudio", "ornith-1.5-35b-a3b")], ["lmstudio"])
     report = await pf.preflight_llm(llm, ["lmstudio"])
 
-    assert report.providers[0].model_present is True   # provider 配置没错
+    assert report.providers[0].model_present is True  # provider 配置没错
     assert report.state_model == "local-model"
-    assert report.state_model_present is False          # 生效模型错了
+    assert report.state_model_present is False  # 生效模型错了
     assert report.ok is False
     assert any("local-model" in w and "[state]" in w for w in report.warnings)
 
@@ -140,8 +140,8 @@ async def test_inference_probe_flags_completion_failure(monkeypatch):
     llm = _LLM([_Prov("a", "m", gen_error=RuntimeError("HTTP 500"))], ["a"])
     report = await pf.preflight_llm(llm, ["a"], probe_inference=True)
 
-    assert report.providers[0].healthy is True          # /models 说健康
-    assert report.providers[0].inference_ok is False     # 但推理失败
+    assert report.providers[0].healthy is True  # /models 说健康
+    assert report.providers[0].inference_ok is False  # 但推理失败
     assert any("inference probe failed" in w for w in report.providers[0].warnings)
 
 
@@ -166,12 +166,20 @@ async def test_inference_probe_success(monkeypatch):
 
 def _bad_report():
     return {
-        "ok": False, "degraded": True,
-        "providers": [{
-            "name": "lmstudio", "registered": True, "endpoint": "http://x",
-            "configured_model": "local-model", "models_available": 2,
-            "model_present": False, "healthy": False, "warnings": ["model not found"],
-        }],
+        "ok": False,
+        "degraded": True,
+        "providers": [
+            {
+                "name": "lmstudio",
+                "registered": True,
+                "endpoint": "http://x",
+                "configured_model": "local-model",
+                "models_available": 2,
+                "model_present": False,
+                "healthy": False,
+                "warnings": ["model not found"],
+            }
+        ],
         "fallback_chain": ["lmstudio", "ollama"],
         "chain_registered": ["lmstudio"],
         "warnings": ["[lmstudio] configured model 'local-model' not found"],
@@ -194,12 +202,16 @@ def test_provider_health_snapshot_roundtrip():
 
 def test_provider_health_latest_snapshot_wins():
     obs.record_provider_health(_bad_report())
-    obs.record_provider_health({
-        "ok": True, "degraded": False,
-        "providers": [{"name": "lmstudio", "healthy": True, "model_present": True}],
-        "fallback_chain": ["lmstudio", "ollama"],
-        "chain_registered": ["lmstudio", "ollama"], "warnings": [],
-    })
+    obs.record_provider_health(
+        {
+            "ok": True,
+            "degraded": False,
+            "providers": [{"name": "lmstudio", "healthy": True, "model_present": True}],
+            "fallback_chain": ["lmstudio", "ollama"],
+            "chain_registered": ["lmstudio", "ollama"],
+            "warnings": [],
+        }
+    )
     h = obs.query_provider_health(3600)
     assert h["ok"] is True
     assert h["n_invalid_model"] == 0
@@ -220,18 +232,31 @@ def test_provider_health_empty_is_zero_not_error():
 
 def _health(providers, degraded=False, chain_declared=None, chain_registered=None):
     return {
-        "checked_at": 1.0, "ok": not providers, "degraded": degraded,
-        "n_providers": len(providers), "providers": providers,
-        "chain_declared": chain_declared or [], "chain_registered": chain_registered or [],
+        "checked_at": 1.0,
+        "ok": not providers,
+        "degraded": degraded,
+        "n_providers": len(providers),
+        "providers": providers,
+        "chain_declared": chain_declared or [],
+        "chain_registered": chain_registered or [],
     }
 
 
 def test_invalid_model_is_critical():
-    alerts = obs.evaluate_provider_alerts(_health(
-        [{"name": "lmstudio", "configured_model": "local-model",
-          "model_present": False, "healthy": False}],
-        chain_declared=["lmstudio"], chain_registered=["lmstudio"],
-    ))
+    alerts = obs.evaluate_provider_alerts(
+        _health(
+            [
+                {
+                    "name": "lmstudio",
+                    "configured_model": "local-model",
+                    "model_present": False,
+                    "healthy": False,
+                }
+            ],
+            chain_declared=["lmstudio"],
+            chain_registered=["lmstudio"],
+        )
+    )
     codes = {a["code"] for a in alerts}
     assert "provider_invalid_model" in codes
     assert "provider_unhealthy" in codes
@@ -240,54 +265,80 @@ def test_invalid_model_is_critical():
 
 
 def test_inference_failed_is_critical_alert():
-    alerts = obs.evaluate_provider_alerts({
-        "checked_at": 1.0, "n_providers": 1, "degraded": False,
-        "providers": [{"name": "lmstudio", "healthy": True,
-                       "model_present": True, "inference_ok": False}],
-        "chain_declared": ["lmstudio"], "chain_registered": ["lmstudio"],
-    })
+    alerts = obs.evaluate_provider_alerts(
+        {
+            "checked_at": 1.0,
+            "n_providers": 1,
+            "degraded": False,
+            "providers": [
+                {"name": "lmstudio", "healthy": True, "model_present": True, "inference_ok": False}
+            ],
+            "chain_declared": ["lmstudio"],
+            "chain_registered": ["lmstudio"],
+        }
+    )
     hit = [a for a in alerts if a["code"] == "provider_inference_failed"]
     assert hit and hit[0]["level"] == "critical"
 
 
 def test_state_invalid_model_is_critical():
-    alerts = obs.evaluate_provider_alerts({
-        "checked_at": 1.0, "n_providers": 1, "degraded": False,
-        "providers": [{"name": "lmstudio", "healthy": True, "model_present": True}],
-        "state_provider": "lmstudio", "state_model": "local-model",
-        "state_model_present": False,
-        "chain_declared": ["lmstudio"], "chain_registered": ["lmstudio"],
-    })
+    alerts = obs.evaluate_provider_alerts(
+        {
+            "checked_at": 1.0,
+            "n_providers": 1,
+            "degraded": False,
+            "providers": [{"name": "lmstudio", "healthy": True, "model_present": True}],
+            "state_provider": "lmstudio",
+            "state_model": "local-model",
+            "state_model_present": False,
+            "chain_declared": ["lmstudio"],
+            "chain_registered": ["lmstudio"],
+        }
+    )
     hit = [a for a in alerts if a["code"] == "state_invalid_model"]
     assert hit and hit[0]["level"] == "critical"
 
 
 def test_state_invalid_model_counts_as_invalid():
-    obs.record_provider_health({
-        "ok": False, "degraded": False,
-        "providers": [{"name": "lmstudio", "healthy": True, "model_present": True}],
-        "state_provider": "lmstudio", "state_model": "local-model",
-        "state_model_present": False,
-        "fallback_chain": ["lmstudio", "ollama"],
-        "chain_registered": ["lmstudio", "ollama"], "warnings": ["[state] ..."],
-    })
+    obs.record_provider_health(
+        {
+            "ok": False,
+            "degraded": False,
+            "providers": [{"name": "lmstudio", "healthy": True, "model_present": True}],
+            "state_provider": "lmstudio",
+            "state_model": "local-model",
+            "state_model_present": False,
+            "fallback_chain": ["lmstudio", "ollama"],
+            "chain_registered": ["lmstudio", "ollama"],
+            "warnings": ["[state] ..."],
+        }
+    )
     assert obs.query_provider_health(3600)["n_invalid_model"] == 1
 
 
 def test_degraded_chain_is_warning():
-    alerts = obs.evaluate_provider_alerts(_health(
-        [{"name": "a", "healthy": True, "model_present": True}],
-        degraded=True, chain_declared=["a", "b"], chain_registered=["a"],
-    ))
+    alerts = obs.evaluate_provider_alerts(
+        _health(
+            [{"name": "a", "healthy": True, "model_present": True}],
+            degraded=True,
+            chain_declared=["a", "b"],
+            chain_registered=["a"],
+        )
+    )
     assert any(a["code"] == "fallback_chain_degraded" and a["level"] == "warning" for a in alerts)
 
 
 def test_healthy_providers_produce_no_alerts():
-    alerts = obs.evaluate_provider_alerts(_health(
-        [{"name": "a", "healthy": True, "model_present": True},
-         {"name": "b", "healthy": True, "model_present": True}],
-        chain_declared=["a", "b"], chain_registered=["a", "b"],
-    ))
+    alerts = obs.evaluate_provider_alerts(
+        _health(
+            [
+                {"name": "a", "healthy": True, "model_present": True},
+                {"name": "b", "healthy": True, "model_present": True},
+            ],
+            chain_declared=["a", "b"],
+            chain_registered=["a", "b"],
+        )
+    )
     assert alerts == []
 
 
@@ -343,10 +394,16 @@ def test_preflight_endpoint_records_snapshot(core, monkeypatch):
 
     async def fake_preflight(llm, chain=None, *, probe_inference=False):
         r = LLMPreflight()
-        r.providers = [ProviderCheck(
-            name="a", registered=True, configured_model="m",
-            model_present=True, healthy=True, models_available=1,
-        )]
+        r.providers = [
+            ProviderCheck(
+                name="a",
+                registered=True,
+                configured_model="m",
+                model_present=True,
+                healthy=True,
+                models_available=1,
+            )
+        ]
         r.fallback_chain = ["a"]
         r.chain_registered = ["a"]
         return r
@@ -358,7 +415,7 @@ def test_preflight_endpoint_records_snapshot(core, monkeypatch):
     assert resp.status_code == 200
 
     h = obs.query_provider_health(3600)
-    assert h["snapshots"] == before + 1   # 按需复检写入了新快照
+    assert h["snapshots"] == before + 1  # 按需复检写入了新快照
     assert h["n_providers"] == 1
     assert h["n_invalid_model"] == 0
 
@@ -384,17 +441,27 @@ def test_stale_provider_snapshot_is_info_not_degrading(core):
     from more_core.api.server import create_app
 
     healthy = {
-        "ok": True, "degraded": False,
-        "providers": [{"name": "a", "healthy": True, "model_present": True,
-                       "inference_ok": True, "state_model_present": True}],
-        "state_provider": "a", "state_model": "m", "state_model_present": True,
-        "fallback_chain": ["a"], "chain_registered": ["a"], "warnings": [],
+        "ok": True,
+        "degraded": False,
+        "providers": [
+            {
+                "name": "a",
+                "healthy": True,
+                "model_present": True,
+                "inference_ok": True,
+                "state_model_present": True,
+            }
+        ],
+        "state_provider": "a",
+        "state_model": "m",
+        "state_model_present": True,
+        "fallback_chain": ["a"],
+        "chain_registered": ["a"],
+        "warnings": [],
     }
     with TestClient(create_app(core)) as client:
         obs.record_provider_health(healthy)
-        obs.record_skill_network(
-            {"ok": True, "required_egress": [], "targets": [], "warnings": []}
-        )
+        obs.record_skill_network({"ok": True, "required_egress": [], "targets": [], "warnings": []})
         _age_snapshots(2)
         body = client.get("/api/v1/metrics/overview?window_s=3600").json()
 
@@ -409,7 +476,7 @@ def test_query_provider_health_returns_latest_outside_window():
     obs.record_provider_health(_bad_report())
     _age_snapshots(2)
 
-    h = obs.query_provider_health(60)          # 1 分钟窗口，快照 2 小时前
+    h = obs.query_provider_health(60)  # 1 分钟窗口，快照 2 小时前
     assert h["n_providers"] == 1, "必须仍返回最新快照（此前按窗口过滤会返回空）"
     assert h["snapshots"] == 0, "窗口内计数应为 0"
     assert h["stale"] is True

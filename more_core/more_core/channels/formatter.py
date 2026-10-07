@@ -92,7 +92,7 @@ class MessageFormatter:
         if len(text) <= max_length:
             return text
         if max_length <= len(suffix):
-            return text[:max_length]      # 放不下后缀 → 硬截断
+            return text[:max_length]  # 放不下后缀 → 硬截断
         return text[: max_length - len(suffix)] + suffix
 
     @staticmethod
@@ -120,7 +120,7 @@ class MessageFormatter:
     def format_list(items: list[str], ordered: bool = False) -> str:
         """Format list."""
         if not items:
-            return ""      # 修复 D-11：空列表此前返回 "\n• "
+            return ""  # 修复 D-11：空列表此前返回 "\n• "
         if ordered:
             return "\n".join(f"{i + 1}. {item}" for i, item in enumerate(items))
         return "\n• " + "\n• ".join(items)

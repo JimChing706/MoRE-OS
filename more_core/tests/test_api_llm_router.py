@@ -67,9 +67,7 @@ def test_llm_reasoning_endpoints(client):
     check = client.get("/api/v1/llm/reasoning/check?model=deepseek-reasoner").json()
     assert check["model"] == "deepseek-reasoner" and "is_reasoning" in check
 
-    updated = client.post(
-        "/api/v1/llm/reasoning/config", json={"enabled": True}
-    ).json()
+    updated = client.post("/api/v1/llm/reasoning/config", json={"enabled": True}).json()
     assert updated["success"] is True
 
 
@@ -89,9 +87,7 @@ def test_llm_routing_config_and_rollup(client):
     rolled = client.get("/api/v1/llm/routing?tier_transitions_rollup=1h").json()
     assert "tier_transitions_rollup" in rolled
 
-    assert client.get(
-        "/api/v1/llm/routing?tier_transitions_rollup=bogus"
-    ).status_code == 400
+    assert client.get("/api/v1/llm/routing?tier_transitions_rollup=bogus").status_code == 400
 
 
 # ---------------------------------------------------------------------------
@@ -149,13 +145,14 @@ def test_routing_update_task_binding(client):
     assert body["success"] is True
     assert body["provider"] == "lmstudio"
 
-    assert client.post(
-        "/api/v1/llm/routing", json={"task_type": "nlp_task"}
-    ).status_code == 422
+    assert client.post("/api/v1/llm/routing", json={"task_type": "nlp_task"}).status_code == 422
 
-    assert client.post(
-        "/api/v1/llm/routing", json={"task_type": "nope", "provider": "p", "model": "m"}
-    ).status_code == 400
+    assert (
+        client.post(
+            "/api/v1/llm/routing", json={"task_type": "nope", "provider": "p", "model": "m"}
+        ).status_code
+        == 400
+    )
 
 
 def test_routing_update_chain_and_delete(client):

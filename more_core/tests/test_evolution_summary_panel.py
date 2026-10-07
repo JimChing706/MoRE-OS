@@ -43,11 +43,26 @@ def _seed_db(tmp_path, runs):
             "assertions_ok,delegated,delegation_trigger,delegation_state,reasons_json,"
             "checks_json,artifacts_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
-                f"r{i}", f"t{i}", r.get("task_type", TT), "code",
-                r.get("query_fp", QF), r["decision"], 0, 0, 0, 0, 0, 0, 1, 0,
+                f"r{i}",
+                f"t{i}",
+                r.get("task_type", TT),
+                "code",
+                r.get("query_fp", QF),
+                r["decision"],
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
                 1 if r.get("delegated") else 0,
-                r.get("trigger", ""), r.get("state", ""),
-                "[]", "{}", json.dumps(artifacts),
+                r.get("trigger", ""),
+                r.get("state", ""),
+                "[]",
+                "{}",
+                json.dumps(artifacts),
                 time.time() + i * 0.001,
             ),
         )
@@ -60,43 +75,61 @@ def _mixed_runs():
     runs = []
     # local (trigger="" / delegated=0) ：50 runs 30 pass = 60%
     for i in range(50):
-        runs.append({
-            "decision": "pass" if i < 30 else "partial",
-            "delegated": False, "task_type": TT,
-        })
+        runs.append(
+            {
+                "decision": "pass" if i < 30 else "partial",
+                "delegated": False,
+                "task_type": TT,
+            }
+        )
     # chassis_default 30 runs, 22 pass (73%)
     for i in range(30):
-        runs.append({
-            "decision": "pass" if i < 22 else "partial",
-            "delegated": True, "trigger": "default_gate",
-            "state": "completed" if i < 22 else "failed",
-            "task_type": TT,
-        })
+        runs.append(
+            {
+                "decision": "pass" if i < 22 else "partial",
+                "delegated": True,
+                "trigger": "default_gate",
+                "state": "completed" if i < 22 else "failed",
+                "task_type": TT,
+            }
+        )
     # chassis_evolution 40 runs, 36 pass (90%)
     for i in range(40):
-        runs.append({
-            "decision": "pass" if i < 36 else "partial",
-            "delegated": True, "trigger": "evolution_escalation",
-            "state": "completed" if i < 36 else "failed",
-            "task_type": TT,
-            "artifacts": (
-                {"_bias_applied": True, "note": "delegation-bias applied: Δthreshold=+10%"}
-                if i % 5 == 0 else {}
-            ),  # 40/5 = 8 bias_applied
-        })
+        runs.append(
+            {
+                "decision": "pass" if i < 36 else "partial",
+                "delegated": True,
+                "trigger": "evolution_escalation",
+                "state": "completed" if i < 36 else "failed",
+                "task_type": TT,
+                "artifacts": (
+                    {"_bias_applied": True, "note": "delegation-bias applied: Δthreshold=+10%"}
+                    if i % 5 == 0
+                    else {}
+                ),  # 40/5 = 8 bias_applied
+            }
+        )
     # 10 runs escalated
     for i in range(10):
-        runs.append({
-            "decision": "escalated", "delegated": False,
-            "task_type": "nlp_reasoning",
-            "query_fp": "prompt1.txt",
-        })
+        runs.append(
+            {
+                "decision": "escalated",
+                "delegated": False,
+                "task_type": "nlp_reasoning",
+                "query_fp": "prompt1.txt",
+            }
+        )
     # 5 user_override
     for i in range(5):
-        runs.append({
-            "decision": "pass", "delegated": True, "trigger": "user_override",
-            "state": "completed", "task_type": TT,
-        })
+        runs.append(
+            {
+                "decision": "pass",
+                "delegated": True,
+                "trigger": "user_override",
+                "state": "completed",
+                "task_type": TT,
+            }
+        )
     return runs
 
 
@@ -199,9 +232,17 @@ class TestSummaryUnit:
         bad = "/tmp/surely_never_exists_qnm_12345/prj_non"
         s = compute_evolution_summary(project_root=bad)
         # 保证所有 expected key
-        for k in ("total_runs", "passed_runs", "overall_pass_rate", "decision_hist",
-                  "trigger_hist", "strategy_rates", "bias_applied_count",
-                  "top_task_types", "range"):
+        for k in (
+            "total_runs",
+            "passed_runs",
+            "overall_pass_rate",
+            "decision_hist",
+            "trigger_hist",
+            "strategy_rates",
+            "bias_applied_count",
+            "top_task_types",
+            "range",
+        ):
             assert k in s
         # 全部零值（或 None）；不 raise
         assert isinstance(s["decision_hist"], dict)
@@ -210,12 +251,15 @@ class TestSummaryUnit:
 class TestSummaryHTTPEndpoint:
     def _mk_client(self, tmp_path):
         settings = Settings(
-            providers=[], fallback_chain=[],
-            enable_evolution=True, enable_metacognition=False,
+            providers=[],
+            fallback_chain=[],
+            enable_evolution=True,
+            enable_metacognition=False,
             project_root=str(tmp_path / "pr"),
         )
         core = MoRECore(settings)
         from tests.conftest import _FakeLLMProvider
+
         core.llm._providers["fake"] = _FakeLLMProvider()
         core.llm._fallback = ["fake"]
         return TestClient(create_app(core))

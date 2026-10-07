@@ -112,7 +112,7 @@ def test_dispute_matrix_from_outputs_infers_target_stance():
     e = dm.entries[0]
     assert e["role_a"] == "critic" and e["role_b"] == "architect"
     assert e["stance_a"] == "oppose"
-    assert e["stance_b"] == "support"       # 由 architect 的 core_judgment 推断
+    assert e["stance_b"] == "support"  # 由 architect 的 core_judgment 推断
     assert e["resolved"] is False
 
 
@@ -194,7 +194,10 @@ def test_consensus_map_to_dict_shape():
     cmap = build_consensus_map([_step(1, LayerId.L4, "t。x")])
     assert isinstance(cmap, ConsensusMap)
     assert set(cmap.to_dict()) == {
-        "stances", "key_disputes", "consensus_items", "minority_opinions",
+        "stances",
+        "key_disputes",
+        "consensus_items",
+        "minority_opinions",
     }
 
 

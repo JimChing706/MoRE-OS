@@ -14,7 +14,7 @@ import queue
 import threading
 import time
 import uuid
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -23,17 +23,17 @@ _log = logging.getLogger(__name__)
 # P1-1 S-4 沈慎：11 项强制一级字段（合规检索零漏报，不得依赖 payload 散存）
 _STRONG_AUDIT_FIELDS: frozenset[str] = frozenset(
     {
-        "tier_used",          # int: 0..3 (T0..T3), -1 = unknown
-        "fallback_depth",     # int: fallback chain 降级深度，0 = 首调命中
-        "thinking_tokens",    # int: R2-B 剥离后 reasoning_content 估算 token
-        "delegated",          # int 0/1: 是否委派 Rust 底盘
-        "delegation_trigger", # str: evolution_escalation / user_override / default_gate / none
-        "delegation_state",   # str: completed / failed / pending / none
-        "provider",           # str: 实际执行的 provider
-        "model",              # str: 实际执行的模型
-        "prompt_tokens",      # int: 入站 prompt tokens
+        "tier_used",  # int: 0..3 (T0..T3), -1 = unknown
+        "fallback_depth",  # int: fallback chain 降级深度，0 = 首调命中
+        "thinking_tokens",  # int: R2-B 剥离后 reasoning_content 估算 token
+        "delegated",  # int 0/1: 是否委派 Rust 底盘
+        "delegation_trigger",  # str: evolution_escalation / user_override / default_gate / none
+        "delegation_state",  # str: completed / failed / pending / none
+        "provider",  # str: 实际执行的 provider
+        "model",  # str: 实际执行的模型
+        "prompt_tokens",  # int: 入站 prompt tokens
         "completion_tokens",  # int: 出站 completion tokens（含 thinking）
-        "total_latency_ms",   # float: 端到端请求延迟
+        "total_latency_ms",  # float: 端到端请求延迟
     }
 )
 
@@ -84,9 +84,7 @@ class AuditLogger:
         self._fh: io.TextIOBase | None = None
         self._io_lock = threading.Lock()
         self._closed = False
-        self._thread = threading.Thread(
-            target=self._writer_loop, name="audit-writer", daemon=True
-        )
+        self._thread = threading.Thread(target=self._writer_loop, name="audit-writer", daemon=True)
         self._thread.start()
 
     # ------------------------------------------------------------------
@@ -121,9 +119,7 @@ class AuditLogger:
                 typed[k] = v
             else:
                 remainder[k] = v
-        record = AuditRecord(
-            actor=actor, action=action, entity=entity, payload=remainder, **typed
-        )
+        record = AuditRecord(actor=actor, action=action, entity=entity, payload=remainder, **typed)
         self.write(record)
         return record
 

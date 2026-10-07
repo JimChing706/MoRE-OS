@@ -37,9 +37,7 @@ async def test_cross_review_can_be_disabled():
         calls.append(prompt)
         return _VALID
 
-    council = CouncilOrchestrator(
-        complete_fn=complete, max_roles=2, enable_cross_review=False
-    )
+    council = CouncilOrchestrator(complete_fn=complete, max_roles=2, enable_cross_review=False)
     result = await council.deliberate("设计一个系统", mode="standard")
 
     assert result.cross_review_outputs == []

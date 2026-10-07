@@ -15,16 +15,17 @@ _INNER_ROOT = _Path(__file__).resolve().parents[1]
 if str(_INNER_ROOT) not in _sys.path:
     _sys.path.insert(0, str(_INNER_ROOT))
 
-import pytest
+import pytest  # noqa: E402
 
+# fastapi 为可选依赖：先 importorskip，再导入其余模块（故 E402 属预期行为）。
 pytest.importorskip("fastapi")
 
-from datetime import datetime, timezone
-from fastapi.testclient import TestClient
+from datetime import datetime, timezone  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
 
-from more_core.api.server import create_app
-from more_core.core.config import Settings
-from more_core.core.import_task import (
+from more_core.api.server import create_app  # noqa: E402
+from more_core.core.config import Settings  # noqa: E402
+from more_core.core.import_task import (  # noqa: E402
     ImportKillCriterion,
     ImportTaskDocument,
     ImportTaskGenerator,
@@ -32,7 +33,7 @@ from more_core.core.import_task import (
     RequirementItem,
     ResourceBudget,
 )
-from more_core.runtime.orchestrator import MoRECore
+from more_core.runtime.orchestrator import MoRECore  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -66,6 +67,7 @@ def client(_core, monkeypatch, tmp_path):
     # Always import through top-level more_core package.
     from more_core.api.routers import tasks as _tasks_mod
     from more_core.api.routers import import_task as _itd_mod
+
     _tmp_db = tmp_path / "itd_test_tasks.db"
     _new_store = _tasks_mod.SQLiteTaskStore(str(_tmp_db))
     # Swap BOTH router modules so they share the same in-memory instance.
@@ -74,6 +76,7 @@ def client(_core, monkeypatch, tmp_path):
     # Reset provenance singleton to per-test tmp DB
     monkeypatch.setenv("MORE_PROVENANCE_DB", str(tmp_path / "prov.db"))
     from more_core.core.guardrails import provenance_audit as _mod
+
     _mod._default_layer = None
     app = create_app(_core)
     with TestClient(app) as c:
@@ -232,6 +235,7 @@ class TestImportParentSubTasks:
         # to a per-test tmp DB before create_app ran).
         from more_core.api.routers import tasks as _tasks_rtr
         from more_core.api.routers import import_task as _itd_rtr
+
         store1 = _tasks_rtr._task_store
         store2 = _itd_rtr._task_store
         assert store1 is store2 or str(store1._db_path) == str(store2._db_path), (

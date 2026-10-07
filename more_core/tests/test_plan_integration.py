@@ -42,7 +42,6 @@ from more_core.workflows.engine import (
 
 
 class TestTokenPredictor:
-
     def test_predict_basic(self):
         tp = TokenPredictor()
         tokens = tp.predict(task_type="code_generation", query_length=100, difficulty=5)
@@ -79,11 +78,16 @@ class TestTokenPredictor:
         tp = TokenPredictor()
         # Observe consistent under-prediction (actual > estimated)
         for _ in range(10):
-            tp.observe(TokenObservation(
-                task_type="nlp_task", query_length=50,
-                estimated_tokens=500, actual_tokens=800,
-                difficulty=5, timestamp=time.time(),
-            ))
+            tp.observe(
+                TokenObservation(
+                    task_type="nlp_task",
+                    query_length=50,
+                    estimated_tokens=500,
+                    actual_tokens=800,
+                    difficulty=5,
+                    timestamp=time.time(),
+                )
+            )
         assert tp._ema_error > 0, "EMA should shift positive when under-predicting"
 
         # Future predictions should be corrected upward
@@ -94,11 +98,16 @@ class TestTokenPredictor:
     def test_observe_over_prediction(self):
         tp = TokenPredictor()
         for _ in range(10):
-            tp.observe(TokenObservation(
-                task_type="nlp_task", query_length=50,
-                estimated_tokens=1000, actual_tokens=400,
-                difficulty=5, timestamp=time.time(),
-            ))
+            tp.observe(
+                TokenObservation(
+                    task_type="nlp_task",
+                    query_length=50,
+                    estimated_tokens=1000,
+                    actual_tokens=400,
+                    difficulty=5,
+                    timestamp=time.time(),
+                )
+            )
         assert tp._ema_error < 0, "EMA should shift negative when over-predicting"
 
     def test_allocate_budget_under(self):
@@ -141,7 +150,6 @@ class TestTokenPredictor:
 
 
 class TestPlanWorkflowBridge:
-
     def _make_bridge(self):
         engine = WorkflowEngine()
         predictor = TokenPredictor()
@@ -225,9 +233,11 @@ class TestPlanWorkflowBridge:
             max_tokens=5000,
         )
         plan.context["difficulty"] = 5
+
         # Register a dummy executor so the step can run
         async def dummy_exec(step, ctx):
             return "done"
+
         engine.register_executor(StepType.TASK, dummy_exec)
 
         run = await bridge.start_plan_workflow(plan)
@@ -256,15 +266,23 @@ class TestPlanWorkflowBridge:
             status=WorkflowStatus.SUCCESS,
             steps=[
                 WorkflowStep(
-                    id="s1", name="Step 1", type=StepType.TASK,
-                    status=StepStatus.SUCCESS, output="result_1",
-                    started_at=1.0, finished_at=1.5,
+                    id="s1",
+                    name="Step 1",
+                    type=StepType.TASK,
+                    status=StepStatus.SUCCESS,
+                    output="result_1",
+                    started_at=1.0,
+                    finished_at=1.5,
                     config={"task_type": "nlp_task", "query": "Step 1", "predicted_tokens": 1000},
                 ),
                 WorkflowStep(
-                    id="s2", name="Step 2", type=StepType.TASK,
-                    status=StepStatus.FAILED, error="timeout",
-                    started_at=2.0, finished_at=2.8,
+                    id="s2",
+                    name="Step 2",
+                    type=StepType.TASK,
+                    status=StepStatus.FAILED,
+                    error="timeout",
+                    started_at=2.0,
+                    finished_at=2.8,
                     config={"task_type": "nlp_task", "query": "Step 2", "predicted_tokens": 1000},
                 ),
             ],
@@ -286,13 +304,19 @@ class TestPlanWorkflowBridge:
             max_total_tokens=5000,
         )
         run = WorkflowRun(
-            run_id="r1", workflow_id="wf1", workflow_name="test",
+            run_id="r1",
+            workflow_id="wf1",
+            workflow_name="test",
             status=WorkflowStatus.SUCCESS,
             steps=[
                 WorkflowStep(
-                    id="s1", name="Step 1", type=StepType.TASK,
-                    status=StepStatus.SUCCESS, output={"tokens_used": 750},
-                    started_at=1.0, finished_at=1.3,
+                    id="s1",
+                    name="Step 1",
+                    type=StepType.TASK,
+                    status=StepStatus.SUCCESS,
+                    output={"tokens_used": 750},
+                    started_at=1.0,
+                    finished_at=1.3,
                     config={"task_type": "nlp_task", "query": "Step 1", "predicted_tokens": 500},
                 ),
             ],
@@ -313,13 +337,19 @@ class TestPlanWorkflowBridge:
             max_total_tokens=5000,
         )
         run = WorkflowRun(
-            run_id="r1", workflow_id="wf1", workflow_name="test",
+            run_id="r1",
+            workflow_id="wf1",
+            workflow_name="test",
             status=WorkflowStatus.SUCCESS,
             steps=[
                 WorkflowStep(
-                    id="s1", name="Step 1", type=StepType.TASK,
-                    status=StepStatus.SUCCESS, output="ok",
-                    started_at=1.0, finished_at=1.2,
+                    id="s1",
+                    name="Step 1",
+                    type=StepType.TASK,
+                    status=StepStatus.SUCCESS,
+                    output="ok",
+                    started_at=1.0,
+                    finished_at=1.2,
                     config={"task_type": "nlp_task", "query": "Step 1", "predicted_tokens": 500},
                 ),
             ],
@@ -338,13 +368,19 @@ class TestPlanWorkflowBridge:
             max_total_tokens=5000,
         )
         run = WorkflowRun(
-            run_id="r1", workflow_id="wf1", workflow_name="test",
+            run_id="r1",
+            workflow_id="wf1",
+            workflow_name="test",
             status=WorkflowStatus.FAILED,
             steps=[
                 WorkflowStep(
-                    id="s1", name="Critical", type=StepType.TASK,
-                    status=StepStatus.FAILED, error="crash",
-                    started_at=1.0, finished_at=1.2,
+                    id="s1",
+                    name="Critical",
+                    type=StepType.TASK,
+                    status=StepStatus.FAILED,
+                    error="crash",
+                    started_at=1.0,
+                    finished_at=1.2,
                     config={"task_type": "nlp_task", "query": "Critical", "predicted_tokens": 500},
                 ),
             ],
@@ -360,15 +396,17 @@ class TestPlanWorkflowBridge:
 
 
 class TestPlanMonitor:
-
     def _make_plan(self, n_steps=3, max_tokens=3000):
         steps = []
         for i in range(n_steps):
-            steps.append(PlanStep(
-                id=f"s{i}", description=f"Step {i}",
-                priority=StepPriority.NORMAL if i > 0 else StepPriority.CRITICAL,
-                estimated_tokens=1000,
-            ))
+            steps.append(
+                PlanStep(
+                    id=f"s{i}",
+                    description=f"Step {i}",
+                    priority=StepPriority.NORMAL if i > 0 else StepPriority.CRITICAL,
+                    estimated_tokens=1000,
+                )
+            )
         return ExecutionPlan(goal="Monitor test", steps=steps, max_total_tokens=max_tokens)
 
     def test_observe_healthy_plan(self):
@@ -530,7 +568,6 @@ class TestPlanMonitor:
 
 
 class TestEndToEndPlanWorkflow:
-
     @pytest.mark.asyncio
     async def test_full_lifecycle(self):
         """Plan creation → workflow conversion → execution → sync → monitoring."""

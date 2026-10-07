@@ -1,8 +1,9 @@
 """Native executor shared types (zero external deps, stdlib only)."""
+
 from __future__ import annotations
 import enum
 from dataclasses import dataclass, field
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 TaskTemplateKey = Literal["tetris", "cs_shooter", "generic"]
 

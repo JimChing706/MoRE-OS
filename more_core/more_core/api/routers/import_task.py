@@ -53,7 +53,9 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                 elif "R012" in w:
                     suggestion = "请在Requirements部分添加至少一条REQ-xxx需求"
                 elif "R013" in w:
-                    suggestion = "请在frontmatter中添加created字段，格式ISO 8601: 2026-01-01T00:00:00Z"
+                    suggestion = (
+                        "请在frontmatter中添加created字段，格式ISO 8601: 2026-01-01T00:00:00Z"
+                    )
                 elif "R014" in w:
                     suggestion = "请在frontmatter中添加author字段标识任务负责人"
                 issues.append(
@@ -97,7 +99,9 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                 elif "R012" in w:
                     suggestion = "请在Requirements部分添加至少一条REQ-xxx需求"
                 elif "R013" in w:
-                    suggestion = "请在frontmatter中添加created字段，格式ISO 8601: 2026-01-01T00:00:00Z"
+                    suggestion = (
+                        "请在frontmatter中添加created字段，格式ISO 8601: 2026-01-01T00:00:00Z"
+                    )
                 elif "R014" in w:
                     suggestion = "请在frontmatter中添加author字段标识任务负责人"
                 issues.append(
@@ -143,9 +147,12 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
             now_iso = datetime.now(timezone.utc).isoformat()
 
             from ...core.guardrails.provenance_audit import get_default_layer as _get_prov_layer
+
             _prov = _get_prov_layer()
 
-            blocking_level_from_fm = doc._raw_frontmatter.get("validation_blocking_level", "hard_block")
+            blocking_level_from_fm = doc._raw_frontmatter.get(
+                "validation_blocking_level", "hard_block"
+            )
 
             _task_store.create_task(
                 parent_task_id,
@@ -159,8 +166,13 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                     "status": "in_progress" if auto_start else "pending",
                     "progress": 0,
                     "created_at": now_iso,
-                    "context": {"parent_id": None, "is_parent": True, "requirements_count": len(doc.requirements),
-                                "itd_content": markdown, "validation_blocking_level": blocking_level_from_fm},
+                    "context": {
+                        "parent_id": None,
+                        "is_parent": True,
+                        "requirements_count": len(doc.requirements),
+                        "itd_content": markdown,
+                        "validation_blocking_level": blocking_level_from_fm,
+                    },
                 },
             )
             _prov.enroll(parent_task_id, "pending")
@@ -186,7 +198,9 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                         "task_id": subtask_id,
                         "title": subtask_title,
                         "type": doc.type,
-                        "priority": req_item.priority.value if hasattr(req_item.priority, "value") else str(req_item.priority),
+                        "priority": req_item.priority.value
+                        if hasattr(req_item.priority, "value")
+                        else str(req_item.priority),
                         "description": subtask_description[:500],
                         "requirement_id": req_item.id,
                         "parent_id": parent_task_id,
@@ -230,8 +244,12 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
                     "description": doc.summary[:500],
                     "type": doc.type,
                     "priority": doc.priority,
-                    "context": {"parent_id": None, "requirements_count": len(doc.requirements),
-                                "itd_content": markdown, "validation_blocking_level": blocking_level_from_fm},
+                    "context": {
+                        "parent_id": None,
+                        "requirements_count": len(doc.requirements),
+                        "itd_content": markdown,
+                        "validation_blocking_level": blocking_level_from_fm,
+                    },
                 }
                 asyncio.create_task(_execute_task_background_v2(parent_task_id, task_info, core))
 
@@ -331,10 +349,18 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
 
     def _build_doc_from_dict(data: dict[str, Any]) -> ImportTaskDocument:
         metadata = data.get("metadata", {}) if isinstance(data.get("metadata"), dict) else {}
-        pipeline = metadata.get("pipeline", {}) if isinstance(metadata.get("pipeline"), dict) else {}
-        contract = data.get("deliverable_contract", {}) if isinstance(data.get("deliverable_contract"), dict) else {}
+        pipeline = (
+            metadata.get("pipeline", {}) if isinstance(metadata.get("pipeline"), dict) else {}
+        )
+        contract = (
+            data.get("deliverable_contract", {})
+            if isinstance(data.get("deliverable_contract"), dict)
+            else {}
+        )
         context = data.get("context", {}) if isinstance(data.get("context"), dict) else {}
-        budget_dict = data.get("resource_budget", {}) if isinstance(data.get("resource_budget"), dict) else {}
+        budget_dict = (
+            data.get("resource_budget", {}) if isinstance(data.get("resource_budget"), dict) else {}
+        )
 
         requirements_raw = data.get("requirements", []) or []
         requirements_parsed: list[RequirementItem] = []
@@ -344,9 +370,13 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
             req_priority_raw = r.get("priority", "medium")
             try:
                 from ...core.import_task import Priority as _P
-                req_priority = _P(req_priority_raw) if req_priority_raw in _P._value2member_map_ else _P.MEDIUM
+
+                req_priority = (
+                    _P(req_priority_raw) if req_priority_raw in _P._value2member_map_ else _P.MEDIUM
+                )
             except Exception:
                 from ...core.import_task import Priority as _P
+
                 req_priority = _P.MEDIUM
             requirements_parsed.append(
                 RequirementItem(
@@ -398,9 +428,13 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
             type=str(metadata.get("type", data.get("type", "nlp_task"))),
             plugin_type=metadata.get("plugin_type", data.get("plugin_type")),
             priority=str(metadata.get("priority", data.get("priority", "medium"))),
-            deliverable_kind=str(metadata.get("deliverable_kind", data.get("deliverable_kind", "custom"))),
+            deliverable_kind=str(
+                metadata.get("deliverable_kind", data.get("deliverable_kind", "custom"))
+            ),
             tags=list(metadata.get("tags", data.get("tags", [])) or []),
-            estimated_hours=float(metadata.get("estimated_hours", data.get("estimated_hours", 0.0)) or 0.0),
+            estimated_hours=float(
+                metadata.get("estimated_hours", data.get("estimated_hours", 0.0)) or 0.0
+            ),
             depends_on=list(metadata.get("depends_on", data.get("depends_on", [])) or []),
             pipeline_mode=pipeline.get("mode", metadata.get("pipeline_mode")),
             pipeline_prepend=list(pipeline.get("prepend", []) or []),
@@ -415,9 +449,13 @@ def create_router(core: MoRECore, require_api_key: Any) -> APIRouter:
             summary=str(data.get("summary", "")),
             requirements=requirements_parsed,
             contract_kind=str(contract.get("kind", data.get("contract_kind", "custom"))),
-            contract_required_dimensions=list(contract.get("required_dimensions", data.get("required_dimensions", [])) or []),
+            contract_required_dimensions=list(
+                contract.get("required_dimensions", data.get("required_dimensions", [])) or []
+            ),
             contract_quality_gates=qg_parsed,
-            contract_acceptance_criteria=list(contract.get("acceptance_criteria", data.get("acceptance_criteria", [])) or []),
+            contract_acceptance_criteria=list(
+                contract.get("acceptance_criteria", data.get("acceptance_criteria", [])) or []
+            ),
             contract_min_output_length=int(contract.get("min_output_length", 100) or 100),
             kill_criteria=kill_criteria_parsed,
             budget=ResourceBudget(

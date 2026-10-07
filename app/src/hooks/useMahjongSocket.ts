@@ -283,8 +283,15 @@ export function useMahjongSocket(roomId: string, playerUuid: string, handlers: U
   const lastActionIdRef = useRef<string>('');
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // connect 需要在自身的重连定时器里回调自己；用 ref 间接引用，
+  // 既避免"先使用后声明"，也保证回调拿到的是最新一版 connect。
+  const connectRef = useRef<(() => void) | null>(null);
   const handlersRef = useRef(handlers);
-  handlersRef.current = handlers;
+  // 同步最新 handlers / connect：放入 effect（在 render 阶段写 ref 会破坏
+  // React Compiler 的规则，也会让并发渲染读到中间态）。
+  useEffect(() => {
+    handlersRef.current = handlers;
+  }, [handlers]);
   const connect = useCallback(() => {
     const url = `ws://${WS_HOST}/ws/mahjong/${roomId}?player=${encodeURIComponent(playerUuid)}`;
     const ws = new WebSocket(url);
@@ -375,12 +382,15 @@ export function useMahjongSocket(roomId: string, playerUuid: string, handlers: U
       setConnected(false);
       wsRef.current = null;
       handlersRef.current.onDisconnect?.();
-      reconnectRef.current = setTimeout(() => connect(), 2000);
+      reconnectRef.current = setTimeout(() => connectRef.current?.(), 2000);
     };
     ws.onerror = () => {
       setError('WebSocket connection error');
     };
   }, [roomId, playerUuid]);
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
   useEffect(() => {
     if (!roomId || !playerUuid) return;
     connect();
@@ -441,7 +451,6 @@ export function useMahjongSocket(roomId: string, playerUuid: string, handlers: U
     gameState,
     connected,
     error,
-    lastActionId: lastActionIdRef.current,
     sendDiscard,
     sendChow,
     sendPung,

@@ -10,7 +10,6 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import copy
-import pytest
 
 from more_core.core.native_executor.planner import (
     Planner,
@@ -75,10 +74,12 @@ def test_planner_llm_path_invalid_results_fallback():
     """LLM 路径返回 None / 空列表 / 非 Step 列表 / 抛异常，均 fallback 到 7 步。"""
     invalid_outputs = [None, [], ["not-a-step"], Exception("boom")]
     for bad in invalid_outputs:
+
         def fake(req, root, doc, _bad=bad):
             if isinstance(_bad, Exception):
                 raise _bad
             return _bad
+
         planner = Planner(llm_execute_fn=fake)
         got = planner.plan(task_request=1, project_root="/tmp/z")
         assert len(got) == 7, f"LLM 结果 {bad!r} 未触发 fallback"

@@ -17,13 +17,11 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 
 import pytest
 
 from more_core.core.guardrails.provenance_audit import (
-    AuditReport,
     ProvenanceLayer,
     VALID_CHANNELS,
     get_default_layer,
@@ -267,6 +265,7 @@ class TestAuditEndpoint:
     def _wire_task_store(tmp_path: Path):
         from more_core.persistence.task_store import SQLiteTaskStore
         import more_core.api.routers.tasks as _tr
+
         old = _tr._task_store
         dbp = tmp_path / "api_tasks.db"
         new_store = SQLiteTaskStore(dbp)
@@ -289,6 +288,7 @@ class TestAuditEndpoint:
             assert data["status"] == "not_found"
         finally:
             import more_core.api.routers.tasks as _tr
+
             _tr._task_store = old_store
 
     def test_get_audit_endpoint_returns_report(
@@ -340,6 +340,7 @@ class TestAuditEndpoint:
         finally:
             _pa._default_layer = orig_default
             import more_core.api.routers.tasks as _tr
+
             _tr._task_store = old_store
 
     def test_get_audit_blocked_unknown_high_tokens(
@@ -384,6 +385,7 @@ class TestAuditEndpoint:
         finally:
             _pa._default_layer = orig_default
             import more_core.api.routers.tasks as _tr
+
             _tr._task_store = old_store
 
 
@@ -469,8 +471,7 @@ class TestExecutorV2Integration:
         )
         if validator is None:
             v_arts = [
-                a for a in task["artifacts"]
-                if str(a.get("phase", "")).startswith("validator")
+                a for a in task["artifacts"] if str(a.get("phase", "")).startswith("validator")
             ]
             validator = v_arts[-1] if v_arts else {"pass": False}
         if validator.get("pass") is True:

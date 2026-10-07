@@ -29,9 +29,7 @@ _GOOD_ROLE = {
 
 
 def test_strip_extra_fields_keeps_allowed_and_reports_removed():
-    cleaned, stripped = _strip_extra_fields(
-        {"keep": 1, "drop": 2}, {"keep"}, path="$"
-    )
+    cleaned, stripped = _strip_extra_fields({"keep": 1, "drop": 2}, {"keep"}, path="$")
     assert cleaned == {"keep": 1}
     assert stripped == ["$/drop"]
 

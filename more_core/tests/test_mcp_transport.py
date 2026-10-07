@@ -31,7 +31,7 @@ _MSG = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping", "params": {}})
 def test_stdout_protocol_tracks_connection():
     proto = _StdoutProtocol()
     assert proto._transport is None
-    proto.connection_made(object())          # type: ignore[arg-type]
+    proto.connection_made(object())  # type: ignore[arg-type]
     assert proto._transport is not None
     assert proto._closed.is_set() is False
     proto.connection_lost(None)
@@ -46,10 +46,10 @@ def test_stdout_protocol_tracks_connection():
 @pytest.mark.asyncio
 async def test_http_connect_degrades_without_aiohttp():
     t = HTTPTransport("http://mcp.test/")
-    assert t._base_url == "http://mcp.test"      # 尾斜杠规范化
-    await t.connect()                            # aiohttp 未安装 → 警告并降级
+    assert t._base_url == "http://mcp.test"  # 尾斜杠规范化
+    await t.connect()  # aiohttp 未安装 → 警告并降级
     assert t._session is None
-    await t.disconnect()                         # 无 session 也不应报错
+    await t.disconnect()  # 无 session 也不应报错
 
 
 @pytest.mark.asyncio
@@ -159,8 +159,8 @@ async def test_process_transport_roundtrip():
 @pytest.mark.asyncio
 async def test_process_transport_without_process_is_safe():
     t = ProcessTransport(["cat"])
-    await t.send(_MSG)                  # 未 connect → 静默忽略
-    assert await t.receive() == ""      # 无进程 → 返回空串
+    await t.send(_MSG)  # 未 connect → 静默忽略
+    assert await t.receive() == ""  # 无进程 → 返回空串
 
 
 # ---------------------------------------------------------------------------

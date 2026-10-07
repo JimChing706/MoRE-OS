@@ -101,7 +101,9 @@ def test_record_step_result_updates_budget(coordinator):
         subtasks=["Step 1", "Step 2"],
         max_tokens=5000,
     )
-    coordinator.record_step_result(plan, "step_000", output="done", tokens_used=2000, duration_ms=100.0)
+    coordinator.record_step_result(
+        plan, "step_000", output="done", tokens_used=2000, duration_ms=100.0
+    )
     assert plan.tokens_used == 2000
     assert plan.steps[0].status == PlanStatus.COMPLETED
     assert plan.steps[0].actual_tokens == 2000

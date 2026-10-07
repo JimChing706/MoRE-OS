@@ -119,9 +119,7 @@ class DynamicModelRouter(TaskModelRouter):
         except Exception:
             return "*"
 
-    def _resolve_tier_with_hysteresis(
-        self, task_type: TaskType | Any, theory_idx: int
-    ) -> int:
+    def _resolve_tier_with_hysteresis(self, task_type: TaskType | Any, theory_idx: int) -> int:
         """Apply T0 whitelist cap then T0↔T1 cooldown.
 
         * Step 1 — whitelist cap: ``theory_idx == 0`` but task not on the
@@ -157,9 +155,7 @@ class DynamicModelRouter(TaskModelRouter):
                 # Real T0↔T1 transition just happened; record new cooldown
                 # horizon and bump transition counters.
                 self._tier_switch_cooldown_until[cohort] = now + max(0.0, self._tier_cooldown_s)
-                self._tier_transition_count[cohort] = (
-                    self._tier_transition_count.get(cohort, 0) + 1
-                )
+                self._tier_transition_count[cohort] = self._tier_transition_count.get(cohort, 0) + 1
                 # P1-4 G-3: 滚动窗口时间戳（使用 wall-clock time.time 方便真实时间窗口切片）
                 try:
                     self._tier_transition_timestamps.append(time.time())
@@ -181,9 +177,7 @@ class DynamicModelRouter(TaskModelRouter):
         self._tier_status_last_log_ts = now
         whitelist_csv = ",".join(sorted(tt.value for tt in self._t0_whitelist))
         total_transitions = sum(self._tier_transition_count.values())
-        cd_cohorts = sum(
-            1 for t in self._tier_switch_cooldown_until.values() if t > now
-        )
+        cd_cohorts = sum(1 for t in self._tier_switch_cooldown_until.values() if t > now)
         _log.info(
             "[tier-ladder-status] cooldown_s=%.1f t0_whitelist=[%s] "
             "cohorts_tracked=%d cohorts_in_cooldown=%d "
@@ -271,9 +265,7 @@ class DynamicModelRouter(TaskModelRouter):
             request.max_tokens = params["max_tokens"]
         return request
 
-    def get_binding(
-        self, task_type: TaskType, difficulty: int | None = None
-    ) -> ModelBinding:
+    def get_binding(self, task_type: TaskType, difficulty: int | None = None) -> ModelBinding:
         binding = super().get_binding(task_type)
         # Difficulty-aware tier selection (逐级降智): easy tasks use the light
         # model, hard tasks use the strong model.
@@ -283,14 +275,9 @@ class DynamicModelRouter(TaskModelRouter):
         # Only apply the reasoning alias when its provider is actually
         # available (avoids routing local tasks to an unavailable cloud model);
         # otherwise fall back to the local T0 (strongest reasoning tier).
-        if self._reasoning_router.should_use_reasoning(
-            (difficulty or 0) / 10.0, 0
-        ):
+        if self._reasoning_router.should_use_reasoning((difficulty or 0) / 10.0, 0):
             alias = self._alias_registry.resolve("reasoning")
-            if (
-                alias is not None
-                and alias.provider in self._llm.list_providers()
-            ):
+            if alias is not None and alias.provider in self._llm.list_providers():
                 return ModelBinding(provider=alias.provider, model=alias.model)
             # NOTE: difficulty=None → 5 (T1 主力) as safe floor; still >= T1,
             # not accidentally routed to T2 (difficulty=0 → light 9b).
@@ -335,9 +322,7 @@ class DynamicModelRouter(TaskModelRouter):
 
     # -- P1-4 G-2/G-3: prev ladder rollback + transition rollups ------------
 
-    def get_rolling_transition_rollup(
-        self, window_name: str | None = None
-    ) -> dict[str, int]:
+    def get_rolling_transition_rollup(self, window_name: str | None = None) -> dict[str, int]:
         """G-3 覃朗：返回 1h / 24h 滚动窗口的 T0↔T1 翻转计数。
 
         传入 window_name='1h' 或 '24h' 返回单值；否则返回所有已注册窗口的 dict。
@@ -399,9 +384,7 @@ class DynamicModelRouter(TaskModelRouter):
             "models": list(self._cur_ladder_models),
             "providers": list(self._cur_ladder_providers),
         }
-        _log.warning(
-            "tier ladder rolled back via ops API: before=%s after=%s", before, after
-        )
+        _log.warning("tier ladder rolled back via ops API: before=%s after=%s", before, after)
         return {"rolled_back": True, "before": before, "after": after}
 
     def get_routing_config(self) -> dict[str, Any]:

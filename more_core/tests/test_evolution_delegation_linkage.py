@@ -9,28 +9,21 @@ Covers the two-tier decision flow:
 
 from __future__ import annotations
 
-import asyncio
-import os
-import tempfile
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from more_core.a2a.bailongma_bridge import A2ATaskState
 from more_core.codegen.controller import adjudicate_codegen
 from more_core.codegen.evolution_signal import (
     CodegenRunContext,
     _ensure_schema_migrated,
     _resolve_db_path,
-    export_codegen_evolution_signal,
-    query_dynamic_k,
 )
 from more_core.core.types import LayerId, TaskRequest, TaskType
 from more_core.layers.base import LayerContext, LayerResult
 from more_core.layers.l0_execution import (
     ExecutionLayer,
-    _DelegationAdvice,
 )
 
 
@@ -55,7 +48,13 @@ def _settings(
     )()
 
 
-def _ctx(settings: Any, *, task_type=TaskType.CODE_GENERATION, query="write a greeting function in python", context=None):
+def _ctx(
+    settings: Any,
+    *,
+    task_type=TaskType.CODE_GENERATION,
+    query="write a greeting function in python",
+    context=None,
+):
     core = MagicMock()
     core.settings = settings
     core.tools.list_tools.return_value = []
@@ -143,7 +142,9 @@ class TestDelegationAdviceUnit:
             return (2, "unit-test: escalated because history says struggle")
 
         with patch("more_core.codegen.evolution_signal.query_dynamic_k", side_effect=fake_query):
-            advice = ExecutionLayer._evolution_delegation_advice(ctx, ctx.request, codegen_run_ctx=None)
+            advice = ExecutionLayer._evolution_delegation_advice(
+                ctx, ctx.request, codegen_run_ctx=None
+            )
         assert advice.recommend is True
         assert advice.trigger == "evolution_escalation"
         assert advice.candidate_k == 2
@@ -164,17 +165,29 @@ class TestEvolutionDelegationIntegration:
             ctx_arg.scratch["_chassis_delegated"] = True
             ctx_arg.scratch["_chassis_delegation_state"] = "completed"
             ctx_arg.scratch["_chassis_delegation_trigger"] = trigger
-            ctx_arg.scratch["codegen_verdict"] = {"decision": "pass", "reasons": [], "checks": {"sandbox": True}}
+            ctx_arg.scratch["codegen_verdict"] = {
+                "decision": "pass",
+                "reasons": [],
+                "checks": {"sandbox": True},
+            }
             return _delegated("CHASSIS DONE", "completed")
 
         # Force evolution escalator by patching query_dynamic_k.
-        with patch("more_core.codegen.evolution_signal.query_dynamic_k", return_value=(2, "escalated in test")):
-            with patch.object(ExecutionLayer, "_try_chassis_delegation", AsyncMock(side_effect=_hook)):
+        with patch(
+            "more_core.codegen.evolution_signal.query_dynamic_k",
+            return_value=(2, "escalated in test"),
+        ):
+            with patch.object(
+                ExecutionLayer, "_try_chassis_delegation", AsyncMock(side_effect=_hook)
+            ):
                 result = await ExecutionLayer().process(ctx)
 
         assert "CHASSIS DONE" in result.output
         assert seen.get("trigger") == "evolution_escalation"
-        assert ctx.scratch.get("_l0_delegation_advice") and "evolution_escalation" in ctx.scratch["_l0_delegation_advice"]
+        assert (
+            ctx.scratch.get("_l0_delegation_advice")
+            and "evolution_escalation" in ctx.scratch["_l0_delegation_advice"]
+        )
 
     @pytest.mark.asyncio
     async def test_default_gate_runs_when_no_escalation(self, tmp_path):
@@ -191,8 +204,13 @@ class TestEvolutionDelegationIntegration:
             return _delegated("DEFAULT_GATE_OK", "completed")
 
         # No signal — dynamic_k returns 0 (not enough history path).
-        with patch("more_core.codegen.evolution_signal.query_dynamic_k", return_value=(0, "not enough history")):
-            with patch.object(ExecutionLayer, "_try_chassis_delegation", AsyncMock(side_effect=_hook)):
+        with patch(
+            "more_core.codegen.evolution_signal.query_dynamic_k",
+            return_value=(0, "not enough history"),
+        ):
+            with patch.object(
+                ExecutionLayer, "_try_chassis_delegation", AsyncMock(side_effect=_hook)
+            ):
                 result = await ExecutionLayer().process(ctx)
 
         assert "DEFAULT_GATE_OK" in result.output
@@ -208,8 +226,12 @@ class TestEvolutionDelegationIntegration:
             # Simulate chassis side returning None (e.g. ping unreachable).
             return None
 
-        with patch("more_core.codegen.evolution_signal.query_dynamic_k", return_value=(2, "escalated")):
-            with patch.object(ExecutionLayer, "_try_chassis_delegation", AsyncMock(side_effect=_hook)):
+        with patch(
+            "more_core.codegen.evolution_signal.query_dynamic_k", return_value=(2, "escalated")
+        ):
+            with patch.object(
+                ExecutionLayer, "_try_chassis_delegation", AsyncMock(side_effect=_hook)
+            ):
                 result = await ExecutionLayer().process(ctx)
 
         # Local path executed.

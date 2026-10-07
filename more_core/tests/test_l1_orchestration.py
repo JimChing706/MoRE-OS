@@ -38,7 +38,6 @@ def _make_ctx(
 
 
 class TestOrchestrationLayer:
-
     @pytest.mark.asyncio
     async def test_mode_autonomous_when_capability_exceeds_difficulty(self):
         ctx = _make_ctx(difficulty=3, capability=7)
@@ -208,9 +207,11 @@ class TestExpertP0PermanentGuardrails:
         Safe fallback contract: returns LayerResult with confidence=0.6, mode='standard',
         strategy='balanced' — 保证永不抛。
         """
+
         class _Evil:
             def __sub__(self, other):
                 raise RuntimeError("I-06 injection: evil capability object")
+
         ctx = _make_ctx()
         ctx.scratch["difficulty"] = diff_val
         if label.startswith("NaN"):
@@ -235,7 +236,6 @@ class TestExpertP0PermanentGuardrails:
         from more_core.core.errors import ThinkingBudgetExhaustedError, LLMError
         from more_core.llm.manager import LLMManager
         from more_core.llm.provider import LLMResponse, LLMRequest
-        from more_core.core.types import TaskType
 
         # 用子类化而非真 HTTP 调用，避免网络
         mgr = LLMManager.__new__(LLMManager)
@@ -244,7 +244,7 @@ class TestExpertP0PermanentGuardrails:
 
         resp = LLMResponse(
             content="   \t\n   ",  # 空白：strip() 后 == ""
-            completion_tokens=17,     # > 0 触发 cond_b
+            completion_tokens=17,  # > 0 触发 cond_b
             prompt_tokens=31,
             latency_ms=50.0,
             model="laya-1.5-35b-a3b",
@@ -259,8 +259,9 @@ class TestExpertP0PermanentGuardrails:
             mgr._postprocess_llm_response(resp, req)
         # Safety invariant: 错误消息不得包含 prompt / answer 原文（只能数字）
         assert "test q" not in str(excinfo.value), "R2 safety invariant broken: prompt leaked"
-        assert issubclass(ThinkingBudgetExhaustedError, LLMError), \
+        assert issubclass(ThinkingBudgetExhaustedError, LLMError), (
             "R2 必须继承 LLMError，I-12 fallback chain 才会自动降级"
+        )
         msg = str(excinfo.value).lower()
         assert "cond_b=true" in msg or "cond_b=True" in msg, f"cond_b 未触发: {excinfo.value}"
 
@@ -282,54 +283,81 @@ class TestExpertP0PermanentGuardrails:
 
         class _R2FailingProvider:
             name = "lmstudio"
-            def list_models(self): return []
-            def supports_model(self, m): return True
+
+            def list_models(self):
+                return []
+
+            def supports_model(self, m):
+                return True
+
             async def generate(self, req, **kw):
                 # 模拟 R2 cond_a/b/c 触发：返回有 output="" 且 completion_tokens>0
                 return LLMResponse(
                     content="",
                     completion_tokens=5,
-                    prompt_tokens=10, latency_ms=30.0,
-                    model="jev-reasoning-35b", provider="lmstudio", reasoning_content="",
+                    prompt_tokens=10,
+                    latency_ms=30.0,
+                    model="jev-reasoning-35b",
+                    provider="lmstudio",
+                    reasoning_content="",
                 )
-            def close(self): pass
+
+            def close(self):
+                pass
 
         class _OkFallbackProvider:
             name = "ollama"
-            def list_models(self): return []
-            def supports_model(self, m): return True
+
+            def list_models(self):
+                return []
+
+            def supports_model(self, m):
+                return True
+
             async def generate(self, req, **kw):
                 long_answer = "fallback answer: " + ("x" * 300)
                 return LLMResponse(
                     content=long_answer,
                     completion_tokens=256,
-                    prompt_tokens=10, latency_ms=20.0,
-                    model="qwen2.5:7b", provider="ollama", reasoning_content="",
+                    prompt_tokens=10,
+                    latency_ms=20.0,
+                    model="qwen2.5:7b",
+                    provider="ollama",
+                    reasoning_content="",
                 )
-            def close(self): pass
+
+            def close(self):
+                pass
 
         # 构造一个最小的 Manager：fallback chain 为 2 层（T0 R2 失败 → T1 成功）
         # 直接用 unittest.mock.patch 绕过复杂 init
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         mgr = MagicMock(spec=LLMManager)
         # 恢复 _postprocess_llm_response 为真实方法（R2 判定在这里）
-        mgr._postprocess_llm_response = LLMManager._postprocess_llm_response.__get__(mgr, LLMManager)
+        mgr._postprocess_llm_response = LLMManager._postprocess_llm_response.__get__(
+            mgr, LLMManager
+        )
         mgr._providers = {"lmstudio": _R2FailingProvider(), "ollama": _OkFallbackProvider()}
         mgr._fallback_depth = {}
 
         from more_core.llm.dynamic_router import DynamicModelRouter
+
         rtr = MagicMock(spec=DynamicModelRouter)
-        rtr.get_fallback_chain = MagicMock(return_value=[
-            ("lmstudio", "jev-reasoning-35b"),    # tier 0: R2 失败
-            ("ollama", "qwen2.5:7b"),            # tier 2: fallback 成功
-        ])
+        rtr.get_fallback_chain = MagicMock(
+            return_value=[
+                ("lmstudio", "jev-reasoning-35b"),  # tier 0: R2 失败
+                ("ollama", "qwen2.5:7b"),  # tier 2: fallback 成功
+            ]
+        )
         mgr._router = rtr
 
         async def _replay_generate_with_fallback():
-            return await LLMManager.generate_with_fallback_chain.__wrapped__ \
-                if hasattr(LLMManager.generate_with_fallback_chain, "__wrapped__") \
+            return (
+                await LLMManager.generate_with_fallback_chain.__wrapped__
+                if hasattr(LLMManager.generate_with_fallback_chain, "__wrapped__")
                 else await _run_fake_chain(mgr)
+            )
 
         async def _run_fake_chain(mgr):
             # 手动模拟 Manager 真实逻辑：
@@ -365,7 +393,8 @@ class TestExpertP0PermanentGuardrails:
         from more_core.core.types import TaskType
 
         class _FakeLLM:
-            def list_providers(self): return ["ollama", "lmstudio"]
+            def list_providers(self):
+                return ["ollama", "lmstudio"]
 
         rtr = DynamicModelRouter(_FakeLLM())
         # 强制使用 30s 冷却 (默认)，避免 env 被覆盖
@@ -374,13 +403,13 @@ class TestExpertP0PermanentGuardrails:
         last_idx = None
         real_flips = 0
         # 60 次交替: idx_theory 8→7→8→7 ...
-        import time
         # 用 monkeypatch 冻结 time.monotonic，避免真实时间影响
         base_ts = 1_000_000.0
         for i in range(60):
             difficulty = 8 if (i % 2 == 0) else 7
-            with patch("more_core.llm.dynamic_router.time.monotonic",
-                       return_value=base_ts + i * 1.0):  # 1s apart
+            with patch(
+                "more_core.llm.dynamic_router.time.monotonic", return_value=base_ts + i * 1.0
+            ):  # 1s apart
                 # 重新计算 last effective, 但 time 被冻结
                 effective = rtr._resolve_tier_with_hysteresis(
                     TaskType.MATH_REASONING,
@@ -391,8 +420,9 @@ class TestExpertP0PermanentGuardrails:
                     real_flips += 1
                 last_idx = effective
         transitions_after = sum(rtr._tier_transition_count.values())
-        assert transitions_after <= 3, (
-            f"R1 滞回失效：{transitions_after} 次 T0↔T1 真实翻转 > 上限 3 "
+        transitions_delta = transitions_after - transitions_before
+        assert transitions_delta <= 3, (
+            f"R1 滞回失效：本次新增 {transitions_delta} 次 T0↔T1 真实翻转 > 上限 3 "
             f"(60 次振荡 1s 间隔 + 30s 冷却，≤3 次翻转才符合专家要求)"
         )
         assert real_flips <= 3, (

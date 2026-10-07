@@ -84,8 +84,8 @@ def test_review_reports_full_counts_even_when_risks_truncated():
         calibration={},
         current_alignment=0.9,
     )
-    assert len(review["risks"]) == 5        # 回传截断
-    assert review["risk_count"] == 8        # 计数完整
+    assert len(review["risks"]) == 5  # 回传截断
+    assert review["risk_count"] == 8  # 计数完整
     assert review["high_risk_count"] == 8
 
 
@@ -108,7 +108,9 @@ async def test_l5_applies_downgrade_and_records_telemetry(core):
     council = _Council(consensus="divided", risks=_high(2))
     ctx = LayerContext(core=core, request=TaskRequest(type=TaskType.NLP_TASK, query="x"))
     ctx.scratch["plan"] = {
-        "decomposed": True, "subtasks": ["a"], "council_result": council,
+        "decomposed": True,
+        "subtasks": ["a"],
+        "council_result": council,
     }
 
     result = await layer.run(ctx)

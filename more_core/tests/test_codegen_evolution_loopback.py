@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import sqlite3
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -65,9 +64,7 @@ def seed_db(monkeypatch, tmp_path: Path):
                     # Force failure_candidates to include import_error even for
                     # successful runs by setting a reason directly into scratch:
                     "review_summary": (
-                        ""
-                        if sbx_ok
-                        else f"[correctness:P1] {same_err};  import resolution failure"
+                        "" if sbx_ok else f"[correctness:P1] {same_err};  import resolution failure"
                     ),
                 },
             )(),
@@ -78,9 +75,7 @@ def seed_db(monkeypatch, tmp_path: Path):
             # by appending the error as a sandbox "reason" — easiest via the
             # code_review_summary scratch field which is hoovered into reasons:
             scratch["code_review_summary"] = same_err
-        v = adjudicate_codegen(
-            scratch, scope="code", sbx_success=sbx_ok
-        )
+        v = adjudicate_codegen(scratch, scope="code", sbx_success=sbx_ok)
         export_codegen_evolution_signal(
             v,
             scratch,
@@ -99,9 +94,7 @@ def seed_db(monkeypatch, tmp_path: Path):
         export_codegen_evolution_signal(
             v,
             scratch,
-            run_ctx=CodegenRunContext(
-                task_type="code_generation", project_root=str(tmp_path)
-            ),
+            run_ctx=CodegenRunContext(task_type="code_generation", project_root=str(tmp_path)),
         )
     return db
 
@@ -126,9 +119,7 @@ class TestRepairBiasLoopback:
     def test_build_fix_prompt_injects_bias(self, seed_db: Path):
         from more_core.layers.l0_execution import ExecutionLayer
 
-        gen_req = LLMRequest(
-            prompt="write a fetcher", system="sys", temperature=0.2, max_tokens=50
-        )
+        gen_req = LLMRequest(prompt="write a fetcher", system="sys", temperature=0.2, max_tokens=50)
         sbx = ToolResult(
             tool="python_exec",
             success=False,
@@ -205,11 +196,6 @@ class TestDynamicKLoopback:
     def test_candidate_k_respects_dynamic_escalation(self, seed_db: Path):
         from more_core.layers.l0_execution import ExecutionLayer
 
-        ctx = self._ctx(
-            TaskType.CODE_DEBUGGING,
-            query="debug my import error issue",
-            project_root=str(seed_db.parent),
-        )
         # Forcibly lower internal threshold by monkey-patching via wrapper -
         # simpler approach: call query_dynamic_k directly and prove
         # _candidate_k respects a user-candidates=1 override:
@@ -277,9 +263,7 @@ class TestGoldenPathIntegration:
                     },
                 )(),
             }
-            v = adjudicate_codegen(
-                scratch, scope="code", sbx_success=(i < 4)
-            )
+            v = adjudicate_codegen(scratch, scope="code", sbx_success=(i < 4))
             export_codegen_evolution_signal(
                 v,
                 scratch,

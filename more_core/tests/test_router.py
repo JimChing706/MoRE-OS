@@ -5,8 +5,11 @@ from more_core.router.layer_router import LayerRouter
 
 def _settings(**overrides: object) -> Settings:
     base = dict(
-        providers=[], fallback_chain=[], enable_evolution=False,
-        enable_metacognition=False, enable_symbolic=True,
+        providers=[],
+        fallback_chain=[],
+        enable_evolution=False,
+        enable_metacognition=False,
+        enable_symbolic=True,
     )
     base.update(overrides)
     return Settings(**base)  # type: ignore[arg-type]
@@ -16,7 +19,7 @@ def test_routing_default_pipeline() -> None:
     router = LayerRouter(_settings())
     decision = router.route(TaskRequest(type=TaskType.NLP_TASK, query="hi"))
     assert decision.pipeline[-1] == LayerId.L0
-    assert LayerId.L3 in decision.pipeline   # symbolic enabled
+    assert LayerId.L3 in decision.pipeline  # symbolic enabled
     assert LayerId.L2 not in decision.pipeline  # evolution off by default
 
 
@@ -46,7 +49,11 @@ def test_routing_target_layer_l4_includes_all_layers() -> None:
     req = TaskRequest(type=TaskType.NLP_TASK, query="hi", target_layer=LayerId.L4)
     decision = router.route(req)
     assert decision.pipeline == [
-        LayerId.L4, LayerId.L3, LayerId.L2, LayerId.L1, LayerId.L0,
+        LayerId.L4,
+        LayerId.L3,
+        LayerId.L2,
+        LayerId.L1,
+        LayerId.L0,
     ]
 
 

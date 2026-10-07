@@ -81,11 +81,7 @@ class SkillDeliverable:
     def complete(self) -> bool:
         """台账必备信息是否齐全（名称/描述/版本/责任人/依赖）。"""
         return bool(
-            self.skill_id
-            and self.name
-            and self.description
-            and self.version
-            and self.maintainer
+            self.skill_id and self.name and self.description and self.version and self.maintainer
         )
 
     @property
@@ -216,9 +212,7 @@ class SkillDeliveryLedger:
     def list(self) -> list[SkillDeliverable]:
         try:
             with self._connect() as conn:
-                rows = conn.execute(
-                    "SELECT * FROM skill_deliverables ORDER BY skill_id"
-                ).fetchall()
+                rows = conn.execute("SELECT * FROM skill_deliverables ORDER BY skill_id").fetchall()
             return [self._row_to_record(r) for r in rows]
         except Exception as exc:  # pragma: no cover
             self.last_error = str(exc)

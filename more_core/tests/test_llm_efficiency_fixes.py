@@ -16,9 +16,13 @@ def manager():
 
 def _resp(content: str, completion_tokens: int, reasoning: str = "") -> LLMResponse:
     return LLMResponse(
-        content=content, provider="p", model="m",
-        prompt_tokens=100, completion_tokens=completion_tokens,
-        latency_ms=10.0, reasoning_content=reasoning or None,
+        content=content,
+        provider="p",
+        model="m",
+        prompt_tokens=100,
+        completion_tokens=completion_tokens,
+        latency_ms=10.0,
+        reasoning_content=reasoning or None,
     )
 
 
@@ -48,9 +52,7 @@ def test_empty_answer_with_heavy_thinking_is_rejected(manager):
 
     req = LLMRequest(prompt="写个函数", max_tokens=2048, enable_thinking=True)
     with pytest.raises(MoREError):
-        manager._postprocess_llm_response(
-            _resp("", 500, reasoning="x" * 4000), req
-        )
+        manager._postprocess_llm_response(_resp("", 500, reasoning="x" * 4000), req)
 
 
 def test_empty_content_with_tokens_is_rejected(manager):
@@ -110,7 +112,7 @@ async def test_preflight_flags_missing_model(monkeypatch):
     report = await preflight_llm(llm, ["lmstudio"])
     assert report.ok is False
     assert any("local-model" in w and "not found" in w for w in report.warnings)
-    assert report.degraded is True          # 只有一个 provider → 兜底不足
+    assert report.degraded is True  # 只有一个 provider → 兜底不足
 
 
 @pytest.mark.asyncio
@@ -145,8 +147,9 @@ async def test_preflight_passes_with_valid_model_and_full_chain(monkeypatch):
 @pytest.mark.asyncio
 async def test_preflight_flags_unregistered_chain_provider(monkeypatch):
     """生产事故：声明了 ollama 兜底但 provider 未注册 → 必须告警。"""
-    llm = _FakeLLM({"lmstudio": _FakeProvider("http://x/v1", "ornith-1.5-35b-a3b")},
-                   ["lmstudio", "ollama"])
+    llm = _FakeLLM(
+        {"lmstudio": _FakeProvider("http://x/v1", "ornith-1.5-35b-a3b")}, ["lmstudio", "ollama"]
+    )
 
     async def _models(url: str):
         return ["ornith-1.5-35b-a3b"]

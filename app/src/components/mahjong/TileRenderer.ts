@@ -184,7 +184,7 @@ export function drawTile(
         const barH = Math.max(4, h * 0.09);
         const count = Math.min(val, 4);
         const totalH = count * (barH + 2) - 2;
-        let sy = cy + h * 0.12;
+        const sy = cy + h * 0.12;
         for (let i = 0; i < count; i++) {
           const by = sy + i * (barH + 2) - totalH / 2 + barH / 2;
           ctx.fillRect(cx - barW / 2, by - barH / 2, barW, barH);

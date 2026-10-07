@@ -9,7 +9,6 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import asyncio
-import pytest
 
 
 CS_ITD_DOC = """---
@@ -44,6 +43,7 @@ tags: [tetris]
 
 class _FakeCore:
     """MoRECore 替身 — _execute_task_background_v2 当前未使用 core。"""
+
     pass
 
 
@@ -53,6 +53,7 @@ def _fresh_task_store(tmp_path, task_id, status="pending"):
     if db.exists():
         db.unlink()
     from more_core.persistence.task_store import SQLiteTaskStore
+
     store = SQLiteTaskStore(str(db))
     info = {
         "type": "code_generation",
@@ -72,6 +73,7 @@ def _fresh_task_store(tmp_path, task_id, status="pending"):
     store.create_task(task_id, info)
     # Monkey-patch tasks.py module-level _task_store
     from more_core.api.routers import tasks as tasks_mod
+
     tasks_mod._task_store = store
     return store
 
@@ -136,15 +138,19 @@ def test_sync_executor_cs_no_tetris_and_ok_completed(tmp_path, monkeypatch):
 
     # provenance: writer + final 记录存在
     records = layer.list_records(task_id)
-    phases = [r.get("payload", {}).get("phase") for r in records if isinstance(r.get("payload"), dict)]
+    phases = [
+        r.get("payload", {}).get("phase") for r in records if isinstance(r.get("payload"), dict)
+    ]
     assert "writer" in phases, f"phases={phases}"
     assert "final" in phases, f"缺失 phase=final: {phases}"
     # 审计阻断状态（可能因 cargo 缺失为 True，但 writer payload 是合法的）
     report = layer.audit(task_id)
+    assert report.files_written_count > 0, (
+        f"provenance audit 未统计到任何写入文件：{report.to_dict()}"
+    )
     # final_status 应已写入
     any_final = any(
-        isinstance(r.get("payload"), dict) and r["payload"].get("phase") == "final"
-        for r in records
+        isinstance(r.get("payload"), dict) and r["payload"].get("phase") == "final" for r in records
     )
     assert any_final, "final provenance 双写兜底失败"
 
@@ -194,7 +200,9 @@ def test_sync_executor_bad_cargo_blocks_release(tmp_path, monkeypatch):
 
     # 2) status endpoint override → status=failed progress≤90
     report2, new_status, new_progress = layer.audit_with_status_override(
-        task_id, raw_status=task.get("status", "unknown"), raw_progress=int(task.get("progress", 0) or 0),
+        task_id,
+        raw_status=task.get("status", "unknown"),
+        raw_progress=int(task.get("progress", 0) or 0),
     )
     assert new_status == "failed", f"override 后 status={new_status}（应为 failed）"
     assert new_progress <= 90, f"override 后 progress={new_progress}（应≤90）"
@@ -217,14 +225,14 @@ def test_sync_executor_bad_cargo_blocks_release(tmp_path, monkeypatch):
     # cargo 未安装时 3A 直接 fail → aggregate 应该 fail 且 block
     # 如果 cargo 可用，则 bad Cargo.toml 也将 fail → 两种情形下都应 block
     if agg_art is not None:
-        assert agg_art.get("should_block_release") is True, (
-            f"aggregate 未阻断：{agg_art}"
-        )
+        assert agg_art.get("should_block_release") is True, f"aggregate 未阻断：{agg_art}"
         assert agg_art.get("blocking_level") == "hard_block"
 
     # 5) task_store error 字段有标准化文案（如果 verify_ok=False 时）
     err = task.get("error") or ""
     if err:
-        assert "deliverable blocked" in err.lower() or "validation" in err.lower() or "hard" in err.lower(), (
-            f"error 文案未标准化: {err}"
-        )
+        assert (
+            "deliverable blocked" in err.lower()
+            or "validation" in err.lower()
+            or "hard" in err.lower()
+        ), f"error 文案未标准化: {err}"

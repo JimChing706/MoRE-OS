@@ -58,8 +58,8 @@ CREATE INDEX IF NOT EXISTS idx_deliveries_status ON deliveries(status);
 
 #: status 语义
 STATUS_DELIVERED = "delivered"
-STATUS_BLOCKED = "blocked"      # 校验闸门拦截，产物不可信
-STATUS_FAILED = "failed"        # 执行失败
+STATUS_BLOCKED = "blocked"  # 校验闸门拦截，产物不可信
+STATUS_FAILED = "failed"  # 执行失败
 
 _TERMINAL_STATUSES = (STATUS_DELIVERED,)
 
@@ -139,7 +139,9 @@ def _stage_percentile(rows: list[Any], q: float = 0.5) -> dict[str, float]:
     buckets: dict[str, list[float]] = {}
     for row in rows:
         try:
-            timings = json.loads((row["stage_timings"] if "stage_timings" in row.keys() else "{}") or "{}")
+            timings = json.loads(
+                (row["stage_timings"] if "stage_timings" in row.keys() else "{}") or "{}"
+            )
         except Exception:
             continue
         if not isinstance(timings, dict):
@@ -182,14 +184,14 @@ class DeliveryLedger:
         if "cause" not in cols:
             self._conn.execute("ALTER TABLE deliveries ADD COLUMN cause TEXT NOT NULL DEFAULT ''")
         if "is_infra" not in cols:
-            self._conn.execute("ALTER TABLE deliveries ADD COLUMN is_infra INTEGER NOT NULL DEFAULT 0")
+            self._conn.execute(
+                "ALTER TABLE deliveries ADD COLUMN is_infra INTEGER NOT NULL DEFAULT 0"
+            )
         if "stage_timings" not in cols:
             self._conn.execute(
                 "ALTER TABLE deliveries ADD COLUMN stage_timings TEXT NOT NULL DEFAULT '{}'"
             )
-        self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_deliveries_cause ON deliveries(cause)"
-        )
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_deliveries_cause ON deliveries(cause)")
 
     @property
     def db_path(self) -> Path:
@@ -261,14 +263,25 @@ class DeliveryLedger:
                         cause, is_infra, stage_timings)
                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
-                        record.delivery_id, record.ts, record.task_id, record.task_type,
-                        record.version, record.status, record.reason,
-                        record.artifact_sha256, record.artifact_chars, record.verdict,
+                        record.delivery_id,
+                        record.ts,
+                        record.task_id,
+                        record.task_type,
+                        record.version,
+                        record.status,
+                        record.reason,
+                        record.artifact_sha256,
+                        record.artifact_chars,
+                        record.verdict,
                         1 if record.gates_passed else 0,
                         json.dumps(gates, ensure_ascii=False),
-                        record.actor, record.provider, record.model,
-                        record.trace_id, record.request_excerpt,
-                        record.cause, 1 if record.is_infra else 0,
+                        record.actor,
+                        record.provider,
+                        record.model,
+                        record.trace_id,
+                        record.request_excerpt,
+                        record.cause,
+                        1 if record.is_infra else 0,
                         json.dumps(record.stage_timings, ensure_ascii=False),
                     ),
                 )
@@ -284,14 +297,23 @@ class DeliveryLedger:
         except Exception:
             gates = {}
         return DeliveryRecord(
-            delivery_id=row["delivery_id"], task_id=row["task_id"],
-            task_type=row["task_type"], version=int(row["version"]),
-            status=row["status"], reason=row["reason"],
-            artifact_sha256=row["artifact_sha256"], artifact_chars=int(row["artifact_chars"]),
-            verdict=row["verdict"], gates_passed=bool(row["gates_passed"]),
-            actor=row["actor"], provider=row["provider"], model=row["model"],
-            trace_id=row["trace_id"], request_excerpt=row["request_excerpt"],
-            ts=float(row["ts"]), gates=gates,
+            delivery_id=row["delivery_id"],
+            task_id=row["task_id"],
+            task_type=row["task_type"],
+            version=int(row["version"]),
+            status=row["status"],
+            reason=row["reason"],
+            artifact_sha256=row["artifact_sha256"],
+            artifact_chars=int(row["artifact_chars"]),
+            verdict=row["verdict"],
+            gates_passed=bool(row["gates_passed"]),
+            actor=row["actor"],
+            provider=row["provider"],
+            model=row["model"],
+            trace_id=row["trace_id"],
+            request_excerpt=row["request_excerpt"],
+            ts=float(row["ts"]),
+            gates=gates,
             cause=(row["cause"] if "cause" in row.keys() else "") or "",
             is_infra=bool(row["is_infra"]) if "is_infra" in row.keys() else False,
             stage_timings=_load_json(row["stage_timings"]) if "stage_timings" in row.keys() else {},
@@ -321,9 +343,7 @@ class DeliveryLedger:
     # 默认双窗口：近 1h（当前状态）与 24h（历史累积）
     DEFAULT_WINDOWS: dict[str, int] = {"1h": 3600, "24h": 86400}
 
-    def stats_windows(
-        self, windows: dict[str, int] | None = None
-    ) -> dict[str, Any]:
+    def stats_windows(self, windows: dict[str, int] | None = None) -> dict[str, Any]:
         """多窗口成功率 + 趋势。
 
         单窗口会把"历史故障期样本"混进当前判断（评估发现 A-3）；多窗口可区分。
@@ -360,7 +380,8 @@ class DeliveryLedger:
                     key = (r["cause"] if "cause" in r.keys() else "") or "unspecified"
                     by_cause[key] = by_cause.get(key, 0) + 1
             infra_blocked = sum(
-                1 for r in rows
+                1
+                for r in rows
                 if r["status"] == STATUS_BLOCKED
                 and ("is_infra" in r.keys() and bool(r["is_infra"]))
             )
@@ -369,7 +390,9 @@ class DeliveryLedger:
             by_type: dict[str, dict[str, Any]] = {}
             for r in rows:
                 t = r["task_type"] or "unknown"
-                slot = by_type.setdefault(t, {"total": 0, "delivered": 0, "blocked": 0, "failed": 0})
+                slot = by_type.setdefault(
+                    t, {"total": 0, "delivered": 0, "blocked": 0, "failed": 0}
+                )
                 slot["total"] += 1
                 if r["status"] == STATUS_DELIVERED:
                     slot["delivered"] += 1
@@ -378,7 +401,9 @@ class DeliveryLedger:
                 elif r["status"] == STATUS_FAILED:
                     slot["failed"] += 1
             for slot in by_type.values():
-                slot["success_rate"] = round(slot["delivered"] / slot["total"], 3) if slot["total"] else 0.0
+                slot["success_rate"] = (
+                    round(slot["delivered"] / slot["total"], 3) if slot["total"] else 0.0
+                )
             return {
                 "window_s": int(window_s),
                 "total": total,
@@ -386,15 +411,17 @@ class DeliveryLedger:
                 "blocked": blocked,
                 "failed": failed,
                 "success_rate": round(delivered / total, 3) if total else 0.0,
-                "gate_pass_rate": round(
-                    sum(1 for r in rows if r["gates_passed"]) / total, 3) if total else 0.0,
+                "gate_pass_rate": round(sum(1 for r in rows if r["gates_passed"]) / total, 3)
+                if total
+                else 0.0,
                 "avg_artifact_chars": round(
-                    sum(int(r["artifact_chars"] or 0) for r in rows) / total, 1) if total else 0.0,
+                    sum(int(r["artifact_chars"] or 0) for r in rows) / total, 1
+                )
+                if total
+                else 0.0,
                 "by_task_type": by_type,
                 "stage_ms_p50": _stage_percentile(rows),
-                "blocked_by_cause": dict(
-                    sorted(by_cause.items(), key=lambda kv: -kv[1])
-                ),
+                "blocked_by_cause": dict(sorted(by_cause.items(), key=lambda kv: -kv[1])),
                 "infra_blocked": infra_blocked,
                 "last_error": self.last_error,
             }

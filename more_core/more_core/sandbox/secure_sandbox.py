@@ -235,9 +235,16 @@ class SecureSandbox:
         if env is None:
             return None
         blocked = {
-            "LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT",
-            "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH",
-            "PYTHONPATH", "PYTHONSTARTUP", "BASH_ENV", "ENV", "IFS",
+            "LD_PRELOAD",
+            "LD_LIBRARY_PATH",
+            "LD_AUDIT",
+            "DYLD_INSERT_LIBRARIES",
+            "DYLD_LIBRARY_PATH",
+            "PYTHONPATH",
+            "PYTHONSTARTUP",
+            "BASH_ENV",
+            "ENV",
+            "IFS",
         }
         return {k: v for k, v in env.items() if k not in blocked}
 

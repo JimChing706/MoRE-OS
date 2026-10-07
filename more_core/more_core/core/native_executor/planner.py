@@ -244,8 +244,14 @@ _CS_STEPS_RAW: list[dict[str, Any]] = [
         "action": "write_file",
         "depends_on": [],
         "expected_outputs": [
-            "Cargo.toml", "Makefile", "rust-toolchain.toml", "justfile", ".gitignore",
-            "shooter_core/Cargo.toml", "shooter_server/Cargo.toml", "shooter_bot/Cargo.toml",
+            "Cargo.toml",
+            "Makefile",
+            "rust-toolchain.toml",
+            "justfile",
+            ".gitignore",
+            "shooter_core/Cargo.toml",
+            "shooter_server/Cargo.toml",
+            "shooter_bot/Cargo.toml",
         ],
     },
     {
@@ -261,7 +267,9 @@ _CS_STEPS_RAW: list[dict[str, Any]] = [
         "action": "write_file",
         "depends_on": ["cs_s2_core"],
         "expected_outputs": [
-            "shooter_server/src/lib.rs", "shooter_server/src/main.rs", "shooter_server/build.rs",
+            "shooter_server/src/lib.rs",
+            "shooter_server/src/main.rs",
+            "shooter_server/build.rs",
         ],
     },
     {
@@ -277,7 +285,9 @@ _CS_STEPS_RAW: list[dict[str, Any]] = [
         "action": "write_file",
         "depends_on": ["cs_s1_ws_cargo"],
         "expected_outputs": [
-            "frontend/package.json", "frontend/vite.config.ts", "frontend/index.html",
+            "frontend/package.json",
+            "frontend/vite.config.ts",
+            "frontend/index.html",
             "frontend/src/App.tsx",
             "frontend/src/adapters/IGameClientAdapter.ts",
             "frontend/src/adapters/LocalInProcAdapter.ts",
@@ -292,8 +302,11 @@ _CS_STEPS_RAW: list[dict[str, Any]] = [
         "action": "write_file",
         "depends_on": ["cs_s3_server", "cs_s4_bot", "cs_s5_frontend"],
         "expected_outputs": [
-            "README.md", "docs/USAGE.md", "docs/ARCHITECTURE.md",
-            "deploy/Dockerfile", "deploy/docker-compose.yml",
+            "README.md",
+            "docs/USAGE.md",
+            "docs/ARCHITECTURE.md",
+            "deploy/Dockerfile",
+            "deploy/docker-compose.yml",
         ],
     },
     {
@@ -314,9 +327,13 @@ _GENERIC_STEPS_RAW: list[dict[str, Any]] = [
         "action": "write_file",
         "depends_on": [],
         "expected_outputs": [
-            "README.md", "Cargo.toml", "Dockerfile",
-            "docs/USAGE.md", "docs/ARCHITECTURE.md",
-            "Makefile", ".gitignore",
+            "README.md",
+            "Cargo.toml",
+            "Dockerfile",
+            "docs/USAGE.md",
+            "docs/ARCHITECTURE.md",
+            "Makefile",
+            ".gitignore",
         ],
     },
 ]
@@ -354,6 +371,7 @@ class TaskTemplateSelector:
                 fm_lines.append(s)
         text = "\n".join(fm_lines)
         import re as _re
+
         m = _re.search(r"(?m)^title:\s*(.+)$", text)
         if m:
             title = m.group(1).strip().strip("\"'")
@@ -370,6 +388,7 @@ class TaskTemplateSelector:
         q = getattr(task_request, "query", "") or ""
         corpus = " ".join(filter(None, [title, typ, q, *tags]))
         import re as _re
+
         if _re.search(self.CS_STRONG_RE, corpus):
             return "cs_shooter"
         if _re.search(self.CS_WEAK_RE, corpus) and _re.search(self.CS_CONTEXT_RE, corpus):
@@ -380,6 +399,7 @@ class TaskTemplateSelector:
 
     def plan_for_key(self, key: str) -> list[Step]:
         import copy as _copy
+
         if key == "tetris":
             return _copy.deepcopy(RULE_BASED_TETRIS_PLAN)
         if key == "cs_shooter":
