@@ -22,7 +22,14 @@ else
   PYTHON="$(command -v python3 || command -v python || true)"
 fi
 
-[[ -x "$PYTHON" ]] || { echo "✗ 找不到 python: $PYTHON（可用 PYTHON=... 覆盖）" >&2; exit 1; }
+# 允许 PYTHON 是绝对路径，也允许是命令名（CI 传 `python`）
+if [[ "$PYTHON" == */* ]]; then
+  [[ -x "$PYTHON" ]] || { echo "✗ 找不到 python 解释器: $PYTHON" >&2; exit 1; }
+else
+  RESOLVED="$(command -v "$PYTHON" || true)"
+  [[ -n "$RESOLVED" ]] || { echo "✗ PATH 中找不到命令: $PYTHON" >&2; exit 1; }
+  PYTHON="$RESOLVED"
+fi
 
 # --isolated：忽略项目配置里的 select/ignore，取 ruff 自身的默认集。
 snapshot() {
